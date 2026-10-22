@@ -1,4 +1,4 @@
-# Brilliant Research Agent
+# BAYAN (Brilliant Analysis Yielding Academic kNowledge)
 
 Agentic research assistant for general researchers: choose a research area, libraries, period,
 languages, document types and geography; retrieve papers; download chosen PDFs; read them with
@@ -26,7 +26,7 @@ Full design and milestones: `docs/BUILD_PLAN.md`. Read it before starting any is
 ## Conventions
 
 - Python >= 3.12, FastAPI, SQLite (FTS5) for now, pydantic models, `httpx` for HTTP.
-- Connectors implement `brilliant_research_agent.connectors.base.Connector`; add each to
+- Connectors implement `bayan.connectors.base.Connector`; add each to
   `libraries.py` and mark `available` only when it really works.
 - Retrieval (search, dedupe, quotas) is deterministic code, not an LLM call.
 - Tests must not call live services; use `httpx.MockTransport` and fixtures.
@@ -36,4 +36,4 @@ Full design and milestones: `docs/BUILD_PLAN.md`. Read it before starting any is
 - Setup: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`
 - Test: `.venv/bin/pytest`
 - Lint: `.venv/bin/ruff check .`
-- Run: `.venv/bin/uvicorn brilliant_research_agent.api:app --reload`
+- Run: `.venv/bin/uvicorn bayan.api:app --reload`

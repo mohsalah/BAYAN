@@ -20,10 +20,10 @@ class Settings:
 def load_settings() -> Settings:
     load_dotenv()
     return Settings(
-        database_path=Path(os.environ.get("BRA_DATABASE_PATH", "data/app.sqlite")),
+        database_path=Path(os.environ.get("BAYAN_DATABASE_PATH", "data/app.sqlite")),
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
         contact_email=os.environ.get("CONTACT_EMAIL") or None,
         app_secret_key=os.environ.get("APP_SECRET_KEY") or None,
-        model_reader=os.environ.get("BRA_MODEL_READER", "claude-sonnet-5-5"),
-        model_screener=os.environ.get("BRA_MODEL_SCREENER", "claude-haiku-5-5"),
+        model_reader=os.environ.get("BAYAN_MODEL_READER", "claude-sonnet-5-5"),
+        model_screener=os.environ.get("BAYAN_MODEL_SCREENER", "claude-haiku-5-5"),
     )

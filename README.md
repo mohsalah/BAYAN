@@ -1,4 +1,4 @@
-# Brilliant Research Agent
+# BAYAN (Brilliant Analysis Yielding Academic kNowledge)
 
 Agentic research assistant for general researchers. See `docs/BUILD_PLAN.md` for the full design,
 rules and the 24 milestones. This repository currently contains the skeleton (milestone M1, minus
@@ -11,7 +11,7 @@ python -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 cp .env.example .env        # then edit
 .venv/bin/pytest
-.venv/bin/uvicorn brilliant_research_agent.api:app --reload
+.venv/bin/uvicorn bayan.api:app --reload
 ```
 
 Open http://127.0.0.1:8000/health and http://127.0.0.1:8000/docs.

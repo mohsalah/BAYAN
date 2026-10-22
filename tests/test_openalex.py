@@ -1,9 +1,9 @@
 import httpx
 import pytest
 
-from brilliant_research_agent.connectors import ConnectorError, OpenAlexConnector
-from brilliant_research_agent.connectors.openalex import build_filter, parse_work, rebuild_abstract
-from brilliant_research_agent.models import SearchProfile
+from bayan.connectors import ConnectorError, OpenAlexConnector
+from bayan.connectors.openalex import build_filter, parse_work, rebuild_abstract
+from bayan.models import SearchProfile
 
 WORK = {
     "id": "https://openalex.org/W123",

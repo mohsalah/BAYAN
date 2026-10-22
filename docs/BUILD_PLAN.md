@@ -1,6 +1,6 @@
-# Research Agent — Build Plan
+# BAYAN — Build Plan
 
-Working name: `research-agent` (rename freely). Audience: general researchers, public sign-up.
+Name: BAYAN (Brilliant Analysis Yielding Academic kNowledge); repository `Brilliant-research-agent` to be renamed `BAYAN`. Audience: general researchers, public sign-up.
 Reference projects: `~/Downloads/Reactor physics papers` (corpus, SQLite, evidence rules) and Paperpal (research/writing assistant UX; not inspected in detail, review it before the UI milestone).
 
 ## 1. What the app does
@@ -150,7 +150,7 @@ Additional tables for this version: `paper_selections` (user, paper, requested_a
 
 ## 9. GitHub + Claude in the cloud
 
-1. Create a GitHub repo `research-agent`; push this folder.
+1. Create the GitHub repo `BAYAN`; push this folder.
 2. Add `AGENTS.md` (rules in section 2 plus commands) and `CLAUDE.md` containing `@AGENTS.md`.
 3. In Claude Code run `/install-github-app` (installs the Claude GitHub app and workflow), or add `.github/workflows/claude.yml` using `anthropics/claude-code-action`.
 4. Repo Settings -> Secrets: `ANTHROPIC_API_KEY`, `OPENALEX_API_KEY`, `APP_SECRET_KEY`, later `DATABASE_URL`.

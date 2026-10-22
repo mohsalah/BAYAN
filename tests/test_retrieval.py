@@ -1,5 +1,5 @@
-from brilliant_research_agent.models import Paper
-from brilliant_research_agent.retrieval import collect
+from bayan.models import Paper
+from bayan.retrieval import collect
 
 
 def paper(i, year=2020, doi="", source="openalex"):

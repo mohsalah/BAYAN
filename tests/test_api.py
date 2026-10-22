@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
-from brilliant_research_agent.api import create_app
-from brilliant_research_agent.config import Settings
-from brilliant_research_agent.libraries import LIBRARIES
+from bayan.api import create_app
+from bayan.config import Settings
+from bayan.libraries import LIBRARIES
 
 
 def test_health_libraries_languages(tmp_path):

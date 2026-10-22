@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from brilliant_research_agent.quotas import REFERENCE_BANDS, allocate_quotas, year_weights
+from bayan.quotas import REFERENCE_BANDS, allocate_quotas, year_weights
 
 REFERENCE_JSON = Path.home() / "Downloads/Reactor physics papers/year_quotas.json"
 

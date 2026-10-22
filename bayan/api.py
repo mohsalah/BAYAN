@@ -19,7 +19,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         init_db(settings.database_path)
         yield
 
-    app = FastAPI(title="Brilliant Research Agent", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="BAYAN", version=__version__, lifespan=lifespan)
 
     @app.get("/health")
     def health() -> dict:
