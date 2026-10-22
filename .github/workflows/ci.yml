@@ -16,6 +16,6 @@ jobs:
       - run: pytest
       - name: Block committed secrets
         run: |
-          if git grep -nE 'sk-ant-[A-Za-z0-9_-]{10,}|ANTHROPIC_API_KEY=[^y ]' -- . ':!.env.example' ':!AGENTS.md' ':!README.md' ':!docs'; then
+          if git grep -nE 'sk-ant-[A-Za-z0-9_-]{10,}|ANTHROPIC_API_KEY=[^y ]' -- . ':!.env.example' ':!AGENTS.md' ':!README.md' ':!docs' ':!.github/workflows/ci.yml'; then
             echo "Possible secret committed"; exit 1
           fi
