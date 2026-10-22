@@ -335,12 +335,12 @@ def test_default_factory_builds_the_new_connectors(tmp_path):
         "crossref", "arxiv", "europepmc"]
 
 
-def test_four_library_search_stores_each_work_once(tmp_path):
+def test_three_library_search_stores_each_work_once(tmp_path):
     settings, factory = make_factory(tmp_path)
     with TestClient(create_app(settings, connector_factory=factory)) as client:
         client.post("/api/auth/register", json={"email": "ada@example.org",
                                                 "password": "correct horse battery"})
-        body = {"libraries": ["openalex", "crossref", "arxiv", "europepmc"],
+        body = {"libraries": ["openalex", "arxiv", "europepmc"],
                 "profile": {"query": "neutron", "year_from": 2015, "year_to": 2022,
                             "document_types": ["article"], "languages": ["en"],
                             "countries": ["EG"]}}
@@ -348,21 +348,22 @@ def test_four_library_search_stores_each_work_once(tmp_path):
         assert res.status_code == 200, res.text
         run = res.json()
         s = run["summary"]
-        # 2 openalex + 2 crossref + 2 arxiv + 1 europepmc scanned; the shared DOI appears 4 times
-        assert s["scanned"] == 7 and s["duplicates"] == 3 and s["found"] == 4
-        assert s["scanned_by_library"] == {"openalex": 2, "crossref": 2, "arxiv": 2,
-                                           "europepmc": 1}
-        assert s["by_library"] == {"openalex": 2, "crossref": 1, "arxiv": 1, "europepmc": 0}
+        # 2 openalex + 2 arxiv + 1 europepmc scanned; the shared DOI appears 3 times
+        assert s["scanned"] == 5 and s["duplicates"] == 2 and s["found"] == 3
+        assert s["scanned_by_library"] == {"openalex": 2, "arxiv": 2, "europepmc": 1}
+        assert s["by_library"] == {"openalex": 2, "arxiv": 1, "europepmc": 0}
+        # the one DOI-less arXiv paper was looked up and Crossref had no confident match
+        assert s["doi_lookup"] == {"attempted": 1, "matched": 0, "no_match": 1, "failed": 0,
+                                   "skipped_over_budget": 0, "cache_hits": 0}
         assert s["unapplied_filters"] == {
             "openalex": [],
-            "crossref": ["languages", "countries"],
             "arxiv": ["document_types", "languages", "countries"],
             "europepmc": ["document_types", "countries"],
         }
         detail = client.get(f"/api/runs/{run['id']}").json()
         dois = [p["doi"] for p in detail["papers"] if p["doi"]]
         assert len(dois) == len(set(dois)) and SHARED_DOI in dois
-        assert {p["source"] for p in detail["papers"]} == {"openalex", "crossref", "arxiv"}
+        assert {p["source"] for p in detail["papers"]} == {"openalex", "arxiv"}
 
 
 def test_interleaving_lets_every_library_contribute_when_limit_is_small(tmp_path):
@@ -372,10 +373,10 @@ def test_interleaving_lets_every_library_contribute_when_limit_is_small(tmp_path
     with TestClient(create_app(settings, connector_factory=factory)) as client:
         client.post("/api/auth/register", json={"email": "ada@example.org",
                                                 "password": "correct horse battery"})
-        body = {"libraries": ["crossref", "arxiv"], "profile": {"year_from": 2015}}
+        body = {"libraries": ["openalex", "arxiv"], "profile": {"year_from": 2015}}
         s = client.post("/api/search", json=body).json()["summary"]
         assert s["stopped"] == "scan_limit" or s["found"] >= 1
-        assert s["scanned_by_library"]["crossref"] >= 1 and s["scanned_by_library"]["arxiv"] >= 1
+        assert s["scanned_by_library"]["openalex"] >= 1 and s["scanned_by_library"]["arxiv"] >= 1
 
 
 def test_unavailable_planned_libraries_stay_refused(tmp_path):

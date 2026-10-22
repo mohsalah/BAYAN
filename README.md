@@ -2,9 +2,11 @@
 
 Agentic research assistant for general researchers. See `docs/BUILD_PLAN.md` for the full design,
 rules and the 24 milestones. This repository currently contains the skeleton (milestone M1, minus
-auth), the OpenAlex connector (M2), the quota logic (M4) and the open connectors Crossref, arXiv and
-Europe PMC with cross-library de-duplication (M5). Semantic Scholar, CORE and Unpaywall are
-still planned.
+auth), the OpenAlex connector (M2), the quota logic (M4) and the open connectors arXiv and
+Europe PMC with cross-library de-duplication (M5). Crossref is not a search source: it is used
+automatically to find the DOI of papers found elsewhere that have none (title, year and first
+author must all match confidently; at most 50 lookups per run, cached; the run summary reports
+`doi_lookup` counts). Semantic Scholar, CORE and Unpaywall are still planned.
 
 ## Run locally
 

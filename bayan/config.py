@@ -19,6 +19,7 @@ class Settings:
     session_days: int = 14
     searches_per_hour: int = 20
     search_max_results: int = 200
+    doi_lookup_budget: int = 50  # Crossref DOI lookups per run (cache hits are free)
 
 
 def load_settings() -> Settings:
@@ -30,5 +31,6 @@ def load_settings() -> Settings:
         app_secret_key=os.environ.get("APP_SECRET_KEY") or None,
         model_reader=os.environ.get("BAYAN_MODEL_READER", "claude-sonnet-5-5"),
         model_screener=os.environ.get("BAYAN_MODEL_SCREENER", "claude-haiku-5-5"),
+        doi_lookup_budget=int(os.environ.get("BAYAN_DOI_LOOKUP_BUDGET", "50")),
         cookie_secure=os.environ.get("BAYAN_COOKIE_SECURE", "").lower() in ("1", "true", "yes"),
     )

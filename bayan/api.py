@@ -180,6 +180,11 @@ def create_app(
                 raise HTTPException(
                     422, f"{lib['name']} is not available yet (status: {lib['status']})"
                 )
+            if lib["role"] != "search":
+                raise HTTPException(
+                    422, f"{lib['name']} is used automatically to find missing DOIs, "
+                    "not as a search source"
+                )
         if body.quota_total and body.quota_total > settings.search_max_results:
             raise HTTPException(
                 422, f"quota_total is limited to {settings.search_max_results} per search"
@@ -193,7 +198,10 @@ def create_app(
             raise HTTPException(429, "Search limit reached for this hour; try again later")
         try:
             connectors = [make_connector(lib_id) for lib_id in body.libraries]
-            return run_search(conn, user["id"], body, connectors, settings.search_max_results)
+            return run_search(
+                conn, user["id"], body, connectors, settings.search_max_results,
+                doi_lookup=make_connector("crossref"), doi_budget=settings.doi_lookup_budget,
+            )
         except ConnectorError as exc:
             raise HTTPException(502, str(exc)) from exc
 
@@ -220,9 +228,17 @@ def create_app(
             " WHERE rp.run_id = ? ORDER BY rp.rank",
             (run_id,),
         ).fetchall()
+        summary = json.loads(run["summary"])
+        matches = {(m["source"], m["id"]): m for m in summary.get("doi_matches", [])}
+        out = []
+        for p in papers:
+            d = paper_row_to_dict(p)
+            match = matches.get((d["source"], d["id"]))
+            d["doi_source"] = "crossref_lookup" if match else ""
+            d["doi_match_score"] = match["score"] if match else None
+            out.append(d)
         return {"id": run["id"], "created_at": run["created_at"],
-                "request": json.loads(run["request"]), "summary": json.loads(run["summary"]),
-                "papers": [paper_row_to_dict(p) for p in papers]}
+                "request": json.loads(run["request"]), "summary": summary, "papers": out}
 
     return app
 

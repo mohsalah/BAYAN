@@ -3,12 +3,15 @@
 import html
 import re
 import time
+import unicodedata
 from collections.abc import Callable, Iterator
+from difflib import SequenceMatcher
+from typing import NamedTuple
 
 import httpx
 
 from ..models import Paper, SearchProfile
-from .base import get_with_retry, user_agent
+from .base import ConnectorError, get_with_retry, user_agent
 
 BASE_URL = "https://api.crossref.org/works"
 # App document type -> Crossref `type`. Crossref has no separate "review" type (reviews are
@@ -59,6 +62,53 @@ def build_filter(profile: SearchProfile) -> str:
     return ",".join(parts)
 
 
+TITLE_SIMILARITY_MIN = 0.95  # normalised title ratio needed to accept a DOI
+YEAR_TOLERANCE = 1  # years of difference allowed between the paper and the Crossref record
+LOOKUP_ROWS = 5  # candidates read per lookup; the best one that passes every check wins
+LOOKUP_ATTEMPTS = 2  # lookups give up quickly (a failure is counted, never retried for long)
+
+
+def normalize_text(text: str) -> str:
+    """Lowercase, strip accents and punctuation, collapse spaces (for title/name comparison)."""
+    plain = unicodedata.normalize("NFKD", text or "")
+    plain = "".join(c for c in plain if not unicodedata.combining(c)).lower()
+    return " ".join(re.sub(r"[\W_]+", " ", plain).split())
+
+
+def title_similarity(a: str, b: str) -> float:
+    na, nb = normalize_text(a), normalize_text(b)
+    return SequenceMatcher(None, na, nb).ratio() if na and nb else 0.0
+
+
+def family_matches(first_author: str, item: dict) -> bool:
+    """True if the Crossref first author's family name is a whole-word part of `first_author`."""
+    authors = item.get("author") or []
+    if not authors:
+        return False
+    family = normalize_text(authors[0].get("family") or authors[0].get("name") or "")
+    return bool(family) and f" {family} " in f" {normalize_text(first_author)} "
+
+
+def accept_item(item: dict, title: str, first_author: str, year: int) -> float | None:
+    """Return the title score if the Crossref record is a confident match, else None."""
+    cr_title = (item.get("title") or [""])[0] or ""
+    score = title_similarity(title, cr_title)
+    if score < TITLE_SIMILARITY_MIN:
+        return None
+    parts = ((item.get("issued") or {}).get("date-parts") or [[None]])[0] or [None]
+    cr_year = parts[0]
+    if not isinstance(cr_year, int) or abs(cr_year - year) > YEAR_TOLERANCE:
+        return None
+    if first_author.strip() and not family_matches(first_author, item):
+        return None
+    return score
+
+
+class DoiMatch(NamedTuple):
+    doi: str
+    score: float
+
+
 class CrossrefConnector:
     name = "crossref"
     tier = "open"
@@ -78,6 +128,36 @@ class CrossrefConnector:
         self._sleep = sleep
         self._max_attempts = max_attempts
         self._rows = rows
+
+    def lookup_doi(self, title: str, first_author: str, year: int) -> DoiMatch | None:
+        """Find the DOI of a known paper, or None. Raises ConnectorError if Crossref fails.
+
+        Accepts a record only if the title is >= 0.95 similar, the year is within +/-1 and,
+        when `first_author` is given, the family name matches. Never guesses.
+        """
+        params = {
+            "query.bibliographic": " ".join(x for x in (title, first_author, str(year)) if x),
+            "rows": LOOKUP_ROWS,
+            "select": "DOI,title,issued,author",
+        }
+        if self._email:
+            params["mailto"] = self._email
+        response = get_with_retry(
+            self._client, BASE_URL, params, "Crossref", self._sleep,
+            min(self._max_attempts, LOOKUP_ATTEMPTS),
+            headers={"User-Agent": user_agent(self._email)},
+        )
+        try:
+            items = (response.json().get("message") or {}).get("items") or []
+        except ValueError as exc:
+            raise ConnectorError("Crossref request failed: invalid response") from exc
+        best: DoiMatch | None = None
+        for item in items:
+            doi = (item.get("DOI") or "").lower()
+            score = accept_item(item, title, first_author, year) if doi else None
+            if score is not None and (best is None or score > best.score):
+                best = DoiMatch(doi, round(score, 4))
+        return best
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
         if profile.document_types and not mapped_types(profile):
