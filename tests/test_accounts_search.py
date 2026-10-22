@@ -12,6 +12,7 @@ EMAIL, PASSWORD = "ada@example.org", "correct horse battery"
 class FakeConnector:
     name = "openalex"
     tier = "open"
+    supported_filters = frozenset({"years", "document_types", "languages", "countries"})
 
     def __init__(self, papers=None, error=None):
         self.papers, self.error, self.profiles = papers or [], error, []

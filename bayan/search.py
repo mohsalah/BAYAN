@@ -4,12 +4,12 @@ import json
 import sqlite3
 from collections import Counter
 from collections.abc import Iterator
-from itertools import chain
+from itertools import zip_longest
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .connectors.base import Connector
+from .connectors.base import FILTERS, Connector
 from .models import Paper, SearchProfile
 from .quotas import allocate_quotas
 from .retrieval import collect
@@ -33,6 +33,29 @@ def quota_weights(profile: SearchProfile, weighting: str) -> dict[int, int]:
     return {y: 4 if y >= 2010 else 3 if y >= 2000 else 1 for y in years}
 
 
+_DONE = object()
+
+
+def _interleave(streams: list[Iterator[Paper]]) -> Iterator[Paper]:
+    """Round-robin over libraries so a full first library cannot starve the others."""
+    for round_ in zip_longest(*streams, fillvalue=_DONE):
+        for paper in round_:
+            if paper is not _DONE:
+                yield paper
+
+
+def requested_filters(profile: SearchProfile) -> list[str]:
+    asked = {"years": True, "document_types": bool(profile.document_types),
+             "languages": bool(profile.languages), "countries": bool(profile.countries)}
+    return [f for f in FILTERS if asked[f]]
+
+
+def _counted(connector: Connector, profile: SearchProfile, state: dict) -> Iterator[Paper]:
+    for paper in connector.search(profile):
+        state["scanned_by_library"][connector.name] += 1
+        yield paper
+
+
 def _scan(stream: Iterator[Paper], limit: int, state: dict) -> Iterator[Paper]:
     for paper in stream:
         if state["scanned"] >= limit:
@@ -54,8 +77,9 @@ def run_search(
     if request.quota_total is not None:
         quotas = allocate_quotas(request.quota_total, quota_weights(profile, request.weighting))
     wanted = request.quota_total or max_results
-    state = {"scanned": 0, "stopped": "exhausted"}
-    stream = _scan(chain.from_iterable(c.search(profile) for c in connectors),
+    state = {"scanned": 0, "stopped": "exhausted",
+             "scanned_by_library": {c.name: 0 for c in connectors}}
+    stream = _scan(_interleave([_counted(c, profile, state) for c in connectors]),
                    max_results * SCAN_FACTOR, state)
     if quotas is None:
         stream = _first(stream, wanted, state)
@@ -67,6 +91,15 @@ def run_search(
         "libraries": [c.name for c in connectors],
         "found": len(result.papers),
         "scanned": state["scanned"],
+        "scanned_by_library": state["scanned_by_library"],
+        # Stored papers per library; a work found by several libraries counts for the first one.
+        "by_library": {c.name: sum(1 for p in result.papers if p.source == c.name)
+                       for c in connectors},
+        # Requested filters each library cannot apply. Results are not post-filtered by guessing.
+        "unapplied_filters": {
+            c.name: [f for f in requested_filters(profile)
+                     if f not in getattr(c, "supported_filters", frozenset())]
+            for c in connectors},
         "stopped": state["stopped"],
         "duplicates": result.duplicates,
         "skipped_over_quota": result.skipped_over_quota,

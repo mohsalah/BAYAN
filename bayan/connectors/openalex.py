@@ -72,6 +72,7 @@ def build_filter(profile: SearchProfile) -> str:
 class OpenAlexConnector:
     name = "openalex"
     tier = "open"
+    supported_filters = frozenset({"years", "document_types", "languages", "countries"})
 
     def __init__(
         self,

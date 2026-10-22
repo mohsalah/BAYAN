@@ -140,6 +140,7 @@ function renderRun(run) {
   $('resultCard').classList.remove('hidden');
   $('resultTitle').textContent = 'Results (run ' + run.id + ')';
   const chips = [['found', s.found], ['scanned', s.scanned], ['duplicates removed', s.duplicates]];
+  for (const [k, v] of Object.entries(s.by_library || {})) chips.push(['from ' + k, v]);
   for (const [k, v] of Object.entries(s.by_document_type || {})) chips.push([k, v]);
   for (const [k, v] of Object.entries(s.by_language || {})) chips.push(['lang ' + k, v]);
   $('summary').replaceChildren(...chips.map(([k, v]) => el('span', { class: 'chip' }, k + ': ' + v)));
@@ -148,6 +149,10 @@ function renderRun(run) {
   if (stop) notes.push(el('p', { class: 'note' }, stop));
   const sf = Object.entries(s.shortfalls || {});
   if (sf.length) notes.push(el('p', { class: 'warn' }, 'Shortfalls (fewer papers found than requested, not padded): ' + sf.map(([y, v]) => y + ' ' + v.collected + '/' + v.quota).join(', ')));
+  const names = { years: 'period', document_types: 'document types', languages: 'languages', countries: 'countries' };
+  for (const [lib, fs] of Object.entries(s.unapplied_filters || {})) {
+    if (fs.length) notes.push(el('p', { class: 'warn' }, lib + ' could not apply: ' + fs.map(f => names[f] || f).join(', ') + ' (its results are not filtered on these).'));
+  }
   $('notes').replaceChildren(...notes);
   $('rows').replaceChildren(...(run.papers || []).map(p => {
     const href = p.doi ? 'https://doi.org/' + p.doi : (p.landing_url || '');
