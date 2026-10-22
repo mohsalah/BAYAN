@@ -22,7 +22,13 @@ from .auth import (
     verify_password,
 )
 from .config import Settings, load_settings
-from .connectors import ConnectorError, OpenAlexConnector
+from .connectors import (
+    ArxivConnector,
+    ConnectorError,
+    CrossrefConnector,
+    EuropePMCConnector,
+    OpenAlexConnector,
+)
 from .connectors.base import Connector
 from .db import connect, init_db
 from .libraries import LIBRARIES
@@ -46,6 +52,12 @@ def default_connector_factory(settings: Settings) -> ConnectorFactory:
             return OpenAlexConnector(
                 api_key=settings.openalex_api_key, contact_email=settings.contact_email
             )
+        if library_id == "crossref":
+            return CrossrefConnector(contact_email=settings.contact_email)
+        if library_id == "arxiv":
+            return ArxivConnector(contact_email=settings.contact_email)
+        if library_id == "europepmc":
+            return EuropePMCConnector(contact_email=settings.contact_email)
         raise KeyError(library_id)
 
     return make
