@@ -153,7 +153,7 @@ Additional tables for this version: `paper_selections` (user, paper, requested_a
 1. Create the GitHub repo `BAYAN`; push this folder.
 2. Add `AGENTS.md` (rules in section 2 plus commands) and `CLAUDE.md` containing `@AGENTS.md`.
 3. In Claude Code run `/install-github-app` (installs the Claude GitHub app and workflow), or add `.github/workflows/claude.yml` using `anthropics/claude-code-action`.
-4. Repo Settings -> Secrets: `ANTHROPIC_API_KEY`, `OPENALEX_API_KEY`, `APP_SECRET_KEY`, later `DATABASE_URL`.
+4. Repo Settings -> Secrets: `CLAUDE_CODE_OAUTH_TOKEN` (Max subscription login used by the GitHub Action; `/install-github-app` creates it), `APP_SECRET_KEY`, `OPENALEX_API_KEY` (optional). `ANTHROPIC_API_KEY` is needed only when the app itself calls Claude for users (M3 onward), billed per use; later `DATABASE_URL`.
 5. Protect `main`: pull request + passing CI required.
 6. Create one GitHub issue per milestone below; comment `@claude implement this` on each. Review each PR before merging.
 7. CI (`.github/workflows/ci.yml`): ruff, pytest, and a check that fails on committed secrets.
