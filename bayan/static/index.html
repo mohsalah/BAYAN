@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BAYAN</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--ink:#1c2230;--mute:#667085;--line:#dfe3ec;--accent:#4b3fbf;--accent-ink:#fff;--warn:#9a5b00;--bad:#b42318}
+@media (prefers-color-scheme:dark){:root{--bg:#12141b;--card:#1b1e28;--ink:#e8eaf1;--mute:#9aa3b5;--line:#2c3140;--accent:#8b80ff;--accent-ink:#12141b;--warn:#f0b35a;--bad:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:18px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+header h1{margin:0;font-size:22px;letter-spacing:.08em;color:var(--accent)}
+header span{color:var(--mute);font-size:13px}
+header .who{margin-left:auto;display:flex;gap:10px;align-items:center}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+h2{margin:0 0 12px;font-size:17px}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+input[type=text],input[type=email],input[type=password],input[type=number],select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font:inherit}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px}
+.checks{display:flex;flex-wrap:wrap;gap:6px 14px}
+.checks label{display:flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-size:14px}
+.checks label.off{color:var(--mute)}
+button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:7px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+button:disabled{opacity:.55;cursor:wait}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.chip{border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:13px}
+.note{color:var(--mute);font-size:13px}.warn{color:var(--warn)}.err{color:var(--bad)}
+.badge{font-size:11px;border:1px solid var(--line);border-radius:5px;padding:0 5px;color:var(--mute)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;font-size:14px}
+th{color:var(--mute);font-weight:600;font-size:12px}
+a{color:var(--accent)}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>BAYAN</h1><span>Brilliant Analysis Yielding Academic kNowledge</span>
+  <div class="who hidden" id="who"><span id="whoEmail" class="note"></span><button class="ghost" id="logout">Sign out</button></div>
+</header>
+<main>
+  <section class="card" id="authCard">
+    <h2>Sign in or create an account</h2>
+    <div class="grid">
+      <div><label for="email">Email</label><input id="email" type="email" autocomplete="username"></div>
+      <div><label for="password">Password (10+ characters)</label><input id="password" type="password" autocomplete="current-password"></div>
+    </div>
+    <p><button id="login">Sign in</button> <button class="ghost" id="register">Create account</button></p>
+    <p class="err" id="authErr"></p>
+  </section>
+
+  <section class="card hidden" id="searchCard">
+    <h2>Search</h2>
+    <label for="query">Research area</label>
+    <input id="query" type="text" placeholder="e.g. neutron transport in molten salt reactors">
+    <div class="grid">
+      <div><label for="yFrom">From year</label><input id="yFrom" type="number" value="2015"></div>
+      <div><label for="yTo">To year</label><input id="yTo" type="number"></div>
+      <div><label for="quota">Papers wanted (optional, spreads across years)</label><input id="quota" type="number" min="1" placeholder="e.g. 100"></div>
+      <div><label for="weighting">Year weighting</label><select id="weighting"><option value="equal">Equal per year</option><option value="recent">Favour recent years</option></select></div>
+    </div>
+    <label>Libraries</label><div class="checks" id="libs"></div>
+    <label>Document types</label><div class="checks" id="types"></div>
+    <label>Languages</label><div class="checks" id="langs"></div>
+    <label for="countries">Author-affiliation countries (ISO codes, comma separated, optional)</label>
+    <input id="countries" type="text" placeholder="e.g. EG, US, CA">
+    <p class="note">Manuals are not found by search; they come from uploads or links in a later version.</p>
+    <p><button id="go">Search</button> <span id="status" class="note"></span></p>
+    <p class="err" id="searchErr"></p>
+  </section>
+
+  <section class="card hidden" id="resultCard">
+    <h2 id="resultTitle">Results</h2>
+    <div class="chips" id="summary"></div>
+    <div id="notes"></div>
+    <div class="tablewrap"><table><thead><tr><th>Title</th><th>Year</th><th>Type</th><th>Lang</th><th>Countries</th><th>Access</th></tr></thead><tbody id="rows"></tbody></table></div>
+  </section>
+
+  <section class="card hidden" id="runsCard">
+    <h2>Earlier searches</h2><div id="runs" class="note"></div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+function el(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else e.setAttribute(k, v); }
+  for (const kid of kids) e.append(kid instanceof Node ? kid : document.createTextNode(kid ?? ''));
+  return e;
+}
+async function api(path, opts = {}) {
+  const r = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...opts });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Request failed (' + r.status + ')');
+  return body;
+}
+const ACCESS = { open_copy_listed: 'open copy listed', no_open_copy_listed: 'needs access' };
+let meta = {};
+
+function checks(box, items, name) {
+  box.replaceChildren(...items.map(i => {
+    const cb = el('input', { type: 'checkbox', name, value: i.value });
+    if (i.checked) cb.checked = true;
+    if (i.disabled) cb.disabled = true;
+    return el('label', { class: i.disabled ? 'off' : '' }, cb, i.label, ...(i.badge ? [el('span', { class: 'badge' }, i.badge)] : []));
+  }));
+}
+const picked = name => [...document.querySelectorAll('input[name=' + name + ']:checked')].map(c => c.value);
+
+async function loadMeta() {
+  const [libs, types, langs] = await Promise.all([api('/api/libraries'), api('/api/document-types'), api('/api/languages')]);
+  checks($('libs'), libs.map(l => ({ value: l.id, label: l.name + (l.tier === 'membership' ? ' (membership)' : ''), checked: l.status === 'available', disabled: l.status !== 'available', badge: l.status === 'available' ? '' : (l.status === 'unconfirmed' ? 'not available yet' : 'planned') })), 'lib');
+  checks($('types'), types.map(t => ({ value: t, label: t, checked: t === 'article' || t === 'review', disabled: t === 'manual', badge: t === 'manual' ? 'uploads later' : '' })), 'type');
+  checks($('langs'), Object.entries(langs).map(([c, v]) => ({ value: c, label: v.name, checked: c === 'en' })), 'lang');
+}
+
+function showSignedIn(email) {
+  $('authCard').classList.add('hidden'); $('searchCard').classList.remove('hidden'); $('runsCard').classList.remove('hidden');
+  $('who').classList.remove('hidden'); $('whoEmail').textContent = email;
+  loadRuns();
+}
+function showSignedOut() {
+  for (const id of ['searchCard', 'resultCard', 'runsCard', 'who']) $(id).classList.add('hidden');
+  $('authCard').classList.remove('hidden');
+}
+async function auth(kind) {
+  $('authErr').textContent = '';
+  try {
+    const r = await api('/api/auth/' + kind, { method: 'POST', body: JSON.stringify({ email: $('email').value, password: $('password').value }) });
+    $('password').value = ''; showSignedIn(r.email);
+  } catch (e) { $('authErr').textContent = e.message; }
+}
+
+function renderRun(run) {
+  const s = run.summary;
+  $('resultCard').classList.remove('hidden');
+  $('resultTitle').textContent = 'Results (run ' + run.id + ')';
+  const chips = [['found', s.found], ['scanned', s.scanned], ['duplicates removed', s.duplicates]];
+  for (const [k, v] of Object.entries(s.by_document_type || {})) chips.push([k, v]);
+  for (const [k, v] of Object.entries(s.by_language || {})) chips.push(['lang ' + k, v]);
+  $('summary').replaceChildren(...chips.map(([k, v]) => el('span', { class: 'chip' }, k + ': ' + v)));
+  const notes = [];
+  const stop = { scan_limit: 'Stopped at the scan limit; more matching papers may exist.', limit: 'Stopped at the result limit; more matching papers exist.', exhausted: 'The library had no more matching papers.', complete: 'All year quotas were filled.' }[s.stopped];
+  if (stop) notes.push(el('p', { class: 'note' }, stop));
+  const sf = Object.entries(s.shortfalls || {});
+  if (sf.length) notes.push(el('p', { class: 'warn' }, 'Shortfalls (fewer papers found than requested, not padded): ' + sf.map(([y, v]) => y + ' ' + v.collected + '/' + v.quota).join(', ')));
+  $('notes').replaceChildren(...notes);
+  $('rows').replaceChildren(...(run.papers || []).map(p => {
+    const href = p.doi ? 'https://doi.org/' + p.doi : (p.landing_url || '');
+    const title = href && /^https?:\/\//.test(href) ? el('a', { href, target: '_blank', rel: 'noopener noreferrer' }, p.title || '(untitled)') : document.createTextNode(p.title || '(untitled)');
+    return el('tr', {}, el('td', {}, title), el('td', {}, p.year ?? ''), el('td', {}, p.document_type), el('td', {}, p.language), el('td', {}, (p.countries || []).join(', ')), el('td', {}, ACCESS[p.access] || p.access));
+  }));
+}
+
+async function search() {
+  $('searchErr').textContent = ''; $('go').disabled = true; $('status').textContent = 'Searching…';
+  try {
+    const quota = parseInt($('quota').value, 10);
+    const body = {
+      profile: {
+        query: $('query').value.trim(),
+        year_from: parseInt($('yFrom').value, 10), year_to: parseInt($('yTo').value, 10),
+        document_types: picked('type'), languages: picked('lang'),
+        countries: $('countries').value.split(',').map(s => s.trim()).filter(Boolean),
+      },
+      libraries: picked('lib'), weighting: $('weighting').value,
+    };
+    if (quota) body.quota_total = quota;
+    const r = await api('/api/search', { method: 'POST', body: JSON.stringify(body) });
+    renderRun(await api('/api/runs/' + r.id)); loadRuns();
+  } catch (e) { $('searchErr').textContent = e.message; }
+  finally { $('go').disabled = false; $('status').textContent = ''; }
+}
+async function loadRuns() {
+  try {
+    const runs = await api('/api/runs');
+    $('runs').replaceChildren(...(runs.length ? runs.map(r => {
+      const a = el('a', { href: '#' }, 'Run ' + r.id + ' · ' + r.created_at + ' · ' + r.summary.found + ' papers');
+      a.addEventListener('click', async ev => { ev.preventDefault(); renderRun(await api('/api/runs/' + r.id)); });
+      return el('div', {}, a);
+    }) : [document.createTextNode('None yet.')]));
+  } catch { /* not signed in */ }
+}
+
+$('login').onclick = () => auth('login');
+$('register').onclick = () => auth('register');
+$('go').onclick = search;
+$('logout').onclick = async () => { await api('/api/auth/logout', { method: 'POST' }); showSignedOut(); };
+$('yTo').value = new Date().getFullYear();
+loadMeta().then(() => api('/api/me')).then(m => showSignedIn(m.email)).catch(() => showSignedOut());
+</script>
+</body>
+</html>

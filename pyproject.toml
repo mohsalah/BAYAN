@@ -22,6 +22,9 @@ dev = ["pytest>=8", "ruff>=0.6"]
 [tool.setuptools.packages.find]
 include = ["bayan*"]
 
+[tool.setuptools.package-data]
+bayan = ["static/*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

@@ -15,6 +15,10 @@ class Settings:
     app_secret_key: str | None = field(default=None, repr=False)
     model_reader: str = "claude-sonnet-5-5"
     model_screener: str = "claude-haiku-5-5"
+    cookie_secure: bool = False
+    session_days: int = 14
+    searches_per_hour: int = 20
+    search_max_results: int = 200
 
 
 def load_settings() -> Settings:
@@ -26,4 +30,5 @@ def load_settings() -> Settings:
         app_secret_key=os.environ.get("APP_SECRET_KEY") or None,
         model_reader=os.environ.get("BAYAN_MODEL_READER", "claude-sonnet-5-5"),
         model_screener=os.environ.get("BAYAN_MODEL_SCREENER", "claude-haiku-5-5"),
+        cookie_secure=os.environ.get("BAYAN_COOKIE_SECURE", "").lower() in ("1", "true", "yes"),
     )

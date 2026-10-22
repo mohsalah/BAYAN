@@ -1,0 +1,129 @@
+"""Run a search: profile -> connectors -> dedupe/quotas -> stored run. Retrieval is plain code."""
+
+import json
+import sqlite3
+from collections import Counter
+from collections.abc import Iterator
+from itertools import chain
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+from .connectors.base import Connector
+from .models import Paper, SearchProfile
+from .quotas import allocate_quotas
+from .retrieval import collect
+
+SCAN_FACTOR = 20  # a run reads at most search_max_results * SCAN_FACTOR works before stopping
+
+
+class SearchRequest(BaseModel):
+    profile: SearchProfile
+    libraries: list[str] = Field(default_factory=lambda: ["openalex"], min_length=1)
+    # Optional per-year quotas over the chosen period. Without it, the first N results are kept.
+    quota_total: int | None = Field(default=None, ge=1)
+    weighting: Literal["equal", "recent"] = "equal"
+
+
+def quota_weights(profile: SearchProfile, weighting: str) -> dict[int, int]:
+    """Equal weights, or the reference project's 200:150:50 recency weighting (4:3:1)."""
+    years = range(profile.year_from, profile.year_to + 1)
+    if weighting == "equal":
+        return {y: 1 for y in years}
+    return {y: 4 if y >= 2010 else 3 if y >= 2000 else 1 for y in years}
+
+
+def _scan(stream: Iterator[Paper], limit: int, state: dict) -> Iterator[Paper]:
+    for paper in stream:
+        if state["scanned"] >= limit:
+            state["stopped"] = "scan_limit"
+            return
+        state["scanned"] += 1
+        yield paper
+
+
+def run_search(
+    conn: sqlite3.Connection,
+    user_id: int,
+    request: SearchRequest,
+    connectors: list[Connector],
+    max_results: int,
+) -> dict:
+    profile = request.profile
+    quotas = None
+    if request.quota_total is not None:
+        quotas = allocate_quotas(request.quota_total, quota_weights(profile, request.weighting))
+    wanted = request.quota_total or max_results
+    state = {"scanned": 0, "stopped": "exhausted"}
+    stream = _scan(chain.from_iterable(c.search(profile) for c in connectors),
+                   max_results * SCAN_FACTOR, state)
+    if quotas is None:
+        stream = _first(stream, wanted, state)
+    result = collect(stream, quotas)
+    if quotas is not None and not result.shortfalls:
+        state["stopped"] = "complete"
+
+    summary = {
+        "libraries": [c.name for c in connectors],
+        "found": len(result.papers),
+        "scanned": state["scanned"],
+        "stopped": state["stopped"],
+        "duplicates": result.duplicates,
+        "skipped_over_quota": result.skipped_over_quota,
+        "skipped_no_year": result.skipped_no_year,
+        "by_document_type": dict(Counter(p.document_type or "unknown" for p in result.papers)),
+        "by_language": dict(Counter(p.language or "unknown" for p in result.papers)),
+        "shortfalls": {str(y): {"quota": q, "collected": c}
+                       for y, (q, c) in result.shortfalls.items()},
+    }
+    cur = conn.execute(
+        "INSERT INTO search_runs(user_id, request, summary) VALUES(?,?,?)",
+        (user_id, request.model_dump_json(), json.dumps(summary)),
+    )
+    run_id = cur.lastrowid
+    for rank, paper in enumerate(result.papers):
+        _store_paper(conn, paper)
+        conn.execute(
+            "INSERT OR IGNORE INTO run_papers(run_id, source, paper_id, rank) VALUES(?,?,?,?)",
+            (run_id, paper.source, paper.id, rank),
+        )
+    conn.commit()
+    return {"id": run_id, "summary": summary}
+
+
+def _first(stream: Iterator[Paper], n: int, state: dict) -> Iterator[Paper]:
+    count = 0
+    for paper in stream:
+        if count >= n:
+            state["stopped"] = "limit"
+            return
+        count += 1
+        yield paper
+
+
+def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO papers(source, id, doi, title, abstract, year, document_type,"
+        " language, venue, first_author, countries, citations, is_oa, oa_url, landing_url,"
+        " keywords, topic) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (p.source, p.id, p.doi, p.title, p.abstract, p.year, p.document_type, p.language,
+         p.venue, p.first_author, json.dumps(p.countries), p.citations, int(p.is_oa), p.oa_url,
+         p.landing_url, json.dumps(p.keywords), p.topic),
+    )
+    conn.execute("DELETE FROM paper_search WHERE source=? AND id=?", (p.source, p.id))
+    conn.execute(
+        "INSERT INTO paper_search(source, id, title, abstract, keywords, topic)"
+        " VALUES(?,?,?,?,?,?)",
+        (p.source, p.id, p.title, p.abstract, " ".join(p.keywords), p.topic),
+    )
+
+
+def paper_row_to_dict(row: sqlite3.Row) -> dict:
+    d = dict(row)
+    d["countries"] = json.loads(d["countries"] or "[]")
+    d["keywords"] = json.loads(d["keywords"] or "[]")
+    d["is_oa"] = bool(d["is_oa"])
+    # Honest wording: a listed open link is not proof that a valid PDF can be downloaded.
+    d["access"] = "open_copy_listed" if d["oa_url"] else "no_open_copy_listed"
+    d.pop("abstract", None)
+    return d
