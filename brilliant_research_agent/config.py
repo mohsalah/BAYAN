@@ -1,0 +1,29 @@
+"""Settings read from the environment. Secrets never appear in repr or logs."""
+
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+@dataclass(frozen=True)
+class Settings:
+    database_path: Path
+    openalex_api_key: str | None = field(default=None, repr=False)
+    contact_email: str | None = None
+    app_secret_key: str | None = field(default=None, repr=False)
+    model_reader: str = "claude-sonnet-5-5"
+    model_screener: str = "claude-haiku-5-5"
+
+
+def load_settings() -> Settings:
+    load_dotenv()
+    return Settings(
+        database_path=Path(os.environ.get("BRA_DATABASE_PATH", "data/app.sqlite")),
+        openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
+        contact_email=os.environ.get("CONTACT_EMAIL") or None,
+        app_secret_key=os.environ.get("APP_SECRET_KEY") or None,
+        model_reader=os.environ.get("BRA_MODEL_READER", "claude-sonnet-5-5"),
+        model_screener=os.environ.get("BRA_MODEL_SCREENER", "claude-haiku-5-5"),
+    )
