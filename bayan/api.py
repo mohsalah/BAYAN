@@ -78,12 +78,20 @@ from .membership import (
     secret_problem,
     validate_template,
 )
-from .models import CATEGORY_INFO, LANGUAGES, USER_SOURCE, normalize_document_types
+from .models import (
+    CATEGORY_INFO,
+    LANGUAGES,
+    USER_SOURCE,
+    language_key,
+    language_name,
+    normalize_document_types,
+)
 from .regions import regions_of, regions_payload
 from .search import SearchRequest, geo_status, paper_row_to_dict, run_search
 
 COOKIE = "bayan_session"
 STATIC = Path(__file__).parent / "static"
+LOCALES = Path(__file__).parent / "locales"
 
 ConnectorFactory = Callable[[str], Connector]
 
@@ -237,6 +245,13 @@ def create_app(
     def languages() -> dict:
         return LANGUAGES
 
+    @app.get("/api/locales/{code}")
+    def locale(code: str) -> dict:
+        """Interface strings for one of the six languages (en is the source of truth)."""
+        if code not in LANGUAGES:
+            raise HTTPException(404, f"Unsupported interface language: {code}")
+        return json.loads((LOCALES / f"{code}.json").read_text(encoding="utf-8"))
+
     @app.get("/api/regions")
     def regions() -> dict:
         return regions_payload()
@@ -343,6 +358,8 @@ def create_app(
             d["doi_source"] = "crossref_lookup" if match else ""
             d["doi_match_score"] = match["score"] if match else None
             d["category_label"] = CATEGORY_LABELS.get(d["category"], d["category"])
+            d["language_key"] = language_key(d["language"])
+            d["language_name"] = language_name(d["language"])
             d["type_key"] = type_key(d)
             d["regions"] = regions_of(d["countries"])
             d["geo_status"] = (geo_status(d["countries"], geo_codes, geo.get("mode", "include"))

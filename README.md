@@ -122,6 +122,53 @@ anything else is rejected). Study location is not inferred.
 - **Export.** CSV and Excel have *Affiliation countries*, *Region* and *Geography match* columns;
   missing values read `unknown`.
 
+## Languages (M15)
+
+Exactly six languages are offered anywhere: English, Arabic, French, Chinese, German, Spanish
+(`en ar fr zh de es`). Any other code is rejected with a message (`unsupported language(s): ja`).
+The **interface language** and the **search languages** are separate choices.
+
+**Interface.** `bayan/locales/<code>.json` holds every visible string, tooltip and aria label
+(English is the source of truth; served at `/api/locales/<code>`). The selector next to Theme is
+saved in `localStorage` (`bayan.lang`); without a saved choice the browser language is used only if
+it is one of the six, otherwise English. `<html lang>` and `dir` follow it. A test fails if a locale
+misses or adds a key, or if a placeholder such as `{n}` differs from English.
+**The five non-English translations are machine-drafted and await native-speaker review.**
+Not translated: paper titles, abstracts and venues (shown as stored), and text the server writes
+(API error messages, reference-type explanations in the type report, library warnings, the
+Crossref/DOI detail lines). Those stay in English for now.
+
+**Right-to-left and CJK.** Arabic sets `dir="rtl"`; the CSS uses logical properties
+(`margin-inline-*`, `inset-inline-*`, `text-align: start`). Titles, abstracts, venues and authors
+carry `dir="auto"` and `lang=<paper language>`, so Arabic papers read right-to-left inside an
+English page and the other way round. DOIs, URLs, years and e-mail fields are forced
+left-to-right. Fonts are system fonts only (no downloads), with Arabic and CJK families listed.
+The pure functions are tested under node; layout was **not** checked in a real browser here, so
+please look at Arabic and Chinese once by eye.
+
+**Keywords per language.** With more than one search language, the search card shows one editable
+keyword box per language (starting as a copy of the research area). They are sent as
+`profile.queries_by_language` (keys only from the six codes, each at most 1000 characters, like the
+main query). A library that can filter by language (OpenAlex, Europe PMC) runs one query per chosen
+language with that language's text and filter, interleaved so one language cannot fill the limit;
+de-duplication, the result limit and year quotas apply to the combined stream. A library that cannot
+filter by language runs the main query once and the run summary says so. The run summary keeps
+`language_queries` (text per language, which libraries split, notes) and the stored request keeps
+`queries_by_language`, so a run can be repeated. No model proposes keywords yet (that is M3).
+
+**Display.** Each paper shows a language name, not a code. The Language chip row filters loaded
+results in the browser, lists every chosen search language even at 0, lists other languages found,
+and always lists "Unknown language" (papers whose library gave no language are shown, not hidden).
+The export has a "Language code" and a "Language" (name) column; the Search sheet records the keywords used per language.
+
+**Local full-text table.** `paper_search` (SQLite FTS5) already exists, but nothing queries it yet.
+`bayan/textnorm.py` now fills it: text is case-folded, Latin accents are removed (fr/de/es; `ß` →
+`ss`), Arabic tashkeel and tatweel are removed and alef variants unified (matching only; the
+`papers` table keeps the original text), and Chinese runs are split into overlapping character pairs
+(no segmenter dependency). Limits: pairs match across word boundaries, and Arabic prefixes
+(such as و "and") are not stripped. Rows stored by earlier versions are not re-indexed
+automatically; searching a paper again refreshes its row. No new search backend was added.
+
 ## Membership access (M7)
 
 An email address alone gives no access to paid content. A user can instead (a) store their own

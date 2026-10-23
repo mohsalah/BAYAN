@@ -11,6 +11,12 @@
     var m = localStorage.getItem('bayan.mode'), p = localStorage.getItem('bayan.palette');
     if (m === 'light' || m === 'dark') document.documentElement.setAttribute('data-theme', m);
     if (p && p !== 'navy') document.documentElement.setAttribute('data-palette', p);
+    // Interface language and direction before first paint (the full check is pickUiLanguage).
+    var l = localStorage.getItem('bayan.lang');
+    if (['en', 'ar', 'fr', 'zh', 'de', 'es'].indexOf(l) >= 0) {
+      document.documentElement.setAttribute('lang', l);
+      document.documentElement.setAttribute('dir', l === 'ar' ? 'rtl' : 'ltr');
+    }
   } catch (e) { /* storage may be unavailable */ }
 })();
 </script>
@@ -40,13 +46,22 @@
   --accent:var(--accent-d);--link:var(--link-d);--on-accent:var(--on-accent-d);
 }
 *{box-sizing:border-box}
-html{font-family:Arial,Helvetica,sans-serif}
+/* System fonts only (no downloads). Latin first, then Arabic and CJK families the OS ships. */
+html{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,Helvetica,"Noto Sans","Noto Sans Arabic","Segoe UI Historic",Tahoma,"Noto Sans CJK SC","Noto Sans SC","Microsoft YaHei","PingFang SC","Hiragino Sans GB","WenQuanYi Micro Hei",sans-serif}
+:lang(zh){font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Noto Sans SC","WenQuanYi Micro Hei",system-ui,"Segoe UI",Arial,sans-serif}
+:lang(ar){font-family:"Segoe UI",Tahoma,"Geeza Pro","Noto Sans Arabic","Noto Naskh Arabic","Arabic Typesetting",system-ui,Arial,sans-serif}
+/* Numbers, DOIs and URLs stay left-to-right inside right-to-left text. */
+.ltr,bdi.ltr{direction:ltr;unicode-bidi:isolate}
+label.uilang select{padding:8px 10px}
+fieldset.langqueries{border:1px solid var(--line);border-radius:8px;margin:14px 0 0;padding:10px 14px}
+fieldset.langqueries legend{padding-inline:6px;color:var(--ink);font-size:14px}
+fieldset.langqueries .row input{width:300px}
 body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5}
 .wrap{max-width:1450px;margin:0 auto;padding:0 24px 40px}
 header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:22px 0 4px}
 header.top h1{margin:0;font-size:30px;letter-spacing:.06em;color:var(--accent)}
 header.top .tag{color:var(--mute);font-size:13px}
-header.top .right{margin-left:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header.top .right{margin-inline-start:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 h2{margin:0 0 10px;font-size:19px}
 p{line-height:1.5;color:var(--mute);margin:8px 0}
 section.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px;margin:18px 0}
@@ -63,31 +78,31 @@ button:disabled{opacity:.55;cursor:not-allowed}
 button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible,textarea:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 form,.row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
 .hidden,[hidden]{display:none!important}
-.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:16px 30px;padding-left:24px;line-height:1.6;color:var(--ink)}
-.steps li{padding-right:15px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:16px 30px;padding-inline-start:24px;line-height:1.6;color:var(--ink)}
+.steps li{padding-inline-end:15px}
 .note{font-size:14px}.warnmsg{color:var(--warn)}.err{color:var(--bad)}
 /* dropdown panels */
 details.dd{position:relative}
 details.dd>summary{list-style:none;cursor:pointer;padding:10px 12px;border:1px solid var(--field-line);border-radius:5px;background:var(--field);min-width:170px;color:var(--ink);display:flex;justify-content:space-between;gap:10px;align-items:center}
 details.dd>summary::-webkit-details-marker{display:none}
 details.dd>summary::after{content:"\25BE";color:var(--mute)}
-details.dd .menu{position:absolute;z-index:20;top:calc(100% + 4px);left:0;min-width:260px;max-height:320px;overflow:auto;background:var(--card);border:1px solid var(--field-line);border-radius:8px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+details.dd .menu{position:absolute;z-index:20;top:calc(100% + 4px);inset-inline-start:0;min-width:260px;max-height:320px;overflow:auto;background:var(--card);border:1px solid var(--field-line);border-radius:8px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 details.dd .menu label{display:flex;flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:14px;padding:5px 6px;border-radius:5px}
 details.dd .menu label:hover{background:var(--tint)}
 details.dd .menu label.off{color:var(--mute)}
 details.dd .menu.geo{min-width:320px}
 .geo h4{margin:8px 0 4px;font-size:13px}.geo .small{font-size:12px;color:var(--mute);margin:2px 6px}
 .geo .modes{display:flex;gap:14px}.geo .modes label{display:inline-flex}
-.geo details.expand{margin:0 0 4px 30px;font-size:12px}.geo details.expand summary{cursor:pointer;color:var(--link)}
+.geo details.expand{margin:0 0 4px;margin-inline-start:30px;font-size:12px}.geo details.expand summary{cursor:pointer;color:var(--link)}
 .geo .countrylist{max-height:180px;overflow:auto;border-top:1px solid var(--line);margin-top:4px}
 .geo input[type=search]{width:100%;box-sizing:border-box}
 .unknownbox{margin:8px 0}.unknownbox summary{cursor:pointer}
-.badge{font-size:11px;border:1px solid var(--line);border-radius:5px;padding:0 5px;color:var(--mute);margin-left:auto;white-space:nowrap}
+.badge{font-size:11px;border:1px solid var(--line);border-radius:5px;padding:0 5px;color:var(--mute);margin-inline-start:auto;white-space:nowrap}
 input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent)}
 /* table */
 .tablewrap{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:14px;min-width:760px}
-th{text-align:left;color:var(--mute);font-weight:normal;border-bottom:2px solid var(--line);padding:12px 8px;white-space:nowrap}
+th{text-align:start;color:var(--mute);font-weight:normal;border-bottom:2px solid var(--line);padding:12px 8px;white-space:nowrap}
 td{padding:14px 8px;border-bottom:1px solid var(--row);vertical-align:top}
 td.title{width:46%;line-height:1.5}
 td.title details{margin-top:6px}
@@ -99,17 +114,17 @@ tr.sel td{background:var(--tint)}
 button.chip{background:var(--card);cursor:pointer;font:inherit;font-size:12px;color:var(--ink)}
 button.chip[aria-pressed=true]{border-color:var(--accent);color:var(--accent);font-weight:600}
 button.chip.zero{color:var(--mute);border-style:dashed}
-.typereport{margin:6px 0;padding-left:18px;font-size:14px}.typereport li.zero{color:var(--mute)}
-.usermark{font-size:11px;border:1px solid var(--warn);color:var(--warn);border-radius:4px;padding:0 5px;margin-left:6px;white-space:nowrap}
+.typereport{margin:6px 0;padding-inline-start:18px;font-size:14px}.typereport li.zero{color:var(--mute)}
+.usermark{font-size:11px;border:1px solid var(--warn);color:var(--warn);border-radius:4px;padding:0 5px;margin-inline-start:6px;white-space:nowrap}
 .manualbox{margin:10px 0}.manualbox summary{cursor:pointer}.manualbox .bar{align-items:flex-end}
-.chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 10px;font-size:12px;margin:2px 4px 2px 0;color:var(--ink)}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 10px;font-size:12px;margin:2px 0;margin-inline-end:4px;color:var(--ink)}
 .read{display:inline-block;background:var(--accent);color:var(--on-accent);border-radius:5px;padding:5px 10px;text-decoration:none}
 /* theme control */
 details.theme{position:relative}
 details.theme>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--field-line);border-radius:999px;background:var(--card);color:var(--ink);font-size:14px}
 details.theme>summary::-webkit-details-marker{display:none}
 .dot{width:14px;height:14px;border-radius:50%;background:var(--accent);display:inline-block;border:1px solid var(--line)}
-details.theme .panel{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:270px;background:var(--card);border:1px solid var(--field-line);border-radius:10px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+details.theme .panel{position:absolute;inset-inline-end:0;top:calc(100% + 6px);z-index:30;width:270px;background:var(--card);border:1px solid var(--field-line);border-radius:10px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
 .panel h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
 .seg{display:flex;border:1px solid var(--field-line);border-radius:7px;overflow:hidden;margin-bottom:14px}
 .seg button{flex:1;border:0;border-radius:0;background:transparent;color:var(--ink);padding:8px 6px}
@@ -129,102 +144,113 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
   <header class="top">
     <h1>BAYAN</h1><span class="tag">Brilliant Analysis Yielding Academic kNowledge</span>
     <div class="right">
-      <span id="whoEmail" class="small hidden"></span>
-      <button class="ghost hidden" id="logout" type="button">Sign out</button>
+      <bdi id="whoEmail" class="small hidden" dir="ltr"></bdi>
+      <button class="ghost hidden" id="logout" type="button" data-i18n="auth.signout">Sign out</button>
       <details class="theme" id="themeBox">
-        <summary id="themeSummary"><span class="dot"></span>Theme</summary>
+        <summary id="themeSummary"><span class="dot"></span><span data-i18n="theme.label">Theme</span></summary>
         <div class="panel">
-          <h3>Mode</h3>
-          <div class="seg" id="modes" role="group" aria-label="Colour mode">
-            <button type="button" data-mode="light" aria-pressed="false">Light</button>
-            <button type="button" data-mode="dark" aria-pressed="false">Dark</button>
-            <button type="button" data-mode="auto" aria-pressed="true">System</button>
+          <h3 data-i18n="theme.mode">Mode</h3>
+          <div class="seg" id="modes" role="group" aria-label="Colour mode" data-i18n-aria="theme.mode_aria">
+            <button type="button" data-mode="light" aria-pressed="false" data-i18n="theme.light">Light</button>
+            <button type="button" data-mode="dark" aria-pressed="false" data-i18n="theme.dark">Dark</button>
+            <button type="button" data-mode="auto" aria-pressed="true" data-i18n="theme.system">System</button>
           </div>
-          <h3>Colour palette</h3>
-          <div class="swatches" id="swatches" role="group" aria-label="Colour palette"></div>
+          <h3 data-i18n="theme.palette">Colour palette</h3>
+          <div class="swatches" id="swatches" role="group" aria-label="Colour palette" data-i18n-aria="theme.palette"></div>
         </div>
       </details>
+      <label class="uilang" for="uiLang"><span data-i18n="ui.language">Interface language</span>
+        <select id="uiLang"></select></label>
     </div>
   </header>
 
   <section class="card intro" aria-labelledby="introTitle">
-    <h2 id="introTitle">From a research topic to a proposal</h2>
-    <p>BAYAN searches several scholarly libraries at once and brings the results into one place. Use a research area to find related work, read abstracts, choose the papers that matter, export them, identify candidate research gaps and develop 1&ndash;5 research proposals.</p>
+    <h2 id="introTitle" data-i18n="intro.title">From a research topic to a proposal</h2>
+    <p data-i18n="intro.lead">BAYAN searches several scholarly libraries at once and brings the results into one place. Use a research area to find related work, read abstracts, choose the papers that matter, export them, identify candidate research gaps and develop 1–5 research proposals.</p>
     <ol class="steps">
-      <li><strong>Define your area.</strong> Type your research area. Choose libraries, reference types, languages and years, then click Search.</li>
-      <li><strong>Read and choose.</strong> Open an abstract with Show abstract, follow the source link, and tick the papers you want to keep.</li>
-      <li><strong>Export.</strong> Download the ticked papers (or all results) as an Excel workbook or a CSV file.</li>
-      <li><strong>Find research gaps.</strong> Choose how many gaps you want (1&ndash;5) and click Find research gaps. Copy the evidence prompt into an AI assistant and submit it.</li>
-      <li><strong>Develop proposals.</strong> Paste the gap(s) you want to pursue, choose 1&ndash;5 proposals, and click Create proposals. Submit the new prompt the same way.</li>
+      <li><strong data-i18n="intro.s1.head">Define your area.</strong> <span data-i18n="intro.s1.body">Type your research area. Choose libraries, reference types, languages and years, then click Search.</span></li>
+      <li><strong data-i18n="intro.s2.head">Read and choose.</strong> <span data-i18n="intro.s2.body">Open an abstract with Show abstract, follow the source link, and tick the papers you want to keep.</span></li>
+      <li><strong data-i18n="intro.s3.head">Export.</strong> <span data-i18n="intro.s3.body">Download the ticked papers (or all results) as an Excel workbook or a CSV file.</span></li>
+      <li><strong data-i18n="intro.s4.head">Find research gaps.</strong> <span data-i18n="intro.s4.body">Choose how many gaps you want (1–5) and click Find research gaps. Copy the evidence prompt into an AI assistant and submit it.</span></li>
+      <li><strong data-i18n="intro.s5.head">Develop proposals.</strong> <span data-i18n="intro.s5.body">Paste the gap(s) you want to pursue, choose 1–5 proposals, and click Create proposals. Submit the new prompt the same way.</span></li>
     </ol>
-    <p class="note">The gap and proposal buttons prepare an evidence prompt for you to submit; BAYAN does not run the analysis automatically yet. Evidence is limited to titles, metadata and abstracts. Candidate gaps and novelty claims need checking against full texts and a wider literature search. Hover over any button for help.</p>
+    <p class="note" data-i18n="intro.note">The gap and proposal buttons prepare an evidence prompt for you to submit; BAYAN does not run the analysis automatically yet. Evidence is limited to titles, metadata and abstracts. Candidate gaps and novelty claims need checking against full texts and a wider literature search. Hover over any button for help.</p>
   </section>
 
   <section class="card" id="authCard">
-    <h2>Sign in or create an account</h2>
+    <h2 data-i18n="auth.title">Sign in or create an account</h2>
     <form id="authForm">
-      <label for="email">Email<input id="email" type="email" autocomplete="username" required></label>
-      <label for="password">Password (10+ characters)<input id="password" type="password" autocomplete="current-password" required></label>
-      <button type="submit" id="login">Sign in</button>
-      <button type="button" class="ghost" id="register">Create account</button>
+      <label for="email"><span data-i18n="auth.email">Email</span><input id="email" type="email" dir="ltr" autocomplete="username" required></label>
+      <label for="password"><span data-i18n="auth.password">Password (10+ characters)</span><input id="password" type="password" dir="ltr" autocomplete="current-password" required></label>
+      <button type="submit" id="login" data-i18n="auth.signin">Sign in</button>
+      <button type="button" class="ghost" id="register" data-i18n="auth.register">Create account</button>
     </form>
     <p class="err" id="authErr" role="alert"></p>
   </section>
 
   <section class="card hidden" id="searchCard">
-    <h2>Search</h2>
+    <h2 data-i18n="search.title">Search</h2>
     <form id="search">
-      <label for="query">Research area<input id="query" type="text" style="width:340px" placeholder="e.g. neutron transport in molten salt reactors"></label>
-      <label>Libraries<details class="dd" id="ddLibs"><summary></summary><div class="menu"></div></details></label>
-      <label>Reference types<details class="dd" id="ddTypes"><summary></summary><div class="menu"></div></details></label>
-      <label>Languages<details class="dd" id="ddLangs"><summary></summary><div class="menu"></div></details></label>
-      <label for="yFrom">From year<select id="yFrom"></select></label>
-      <label for="yTo">To year<select id="yTo"></select></label>
-      <label>Geography<details class="dd" id="ddGeo"><summary id="geoSummary"></summary><div class="menu geo" id="geoMenu"></div></details></label>
-      <label for="quota">Papers wanted<input id="quota" type="number" min="1" max="200" style="width:110px" placeholder="optional"></label>
-      <label for="weighting">Year weighting<select id="weighting"><option value="equal">Equal per year</option><option value="recent">Favour recent years</option></select></label>
-      <button type="submit" id="go">Search</button>
+      <label for="query"><span data-i18n="search.query">Research area</span><input id="query" type="text" dir="auto" style="width:340px" placeholder="e.g. neutron transport in molten salt reactors" data-i18n-ph="search.query.ph"></label>
+      <label><span data-i18n="search.libraries">Libraries</span><details class="dd" id="ddLibs"><summary></summary><div class="menu"></div></details></label>
+      <label><span data-i18n="search.types">Reference types</span><details class="dd" id="ddTypes"><summary></summary><div class="menu"></div></details></label>
+      <label><span data-i18n="search.languages">Search languages</span><details class="dd" id="ddLangs"><summary></summary><div class="menu"></div></details></label>
+      <label for="yFrom"><span data-i18n="search.from">From year</span><select id="yFrom"></select></label>
+      <label for="yTo"><span data-i18n="search.to">To year</span><select id="yTo"></select></label>
+      <label><span data-i18n="search.geography">Geography</span><details class="dd" id="ddGeo"><summary id="geoSummary"></summary><div class="menu geo" id="geoMenu"></div></details></label>
+      <label for="quota"><span data-i18n="search.quota">Papers wanted</span><input id="quota" type="number" min="1" max="200" style="width:110px" placeholder="optional" data-i18n-ph="search.optional"></label>
+      <label for="weighting"><span data-i18n="search.weighting">Year weighting</span><select id="weighting"><option value="equal" data-i18n="search.weight.equal">Equal per year</option><option value="recent" data-i18n="search.weight.recent">Favour recent years</option></select></label>
+      <button type="submit" id="go" data-i18n="search.go">Search</button>
     </form>
+    <fieldset class="langqueries hidden" id="langQueries">
+      <legend data-i18n="langq.title">Keywords for each search language</legend>
+      <p class="note" data-i18n="langq.help">Each language is searched with its own words. They start as a copy of the research area; edit them to use the field's real terms in that language. A library that cannot filter by language searches the research area once.</p>
+      <div class="row" id="langQueryBoxes"></div>
+    </fieldset>
     <p id="status" class="note" role="status"></p>
     <p class="err" id="searchErr" role="alert"></p>
-    <small>Manuals are not found by search; they come from uploads or links in a later version. A library that cannot apply one of your filters says so in the notes under the results.</small>
+    <small data-i18n="search.small">Manuals are not found by search; they come from uploads or links in a later version. A library that cannot apply one of your filters says so in the notes under the results.</small>
   </section>
 
   <section class="card hidden" id="resultCard">
-    <div class="row" style="align-items:baseline"><h2 id="resultTitle">Results</h2><p id="selectedCount" class="note" aria-live="polite"></p></div>
+    <div class="row" style="align-items:baseline"><h2 id="resultTitle" data-i18n="results.title">Results</h2><p id="selectedCount" class="note" aria-live="polite"></p></div>
     <div class="chips" id="summary"></div>
     <div id="notes"></div>
     <div id="geoReport" class="hidden">
-      <h3>Geography</h3>
+      <h3 data-i18n="geo.h">Geography</h3>
       <div class="chips" id="geoCounts"></div>
       <p class="note" id="geoNote"></p>
       <details class="unknownbox" id="unknownBox"><summary id="unknownSummary"></summary><div id="unknownList"></div></details>
     </div>
-    <h3>Reference types</h3>
+    <h3 data-i18n="types.h">Reference types</h3>
     <p id="setCounts" class="note" aria-live="polite"></p>
     <ul class="typereport" id="typeReport"></ul>
-    <div class="chips" id="typeFilter" role="group" aria-label="Filter loaded results by reference type"></div>
-    <div class="chips" id="geoFilter" role="group" aria-label="Filter loaded results by geography"></div>
+    <div class="chips" id="typeFilter" role="group" aria-label="Filter loaded results by reference type" data-i18n-aria="filter.type_aria"></div>
+    <div class="chips" id="geoFilter" role="group" aria-label="Filter loaded results by geography" data-i18n-aria="filter.geo_aria"></div>
     <p class="note" id="geoFilterNote"></p>
+    <h3 data-i18n="langs.h">Languages of the papers</h3>
+    <div class="chips" id="langFilter" role="group" aria-label="Filter loaded results by paper language" data-i18n-aria="filter.lang_aria"></div>
+    <p class="note" id="langFilterNote"></p>
+    <p class="note" id="langQueryNote"></p>
     <details class="manualbox" id="manualBox">
-      <summary>Add a manual</summary>
-      <p class="note">Manuals are not searched for. Add one by a public PDF link or by uploading a PDF; it is labelled user-supplied and is visible only to you.</p>
+      <summary data-i18n="manual.add">Add a manual</summary>
+      <p class="note" data-i18n="manual.help">Manuals are not searched for. Add one by a public PDF link or by uploading a PDF; it is labelled user-supplied and is visible only to you.</p>
       <div class="bar">
-        <label for="manualUrl">PDF link (http or https)<input id="manualUrl" type="url" style="width:320px" placeholder="https://example.org/manual.pdf"></label>
-        <label for="manualFile">or upload a PDF<input id="manualFile" type="file" accept="application/pdf,.pdf"></label>
-        <label for="manualTitle">Title (you can edit it later)<input id="manualTitle" type="text" style="width:220px" placeholder="optional"></label>
-        <label for="manualTarget">Add to<select id="manualTarget"><option value="run">This run</option><option value="collection">My manuals collection only</option></select></label>
-        <button type="button" id="manualAdd">Add manual</button>
+        <label for="manualUrl"><span data-i18n="manual.url">PDF link (http or https)</span><input id="manualUrl" type="url" dir="ltr" style="width:320px" placeholder="https://example.org/manual.pdf"></label>
+        <label for="manualFile"><span data-i18n="manual.file">or upload a PDF</span><input id="manualFile" type="file" accept="application/pdf,.pdf"></label>
+        <label for="manualTitle"><span data-i18n="manual.title">Title (you can edit it later)</span><input id="manualTitle" type="text" dir="auto" style="width:220px" placeholder="optional" data-i18n-ph="search.optional"></label>
+        <label for="manualTarget"><span data-i18n="manual.target">Add to</span><select id="manualTarget"><option value="run" data-i18n="manual.target.run">This run</option><option value="collection" data-i18n="manual.target.collection">My manuals collection only</option></select></label>
+        <button type="button" id="manualAdd" data-i18n="manual.addbtn">Add manual</button>
       </div>
       <p id="manualMsg" class="note" role="status"></p>
       <div id="manualList"></div>
     </details>
     <div class="bar">
-      <label for="exportScope">Export<select id="exportScope"></select></label>
-      <button type="button" id="exportXlsx">Export Excel</button>
-      <button type="button" id="exportCsv" class="ghost">Export CSV</button>
-      <button type="button" id="clearSel" class="ghost">Clear selection</button>
-      <button type="button" id="dlPdfs" title="Download the full-text PDF of each ticked paper, from legal open-access sources only.">Download selected PDFs</button>
+      <label for="exportScope"><span data-i18n="export.label">Export</span><select id="exportScope"></select></label>
+      <button type="button" id="exportXlsx" data-i18n="export.xlsx">Export Excel</button>
+      <button type="button" id="exportCsv" class="ghost" data-i18n="export.csv">Export CSV</button>
+      <button type="button" id="clearSel" class="ghost" data-i18n="sel.clear">Clear selection</button>
+      <button type="button" id="dlPdfs" data-i18n="dl.btn">Download selected PDFs</button>
       <span class="spacer"></span>
       <span id="exportMsg" class="note" role="status"></span>
     </div>
@@ -232,68 +258,68 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
     <div class="tablewrap">
       <table>
         <thead><tr>
-          <th><input type="checkbox" id="all" aria-label="Select displayed papers"></th>
-          <th>Year</th><th>Title &amp; abstract</th><th>Reference type</th><th>Lang</th><th>DOI</th><th>Source</th><th>PDF</th>
+          <th><input type="checkbox" id="all" aria-label="Select displayed papers" data-i18n-aria="table.select_all"></th>
+          <th data-i18n="table.year">Year</th><th data-i18n="table.title">Title &amp; abstract</th><th data-i18n="table.type">Reference type</th><th data-i18n="table.lang">Language</th><th data-i18n="table.doi">DOI</th><th data-i18n="table.source">Source</th><th data-i18n="table.pdf">PDF</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
     <div id="needsAccess" class="hidden">
-      <h3>Needs access</h3>
-      <p class="note">No legal open copy could be downloaded for these papers. Get the PDF through your library, then upload it here. Nothing was fetched from behind a login.</p>
+      <h3 data-i18n="needs.h">Needs access</h3>
+      <p class="note" data-i18n="needs.help">No legal open copy could be downloaded for these papers. Get the PDF through your library, then upload it here. Nothing was fetched from behind a login.</p>
       <div id="needsList"></div>
     </div>
     <div class="bar"><button type="button" class="ghost hidden" id="more">Show more</button></div>
   </section>
 
   <section class="card hidden" id="gapCard">
-    <h2>Research gaps &amp; proposals</h2>
-    <p class="note">These actions use the papers you ticked above. <strong id="gapScope">No papers selected.</strong></p>
+    <h2 data-i18n="gap.title">Research gaps &amp; proposals</h2>
+    <p class="note"><span data-i18n="gap.intro">These actions use the papers you ticked above.</span> <strong id="gapScope"></strong></p>
     <form id="gapForm">
-      <label for="question">Research question or area<input id="question" type="text" style="width:420px" placeholder="What should the gaps and proposals address?"></label>
-      <label for="gapCount">Number of research gaps<select id="gapCount"></select></label>
-      <button type="submit" id="findGaps">Find research gaps</button>
+      <label for="question"><span data-i18n="gap.question">Research question or area</span><input id="question" type="text" dir="auto" style="width:420px" placeholder="What should the gaps and proposals address?" data-i18n-ph="gap.question.ph"></label>
+      <label for="gapCount"><span data-i18n="gap.count">Number of research gaps</span><select id="gapCount"></select></label>
+      <button type="submit" id="findGaps" data-i18n="gap.find">Find research gaps</button>
     </form>
-    <label for="gapText" style="display:flex;margin-top:18px">Research gap(s) to develop
-      <textarea id="gapText" placeholder="Paste the gap(s) from your review, with supporting paper numbers such as [P2]. Say what still needs verifying."></textarea>
+    <label for="gapText" style="display:flex;margin-top:18px"><span data-i18n="gap.text">Research gap(s) to develop</span>
+      <textarea id="gapText" dir="auto" placeholder="Paste the gap(s) from your review, with supporting paper numbers such as [P2]. Say what still needs verifying." data-i18n-ph="gap.text.ph"></textarea>
     </label>
     <div class="bar" style="align-items:flex-end">
-      <label for="propCount">Number of proposals<select id="propCount"></select></label>
-      <button type="button" id="createProps">Create proposals</button>
+      <label for="propCount"><span data-i18n="gap.propcount">Number of proposals</span><select id="propCount"></select></label>
+      <button type="button" id="createProps" data-i18n="gap.create">Create proposals</button>
     </div>
-    <small>Proposals use the ticked papers and the gaps you enter. Each draft should define a question, methods, validation, uncertainty, deliverables and a feasible timeline.</small>
+    <small data-i18n="gap.small">Proposals use the ticked papers and the gaps you enter. Each draft should define a question, methods, validation, uncertainty, deliverables and a feasible timeline.</small>
     <p id="gapMsg" class="note" role="status"></p>
     <div id="promptBox" class="hidden">
-      <textarea id="promptText" class="prompt" aria-label="Evidence prompt" readonly></textarea>
+      <textarea id="promptText" class="prompt" dir="auto" aria-label="Evidence prompt" data-i18n-aria="prompt.aria" readonly></textarea>
       <div class="bar">
-        <button type="button" id="copyPrompt">Copy prompt</button>
-        <button type="button" class="ghost" id="dlPrompt">Download prompt (.txt)</button>
-        <button type="button" class="ghost" id="dlPacket">Download evidence packet (.json)</button>
-        <a class="read" id="openClaude" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Open Claude</a>
-        <a class="read" id="openChatgpt" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">Open ChatGPT</a>
+        <button type="button" id="copyPrompt" data-i18n="prompt.copy">Copy prompt</button>
+        <button type="button" class="ghost" id="dlPrompt" data-i18n="prompt.dl">Download prompt (.txt)</button>
+        <button type="button" class="ghost" id="dlPacket" data-i18n="prompt.packet">Download evidence packet (.json)</button>
+        <a class="read" id="openClaude" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer" data-i18n="prompt.claude">Open Claude</a>
+        <a class="read" id="openChatgpt" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer" data-i18n="prompt.chatgpt">Open ChatGPT</a>
       </div>
     </div>
   </section>
 
   <section class="card hidden" id="memberCard" aria-labelledby="memberTitle">
-    <h2 id="memberTitle">Membership access</h2>
-    <p class="note">An email address alone gives no access to paid content. Here you can store your own publisher API keys (encrypted on the server, never shown again) and an institutional proxy link. <strong>No connector uses these keys yet</strong>, so saving a key does not change any search or download today. BAYAN never logs in for you, never fetches through your proxy and never stores a library password.</p>
+    <h2 id="memberTitle" data-i18n="member.title">Membership access</h2>
+    <p class="note" data-i18n="member.help">An email address alone gives no access to paid content. Here you can store your own publisher API keys (encrypted on the server, never shown again) and an institutional proxy link. No connector uses these keys yet, so saving a key does not change any search or download today. BAYAN never logs in for you, never fetches through your proxy and never stores a library password.</p>
     <p class="err" id="keysOff" role="alert"></p>
     <div id="keyList"></div>
-    <h3 style="margin:14px 0 4px;font-size:1rem">Institutional proxy link</h3>
+    <h3 style="margin:14px 0 4px;font-size:1rem" data-i18n="member.proxy.h">Institutional proxy link</h3>
     <form id="proxyForm">
-      <label for="proxyTemplate">Link template (https, containing {url} or {doi})<input id="proxyTemplate" type="text" style="width:420px" autocomplete="off" placeholder="https://ezproxy.myuni.edu/login?url={url}"></label>
-      <button type="submit" id="proxySave">Save</button>
-      <button type="button" class="ghost" id="proxyRemove">Remove</button>
+      <label for="proxyTemplate"><span data-i18n="member.proxy.label">Link template (https, containing {url} or {doi})</span><input id="proxyTemplate" type="text" dir="ltr" style="width:420px" autocomplete="off" placeholder="https://ezproxy.myuni.edu/login?url={url}"></label>
+      <button type="submit" id="proxySave" data-i18n="member.save">Save</button>
+      <button type="button" class="ghost" id="proxyRemove" data-i18n="member.remove">Remove</button>
     </form>
     <p class="note" id="proxyExample" aria-live="polite"></p>
     <p class="err" id="memberErr" role="alert"></p>
-    <h3 style="margin:14px 0 4px;font-size:1rem">My uploaded PDFs</h3>
+    <h3 style="margin:14px 0 4px;font-size:1rem" data-i18n="member.uploads.h">My uploaded PDFs</h3>
     <div id="uploadList" class="note"></div>
   </section>
 
   <section class="card hidden" id="runsCard">
-    <h2>Earlier searches</h2><div id="runs" class="note"></div>
+    <h2 data-i18n="runs.title">Earlier searches</h2><div id="runs" class="note"></div>
   </section>
 </div>
 
@@ -323,9 +349,40 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } },
 };
 
+/* ---------- interface language: locales/<code>.json served by /api/locales/<code> ---------- */
+let EN = {}, LOCALE = {}, uiLang = 'en';
+const t = (key, vars) => fmt(LOCALE[key] ?? EN[key] ?? key, vars);
+async function loadLocale(code) {
+  if (!Object.keys(EN).length) EN = await json('/api/locales/en');
+  LOCALE = code === 'en' ? EN : await json('/api/locales/' + code);
+}
+/* Readable language name in the interface language; codes outside the six use the server's name. */
+function langLabel(code, apiName) {
+  if (code === 'unknown') return t('lang.unknown');
+  if (UI_LANGS.includes(code)) return t('lang.' + code);
+  return apiName || t('lang.other', { code });
+}
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(e => { e.textContent = t(e.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-aria]').forEach(e => e.setAttribute('aria-label', t(e.dataset.i18nAria)));
+  document.querySelectorAll('[data-i18n-ph]').forEach(e => e.setAttribute('placeholder', t(e.dataset.i18nPh)));
+  for (const [id, key] of Object.entries(HELP)) { const e = $(id); if (e) { e.title = t(key); e.setAttribute('aria-description', t(key)); } }
+  document.title = t('app.title');
+}
+async function setUiLanguage(code, save) {
+  try { await loadLocale(code); } catch (e) { code = 'en'; await loadLocale('en').catch(() => {}); }
+  uiLang = code;
+  if (save) store.set('bayan.lang', code);
+  const root = document.documentElement;
+  root.setAttribute('lang', code); root.setAttribute('dir', dirOfLanguage(code));
+  $('uiLang').value = code;
+  applyI18n();
+  rerenderForLanguage();
+}
+
 /* ---------- theme: mode (light/dark/system) and colour palette ---------- */
-const PALETTES = [['navy', '#17365d', 'Navy'], ['teal', '#0f6b6b', 'Teal'], ['purple', '#4b3fbf', 'Purple'],
-  ['green', '#1f6b3a', 'Green'], ['amber', '#8a4b0a', 'Amber'], ['rose', '#a3294f', 'Rose']];
+const PALETTES = [['navy', '#17365d'], ['teal', '#0f6b6b'], ['purple', '#4b3fbf'],
+  ['green', '#1f6b3a'], ['amber', '#8a4b0a'], ['rose', '#a3294f']];
 function applyTheme(mode, palette) {
   const root = document.documentElement;
   if (mode === 'light' || mode === 'dark') root.setAttribute('data-theme', mode); else root.removeAttribute('data-theme');
@@ -335,8 +392,9 @@ function applyTheme(mode, palette) {
 }
 function initTheme() {
   let mode = store.get('bayan.mode') || 'auto', palette = store.get('bayan.palette') || 'navy';
-  $('swatches').replaceChildren(...PALETTES.map(([id, color, name]) => {
-    const b = el('button', { type: 'button', 'data-palette': id, title: name + ' palette', 'aria-label': name + ' palette', 'aria-pressed': 'false' });
+  renderSwatches = () => $('swatches').replaceChildren(...PALETTES.map(([id, color]) => {
+    const name = t('palette.' + id), label = t('theme.palette_title', { name });
+    const b = el('button', { type: 'button', 'data-palette': id, title: label, 'aria-label': label, 'aria-pressed': 'false' });
     b.style.background = color;
     b.onclick = () => { palette = id; store.set('bayan.palette', id); applyTheme(mode, palette); };
     return b;
@@ -344,25 +402,37 @@ function initTheme() {
   document.querySelectorAll('#modes button').forEach(b => {
     b.onclick = () => { mode = b.dataset.mode; store.set('bayan.mode', mode); applyTheme(mode, palette); };
   });
+  renderSwatches();
   applyTheme(mode, palette);
 }
+let renderSwatches = () => {};
 
 /* ---------- dropdown panels with checkboxes ---------- */
-function dropdown(id, label, items, name) {
+/* `labelKey` and the item labels are looked up again on every interface-language change, so a
+   dropdown keeps its checked boxes while its text is translated. */
+const dropdowns = [];
+function dropdown(id, labelKey, items, name, onChange) {
   const box = $(id), menu = box.querySelector('.menu'), summary = box.querySelector('summary');
-  menu.replaceChildren(...items.map(i => {
-    const cb = el('input', { type: 'checkbox', name, value: i.value });
-    cb.checked = !!i.checked; cb.disabled = !!i.disabled;
-    cb.onchange = refresh;
-    const row = el('label', { class: i.disabled ? 'off' : '', title: i.title || '' }, cb, i.label);
-    if (i.badge) row.append(el('span', { class: 'badge' }, i.badge));
-    return row;
-  }));
+  const text = i => (typeof i.label === 'function' ? i.label() : i.label);
+  const build = () => {
+    const keep = new Map([...menu.querySelectorAll('input')].map(c => [c.value, c.checked]));
+    menu.replaceChildren(...items.map(i => {
+      const cb = el('input', { type: 'checkbox', name, value: i.value });
+      cb.checked = keep.has(i.value) ? keep.get(i.value) : !!i.checked; cb.disabled = !!i.disabled;
+      cb.onchange = () => { refresh(); if (onChange) onChange(); };
+      const row = el('label', { class: i.disabled ? 'off' : '', title: i.title ? (typeof i.title === 'function' ? i.title() : i.title) : '' }, cb, text(i));
+      const badge = typeof i.badge === 'function' ? i.badge() : i.badge;
+      if (badge) row.append(el('span', { class: 'badge' }, badge));
+      return row;
+    }));
+    refresh();
+  };
   function refresh() {
     const n = menu.querySelectorAll('input:checked').length;
-    summary.textContent = label + ' (' + n + ')';
+    summary.textContent = t('dd.count', { label: t(labelKey), n });
   }
-  refresh();
+  build();
+  dropdowns.push(build);
   box.addEventListener('toggle', () => { if (box.open) document.querySelectorAll('details.dd').forEach(d => { if (d !== box) d.open = false; }); });
   return () => [...menu.querySelectorAll('input:checked')].map(c => c.value);
 }
@@ -375,6 +445,10 @@ document.addEventListener('keydown', ev => {
 
 /* ---------- state ---------- */
 let getLibs, getTypes, getLangs;
+/* Reference-type names and help: translated when the locale has them, else as the server sent them. */
+const hasKey = k => k in LOCALE || k in EN;
+const typeLabel = (id, fallback) => (hasKey('type.' + id + '.label') ? t('type.' + id + '.label') : (fallback || id));
+const typeText = (id, part, fallback) => (hasKey('type.' + id + '.' + part) ? t('type.' + id + '.' + part) : (fallback || ''));
 let run = null, shown = 0, categoryLabels = {};
 const PAGE = 50;
 const typeFilter = new Set();               // active type keys; empty = show every type
@@ -414,32 +488,75 @@ function exportPapers(scope, all, view, ticked) {
   if (scope === 'view') return view.slice();
   return all.slice();
 }
+/* Interface language (separate from the search languages). Exactly the six supported codes. */
+const UI_LANGS = ['en', 'ar', 'fr', 'zh', 'de', 'es'];
+const RTL_LANGS = ['ar'];
+function pickUiLanguage(saved, browser) {
+  if (UI_LANGS.includes(saved)) return saved;
+  const base = String(browser || '').toLowerCase().split(/[-_]/)[0];
+  return UI_LANGS.includes(base) ? base : 'en';
+}
+const dirOfLanguage = code => (RTL_LANGS.includes(code) ? 'rtl' : 'ltr');
+function fmt(text, vars) {
+  return String(text).replace(/\{(\w+)\}/g, (m, k) => (vars && Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m));
+}
+/* Paper language: a code, or "unknown" when the source gave none. Unknown is listed, never hidden. */
+const langKeyOf = p => String(p.language_key || p.language || '').trim().toLowerCase() || 'unknown';
+function countByLanguage(papers, chosen) {
+  const counts = {};
+  for (const c of chosen || []) counts[c] = 0;           // chosen search languages are listed even at zero
+  counts.unknown = 0;
+  for (const p of papers) { const k = langKeyOf(p); counts[k] = (counts[k] || 0) + 1; }
+  return counts;
+}
+function languageChipOrder(counts, chosen) {
+  const first = (chosen || []).filter(c => c in counts);
+  const rest = Object.keys(counts).filter(k => !first.includes(k) && k !== 'unknown').sort();
+  return [...first, ...rest, 'unknown'];
+}
+function filterByLanguages(papers, active) {
+  return active.length ? papers.filter(p => active.includes(langKeyOf(p))) : papers.slice();
+}
+/* One keyword box per chosen language: edited text is kept, the rest follows the main query. */
+function syncLangQueries(chosen, main, current, edited) {
+  const out = {};
+  for (const c of chosen) out[c] = edited[c] && c in current ? current[c] : main;
+  return out;
+}
+function queriesForRequest(chosen, boxes) {
+  if (chosen.length < 2) return {};
+  const out = {};
+  for (const c of chosen) { const v = String(boxes[c] || '').trim(); if (v) out[c] = v; }
+  return out;
+}
 /* pure:end */
 const geoFilter = new Set();                // active keys: r:<region>, c:<code>, unknown; empty = all
 let regionData = null;                      // /api/regions
 let getGeo = () => ({ regions: [], countries: [], geo_mode: 'include' });
-const viewPapers = () => filterByGeo(filterByTypes(run.papers, [...typeFilter]), [...geoFilter]);
-const filtersOn = () => typeFilter.size + geoFilter.size > 0;
+const viewPapers = () => filterByLanguages(filterByGeo(filterByTypes(run.papers, [...typeFilter]), [...geoFilter]), [...langFilter]);
+const filtersOn = () => typeFilter.size + geoFilter.size + langFilter.size > 0;
 const selected = new Map();                 // "source\u0000id" -> paper
 const keyOf = p => p.source + '\u0000' + p.id;
 const ref = p => ({ source: p.source, id: p.id });
 let lastAnalysis = null;
 
 /* Geography panel: regions (checkboxes), searchable country multi-select, include/exclude. */
-function buildGeo(data) {
+function buildGeo(data, prev) {
   const box = $('ddGeo'), menu = $('geoMenu'), summary = $('geoSummary');
   const nameOf = Object.fromEntries(data.countries.map(c => [c.code, c.name]));
   const regionBoxes = data.regions.map(r => {
     const cb = el('input', { type: 'checkbox', name: 'geoRegion', value: r.id });
+    cb.checked = !!prev && prev.regions.includes(r.id);
     cb.onchange = refresh;
-    const list = el('details', { class: 'expand' }, el('summary', {}, 'Shows the ' + r.countries.length + ' countries it expands to'),
+    const list = el('details', { class: 'expand' }, el('summary', {}, t('geo.expands', { n: r.countries.length })),
       el('p', { class: 'small' }, r.countries.map(c => nameOf[c] + ' (' + c + ')').join(', ')));
     return el('div', {}, el('label', {}, cb, r.name + ' (' + r.countries.length + ')'), list);
   });
-  const mode = (v, text) => { const r = el('input', { type: 'radio', name: 'geoMode', value: v }); r.checked = v === 'include'; r.onchange = refresh; return el('label', {}, r, text); };
-  const search = el('input', { type: 'search', id: 'geoSearch', placeholder: 'Search countries', 'aria-label': 'Search countries' });
+  const mode = (v, text) => { const r = el('input', { type: 'radio', name: 'geoMode', value: v }); r.checked = v === (prev ? prev.geo_mode : 'include'); r.onchange = refresh; return el('label', {}, r, text); };
+  const search = el('input', { type: 'search', id: 'geoSearch', placeholder: t('geo.search'), 'aria-label': t('geo.search') });
   const rows = data.countries.map(c => {
     const cb = el('input', { type: 'checkbox', name: 'geoCountry', value: c.code });
+    cb.checked = !!prev && prev.countries.includes(c.code);
     cb.onchange = refresh;
     const row = el('label', {}, cb, c.name + ' (' + c.code + ')');
     row.dataset.text = (c.name + ' ' + c.code).toLowerCase();
@@ -448,20 +565,20 @@ function buildGeo(data) {
   search.oninput = () => { const q = search.value.trim().toLowerCase(); rows.forEach(r => r.classList.toggle('hidden', !!q && !r.dataset.text.includes(q))); };
   search.onkeydown = ev => { if (ev.key === 'Enter') ev.preventDefault(); };   // Enter must not submit the search form
   menu.replaceChildren(
-    el('h4', {}, 'Match by'), el('div', { class: 'modes', role: 'radiogroup', 'aria-label': 'Include or exclude' }, mode('include', 'Include'), mode('exclude', 'Exclude')),
-    el('p', { class: 'small' }, 'Author affiliation country (v1). Papers with no affiliation country are kept and listed as "Country unknown".'),
-    el('h4', {}, 'Regions'), ...regionBoxes,
-    el('h4', {}, 'Countries'), search, el('div', { class: 'countrylist' }, ...rows));
+    el('h4', {}, t('geo.matchby')), el('div', { class: 'modes', role: 'radiogroup', 'aria-label': t('geo.incexc') }, mode('include', t('geo.include')), mode('exclude', t('geo.exclude'))),
+    el('p', { class: 'small' }, t('geo.basis')),
+    el('h4', {}, t('geo.regions')), ...regionBoxes,
+    el('h4', {}, t('geo.countries')), search, el('div', { class: 'countrylist' }, ...rows));
   function read() {
     const pick = n => [...menu.querySelectorAll('input[name=' + n + ']:checked')].map(c => c.value);
     return { regions: pick('geoRegion'), countries: pick('geoCountry'), geo_mode: menu.querySelector('input[name=geoMode]:checked').value };
   }
   function refresh() {
     const g = read(), n = g.regions.length + g.countries.length;
-    summary.textContent = 'Geography (' + (n ? g.regions.length + ' regions, ' + g.countries.length + ' countries, ' + g.geo_mode : 'any') + ')';
+    summary.textContent = n ? t('geo.summary', { regions: g.regions.length, countries: g.countries.length, mode: t('geo.' + g.geo_mode) }) : t('geo.summary_any');
   }
   refresh();
-  box.addEventListener('toggle', () => { if (box.open) document.querySelectorAll('details.dd').forEach(d => { if (d !== box) d.open = false; }); });
+  if (!prev) box.addEventListener('toggle', () => { if (box.open) document.querySelectorAll('details.dd').forEach(d => { if (d !== box) d.open = false; }); });
   return read;
 }
 async function loadMeta() {
@@ -469,13 +586,15 @@ async function loadMeta() {
   regionData = regions;
   getGeo = buildGeo(regions);
   categoryLabels = Object.fromEntries(types.map(t => [t.id, t.label]));
-  getLibs = dropdown('ddLibs', 'Libraries', libs.map(l => ({
-    value: l.id, label: l.name + (l.tier === 'membership' ? ' (membership)' : ''),
+  getLibs = dropdown('ddLibs', 'search.libraries', libs.map(l => ({
+    value: l.id, label: () => l.name + (l.tier === 'membership' ? ' ' + t('lib.membership') : ''),
     checked: l.status === 'available' && l.role === 'search', disabled: l.status !== 'available' || l.role !== 'search',
-    badge: l.role === 'lookup' ? 'automatic DOI lookup' : l.status === 'available' ? '' : (l.status === 'unconfirmed' ? 'not available yet' : 'planned'),
+    badge: () => l.role === 'lookup' ? t('lib.lookup') : l.status === 'available' ? '' : (l.status === 'unconfirmed' ? t('lib.unavailable') : t('lib.planned')),
   })), 'lib');
-  getTypes = dropdown('ddTypes', 'Reference types', types.map(t => ({ value: t.id, label: t.label, checked: t.id === 'peer_reviewed', title: t.description })), 'type');
-  getLangs = dropdown('ddLangs', 'Languages', Object.entries(langs).map(([c, v]) => ({ value: c, label: v.name, checked: c === 'en' })), 'lang');
+  // Category names and descriptions come from the server in English (they are data, not interface text).
+  getTypes = dropdown('ddTypes', 'search.types', types.map(c => ({ value: c.id, label: () => typeLabel(c.id, c.label), checked: c.id === 'peer_reviewed', title: () => typeText(c.id, 'desc', c.description) })), 'type');
+  // Only the six supported languages are offered for search; names follow the interface language.
+  getLangs = dropdown('ddLangs', 'search.languages', Object.keys(langs).filter(c => UI_LANGS.includes(c)).map(c => ({ value: c, label: () => langLabel(c, langs[c].name), checked: c === 'en' })), 'lang', renderLangQueries);
   const now = new Date().getFullYear(), years = [];
   for (let y = now; y >= 1950; y--) years.push(y);
   $('yFrom').replaceChildren(...years.map(y => new Option(y, y)));
@@ -483,9 +602,50 @@ async function loadMeta() {
   $('yFrom').value = String(now - 9); $('yTo').value = String(now);
   for (const id of ['gapCount', 'propCount']) $(id).replaceChildren(...[1, 2, 3, 4, 5].map(n => new Option(n, n)));
   $('gapCount').value = '3';
+  langMeta = langs;
+  renderLangQueries();
+}
+let langMeta = {};
+
+/* One editable keyword box per chosen search language (only when more than one is chosen). */
+const langQueryEdited = {};
+function readLangBoxes() {
+  const out = {};
+  document.querySelectorAll('#langQueryBoxes input').forEach(i => { out[i.dataset.lang] = i.value; });
+  return out;
+}
+function renderLangQueries() {
+  if (!getLangs) return;
+  const chosen = getLangs(), fieldset = $('langQueries');
+  fieldset.classList.toggle('hidden', chosen.length < 2);
+  const values = syncLangQueries(chosen, $('query').value.trim(), readLangBoxes(), langQueryEdited);
+  $('langQueryBoxes').replaceChildren(...(chosen.length < 2 ? [] : chosen.map(c => {
+    const name = langLabel(c, (langMeta[c] || {}).name), id = 'lq-' + c;
+    const input = el('input', { type: 'text', id, 'data-lang': c, value: values[c], maxlength: 1000, lang: c, dir: 'auto', style: 'width:300px' });
+    input.oninput = () => { langQueryEdited[c] = true; };
+    return el('label', { for: id }, el('span', {}, t('langq.label', { language: name })), input);
+  })));
 }
 
 /* ---------- accounts ---------- */
+/* Re-draw everything that was built from text when the interface language changes. */
+async function rerenderForLanguage() {
+  dropdowns.forEach(build => build());
+  renderSwatches();
+  fillUiLangSelect();
+  if (regionData && getGeo) getGeo = buildGeo(regionData, getGeo());
+  renderLangQueries();
+  if (membership) renderMembership(membership);
+  if (run) { renderRun(run, true); }
+  showProxyExample(proxyExampleLink);
+  updateSelection();
+}
+function fillUiLangSelect() {
+  // Native names, so a reader who cannot read the current language can still find theirs.
+  const names = { en: 'English', ar: 'العربية', fr: 'Français', zh: '中文', de: 'Deutsch', es: 'Español' };
+  $('uiLang').replaceChildren(...UI_LANGS.map(c => { const o = new Option(names[c], c); o.lang = c; return o; }));
+  $('uiLang').value = uiLang;
+}
 function showSignedIn(email) {
   for (const id of ['searchCard', 'runsCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.remove('hidden');
   $('authCard').classList.add('hidden');
@@ -510,10 +670,10 @@ async function auth(kind) {
 /* ---------- membership: keys, proxy template, my uploads ---------- */
 let proxyTemplate = '';
 function keyRow(p, enabled) {
-  const input = el('input', { type: 'password', id: 'key-' + p.id, autocomplete: 'new-password', spellcheck: 'false', style: 'width:260px', placeholder: p.needs_reentry ? 'Enter the key again' : 'Paste your key', 'aria-label': p.name + ' API key' });
-  const state = p.needs_reentry ? 'saved, but needs re-entry (the server secret changed)'
-    : p.saved ? 'saved' + (p.last4 ? ' (ends in ' + p.last4 + ')' : '') + (p.saved_at ? ', ' + p.saved_at : '') : 'not saved';
-  const save = el('button', { type: 'button', title: 'Encrypt and store this key. It is not shown again.' }, 'Save key');
+  const input = el('input', { type: 'password', dir: 'ltr', id: 'key-' + p.id, autocomplete: 'new-password', spellcheck: 'false', style: 'width:260px', placeholder: p.needs_reentry ? t('key.reenter') : t('key.paste'), 'aria-label': t('key.aria', { name: p.name }) });
+  const state = p.needs_reentry ? t('key.state.reentry')
+    : p.saved ? t('key.state.saved') + (p.last4 ? ' ' + t('key.state.ends', { last4: p.last4 }) : '') + (p.saved_at ? ', ' + p.saved_at : '') : t('key.state.none');
+  const save = el('button', { type: 'button', title: t('key.save.help') }, t('key.save'));
   save.disabled = !enabled;
   save.onclick = async () => {
     $('memberErr').textContent = '';
@@ -528,7 +688,7 @@ function keyRow(p, enabled) {
   const row = el('div', { class: 'row', style: 'align-items:center;gap:8px;margin:6px 0' },
     el('strong', { style: 'min-width:170px' }, p.name), input, save);
   if (p.saved) {
-    const rm = el('button', { type: 'button', class: 'ghost', title: 'Delete the stored key.' }, 'Remove');
+    const rm = el('button', { type: 'button', class: 'ghost', title: t('key.remove.help') }, t('member.remove'));
     rm.onclick = async () => {
       try { renderMembership(await json('/api/membership/' + p.id + '/key', { method: 'DELETE' })); }
       catch (e) { $('memberErr').textContent = e.message; }
@@ -538,18 +698,21 @@ function keyRow(p, enabled) {
   row.append(el('span', { class: 'small' }, state));
   return row;
 }
+let membership = null, proxyExampleLink = '';
 function renderMembership(m) {
-  $('keysOff').textContent = m.keys_enabled ? '' : 'Keys cannot be saved: ' + m.keys_disabled_reason + '. Ask the administrator to set APP_SECRET_KEY.';
+  membership = m;
+  $('keysOff').textContent = m.keys_enabled ? '' : t('key.off', { reason: m.keys_disabled_reason });
   $('keyList').replaceChildren(...m.publishers.map(p => keyRow(p, m.keys_enabled)));
   proxyTemplate = m.proxy ? m.proxy.template : '';
   $('proxyTemplate').value = proxyTemplate;
   showProxyExample(m.proxy ? m.proxy.example : '');
 }
 function showProxyExample(link) {
+  proxyExampleLink = link;
   const box = $('proxyExample');
   box.replaceChildren();
-  if (!link) { box.textContent = 'No proxy link saved. Example links appear here as you type.'; return; }
-  box.append('Example for DOI 10.1000/xyz123: ', el('a', { href: link, target: '_blank', rel: 'noopener noreferrer' }, link));
+  if (!link) { box.textContent = t('proxy.none'); return; }
+  box.append(t('proxy.example') + ' ', el('a', { href: link, dir: 'ltr', class: 'ltr', target: '_blank', rel: 'noopener noreferrer' }, link));
 }
 let exampleTimer = null;
 $('proxyTemplate').oninput = () => {
@@ -580,16 +743,16 @@ async function loadUploads() {
   const box = $('uploadList');
   try {
     const list = await json('/api/uploads');
-    if (!list.length) { box.textContent = 'You have not uploaded any PDFs. Uploads are private to your account.'; return; }
+    if (!list.length) { box.textContent = t('uploads.none'); return; }
     box.replaceChildren(...list.map(u => {
-      const del = el('button', { type: 'button', class: 'ghost', title: 'Delete this uploaded file from the server.' }, 'Delete');
+      const del = el('button', { type: 'button', class: 'ghost', title: t('uploads.delete.help') }, t('uploads.delete'));
       del.onclick = async () => {
         try {
           await api('/api/uploads?source=' + encodeURIComponent(u.source) + '&paper_id=' + encodeURIComponent(u.id), { method: 'DELETE' });
           loadUploads();
         } catch (e) { $('memberErr').textContent = e.message; }
       };
-      return el('div', { style: 'margin:4px 0' }, (u.title || u.id) + ' (' + u.kind + ', ' + Math.round((u.size || 0) / 1024) + ' KB) ', del);
+      return el('div', { style: 'margin:4px 0' }, el('span', { dir: 'auto' }, u.title || u.id), ' (' + u.kind + ', ' + Math.round((u.size || 0) / 1024) + ' KB) ', del);
     }));
   } catch (e) { box.textContent = e.message; }
 }
@@ -599,10 +762,13 @@ async function loadMembership() {
 }
 
 /* ---------- results ---------- */
-const ACCESS = { open_copy_listed: 'open copy listed', no_open_copy_listed: 'no open copy listed' };
+const ACCESS = { open_copy_listed: 'access.listed', no_open_copy_listed: 'access.none' };
+/* Paper text stays as stored (never translated); dir="auto" lets each element pick its own direction,
+   and lang= (for the six languages) helps the browser choose a CJK or Arabic font. */
+const paperLang = p => (UI_LANGS.includes(langKeyOf(p)) ? { lang: langKeyOf(p) } : {});
 function paperRow(p) {
   const k = keyOf(p);
-  const box = el('input', { type: 'checkbox', 'aria-label': 'Select ' + (p.title || 'paper'), title: 'Tick to keep this paper for export, research gaps and proposals.' });
+  const box = el('input', { type: 'checkbox', 'aria-label': t('row.select', { title: p.title || t('row.paper') }), title: t('row.tick.help') });
   box.checked = selected.has(k);
   const tr = el('tr', { class: selected.has(k) ? 'sel' : '' });
   box.onchange = () => {
@@ -610,46 +776,57 @@ function paperRow(p) {
     tr.className = box.checked ? 'sel' : '';
     updateSelection();
   };
-  const meta = [p.first_author, p.venue, p.user_supplied ? 'user-supplied' : p.source].filter(Boolean).join(' · ');
+  const meta = el('small', {});
+  [[p.first_author, true], [p.venue, true], [p.user_supplied ? t('row.usersupplied') : p.source, false]].filter(([v]) => v).forEach(([v, isText], i) => {
+    if (i) meta.append(' · ');
+    meta.append(isText ? el('span', { dir: 'auto', ...paperLang(p) }, v) : v);
+  });
   const abs = el('details', {},
-    el('summary', { title: p.abstract ? 'Show or hide the abstract supplied by the library.' : 'The library did not supply an abstract for this record.' },
-      p.abstract ? 'Show abstract' : 'Abstract not supplied'),
-    el('p', {}, p.abstract || 'Not supplied by the source. Only the title and metadata are available.'));
-  const titleText = el('span', {}, p.title || '(untitled)');
+    el('summary', { title: p.abstract ? t('row.abs.help') : t('row.abs.none_help') },
+      p.abstract ? t('row.abs.show') : t('row.abs.none')),
+    p.abstract ? el('p', { dir: 'auto', ...paperLang(p) }, p.abstract) : el('p', {}, t('row.abs.missing')));
+  const titleText = el('span', { dir: 'auto', ...paperLang(p) }, p.title || t('row.untitled'));
   const titleCell = el('td', { class: 'title' }, titleText);
   if (p.user_supplied) {
-    titleCell.append(el('span', { class: 'usermark', title: 'You added this manual yourself; it was not found by a library search.' }, 'user-supplied'));
-    const edit = el('button', { type: 'button', class: 'ghost', title: 'Change the title of this manual.' }, 'Edit title');
+    titleCell.append(el('span', { class: 'usermark', title: t('row.user.help') }, t('row.usersupplied')));
+    const edit = el('button', { type: 'button', class: 'ghost', title: t('row.edit.help') }, t('row.edit'));
     edit.onclick = () => titleCell.replaceChildren(titleEditor(p.id, p.title, async () => { await refreshRun(); }));
     titleCell.append(' ', edit);
   }
-  titleCell.append(el('small', {}, meta), abs);
-  const doi = el('td', {});
+  titleCell.append(meta, abs);
+  // DOIs, URLs and years are left-to-right even inside right-to-left text.
+  const doi = el('td', { class: 'ltr' });
   if (p.doi) {
-    doi.append(el('a', { href: 'https://doi.org/' + p.doi, target: '_blank', rel: 'noopener noreferrer', title: 'Open this DOI. The publisher page may require library access.' }, p.doi));
-    if (p.doi_source === 'crossref_lookup') doi.append(el('small', {}, 'found by Crossref lookup'));
+    doi.append(el('a', { href: 'https://doi.org/' + p.doi, target: '_blank', rel: 'noopener noreferrer', title: t('row.doi.help') }, el('bdi', { dir: 'ltr' }, p.doi)));
+    if (p.doi_source === 'crossref_lookup') doi.append(el('small', {}, t('row.doi.lookup')));
   }
   const link = p.landing_url || p.oa_url || (p.doi ? 'https://doi.org/' + p.doi : '');
   const src = el('td', {});
-  if (/^https?:\/\//.test(link)) src.append(el('a', { class: 'read', href: link, target: '_blank', rel: 'noopener noreferrer', title: 'Open the paper\'s online page. A publisher may require library access.' }, 'Open'));
+  if (/^https?:\/\//.test(link)) src.append(el('a', { class: 'read', href: link, target: '_blank', rel: 'noopener noreferrer', title: t('row.open.help') }, t('row.open')));
   if (p.proxy_link && /^https:\/\//.test(p.proxy_link)) {
-    src.append(' ', el('a', { class: 'read', href: p.proxy_link, target: '_blank', rel: 'noopener noreferrer', title: 'Opens your institution\'s proxy link in a new tab. Sign in to your institution there; BAYAN does not log in for you.' }, 'Open via my institution'));
+    src.append(' ', el('a', { class: 'read', href: p.proxy_link, target: '_blank', rel: 'noopener noreferrer', title: t('row.proxy.help') }, t('row.proxy')));
   }
-  src.append(el('small', {}, ACCESS[p.access] || p.access));
-  tr.append(el('td', {}, box), el('td', {}, p.year ?? ''), titleCell,
-    el('td', { title: p.native_type ? 'Source type: ' + p.native_type : '' }, p.type_label || p.category_label || categoryLabels[p.category] || p.category),
-    el('td', {}, p.language), doi, src, pdfCell(p));
+  src.append(el('small', {}, ACCESS[p.access] ? t(ACCESS[p.access]) : p.access));
+  const lk = langKeyOf(p);
+  tr.append(el('td', {}, box), el('td', { class: 'ltr' }, p.year ?? ''), titleCell,
+    el('td', { title: p.native_type ? t('row.sourcetype', { type: p.native_type }) : '' }, rowTypeLabel(p)),
+    el('td', { title: lk === 'unknown' ? t('lang.unknown_help') : lk }, langLabel(lk, p.language_name)), doi, src, pdfCell(p));
   return tr;
+}
+function rowTypeLabel(p) {
+  if (p.type_key === 'manual') return t('type.manual.label');
+  return typeLabel(p.category, p.type_label || p.category_label || categoryLabels[p.category] || p.category);
 }
 
 /* ---------- PDF downloads ---------- */
 const dl = new Map();                       // key -> download record from the API
 const STATUS = {
-  downloaded_verified: ['PDF verified', 'ok'], downloaded_unverified_identity: ['PDF, identity not verified', 'warn'],
-  identity_mismatch: ['Wrong paper?', 'bad'], needs_access: ['Needs access', 'bad'], pending: ['Pending…', ''],
+  downloaded_verified: ['status.verified', 'ok'], downloaded_unverified_identity: ['status.unverified', 'warn'],
+  identity_mismatch: ['status.mismatch', 'bad'], needs_access: ['status.needs', 'bad'], pending: ['status.pending', ''],
 };
 function badge(rec) {
-  const [label, cls] = STATUS[rec.status] || [rec.status, ''];
+  const [key, cls] = STATUS[rec.status] || [null, ''];
+  const label = key ? t(key) : rec.status;
   const why = rec.status === 'needs_access' ? (rec.reason_text || '') + ' ' + (rec.detail || '') : (rec.detail || '');
   return el('span', { class: 'badge ' + cls, title: why.trim() || label }, label);
 }
@@ -663,7 +840,7 @@ function fillPdfCell(td, p) {
   if (!rec) { td.replaceChildren(); return; }
   const kids = [badge(rec)];
   if (rec.has_file) kids.push(el('br'), el('a', { class: 'read', target: '_blank', rel: 'noopener noreferrer',
-    href: '/api/downloads/file?source=' + encodeURIComponent(p.source) + '&paper_id=' + encodeURIComponent(p.id) }, 'Open PDF'));
+    href: '/api/downloads/file?source=' + encodeURIComponent(p.source) + '&paper_id=' + encodeURIComponent(p.id) }, t('pdf.open')));
   td.replaceChildren(...kids);
 }
 function refreshPdfCells() {
@@ -675,18 +852,18 @@ function refreshPdfCells() {
   $('needsAccess').classList.toggle('hidden', !needs.length);
   $('needsList').replaceChildren(...needs.map(p => {
     const rec = dl.get(keyOf(p));
-    const file = el('input', { type: 'file', accept: 'application/pdf,.pdf', 'aria-label': 'Upload your own PDF for ' + (p.title || 'paper') });
+    const file = el('input', { type: 'file', accept: 'application/pdf,.pdf', 'aria-label': t('needs.upload_aria', { title: p.title || t('row.paper') }) });
     const msg = el('span', { class: 'note', role: 'status' });
     file.onchange = async () => {
       if (!file.files[0]) return;
-      msg.textContent = 'Checking…';
+      msg.textContent = t('needs.checking');
       try {
         const r = await api('/api/downloads/upload?source=' + encodeURIComponent(p.source) + '&paper_id=' + encodeURIComponent(p.id),
           { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file.files[0] });
         dl.set(keyOf(p), await r.json()); refreshPdfCells();
       } catch (e) { msg.textContent = e.message; }
     };
-    return el('div', { class: 'bar' }, badge(rec), el('span', {}, (p.title || '(untitled)') + ' — ' + (rec.reason_text || rec.detail || '')), 'Upload your own PDF: ', file, msg);
+    return el('div', { class: 'bar' }, badge(rec), el('span', {}, el('span', { dir: 'auto', ...paperLang(p) }, p.title || t('row.untitled')), ' — ' + (rec.reason_text || rec.detail || '')), t('needs.upload') + ' ', file, msg);
   }));
 }
 async function loadDownloads() {
@@ -695,22 +872,22 @@ async function loadDownloads() {
   refreshPdfCells();
 }
 async function downloadSelected() {
-  if (!selected.size) { $('dlMsg').textContent = 'Tick at least one paper first.'; return; }
+  if (!selected.size) { $('dlMsg').textContent = t('dl.tick'); return; }
   const papers = [...selected.values()].map(ref);
-  if (papers.length > 50) { $('dlMsg').textContent = 'At most 50 papers per download request; you ticked ' + papers.length + '.'; return; }
-  $('dlPdfs').disabled = true; $('dlMsg').textContent = 'Starting…';
+  if (papers.length > 50) { $('dlMsg').textContent = t('dl.max', { n: papers.length }); return; }
+  $('dlPdfs').disabled = true; $('dlMsg').textContent = t('dl.starting');
   try {
     const r = await post('/api/downloads', { run_id: run.id, papers });
-    const note = r.already_downloaded.length ? r.already_downloaded.length + ' already downloaded. ' : '';
-    if (!r.job_id) { $('dlMsg').textContent = note + 'Nothing new to download.'; return; }
+    const note = r.already_downloaded.length ? t('dl.already', { n: r.already_downloaded.length }) + ' ' : '';
+    if (!r.job_id) { $('dlMsg').textContent = note + t('dl.nothing'); return; }
     r.queued.forEach(q => dl.set(q.source + '\u0000' + q.id, { ...q, status: 'pending' })); refreshPdfCells();
     for (;;) {
       const job = await json('/api/downloads/jobs/' + r.job_id);
       job.papers.forEach(rec => dl.set(rec.source + '\u0000' + rec.id, rec)); refreshPdfCells();
       const ok = job.papers.filter(x => x.has_file).length;
-      $('dlMsg').textContent = note + job.finished + ' of ' + job.total + ' checked; ' + ok + ' PDF' + (ok === 1 ? '' : 's') + ' saved.';
+      $('dlMsg').textContent = note + t('dl.progress', { done: job.finished, total: job.total, ok });
       if (job.status === 'done' || job.status === 'failed') {
-        if (job.status === 'failed') $('dlMsg').textContent += ' The job failed: ' + (job.error || 'unknown error') + '.';
+        if (job.status === 'failed') $('dlMsg').textContent += ' ' + t('dl.failed', { error: job.error || t('dl.unknown') });
         break;
       }
       await new Promise(res => setTimeout(res, 1500));
@@ -725,32 +902,36 @@ function renderRows() {
   next.forEach(p => tbody.append(paperRow(p)));
   shown += next.length;
   $('more').classList.toggle('hidden', shown >= view.length);
-  $('more').textContent = 'Show more (' + (view.length - shown) + ' left)';
-  if (!view.length && run.papers.length) tbody.replaceChildren(el('tr', {}, el('td', { colspan: 8 }, 'No loaded papers match the chosen filters. Clear them to see all ' + run.papers.length + '.')));
+  $('more').textContent = t('more.btn', { n: view.length - shown });
+  if (!view.length && run.papers.length) tbody.replaceChildren(el('tr', {}, el('td', { colspan: 8 }, t('rows.nomatch', { n: run.papers.length }))));
   const st = setStats(run.papers, [...typeFilter], shown);
   st.inView = view.length; st.shown = Math.min(shown, view.length);
-  $('resultTitle').textContent = (filtersOn() ? st.inView.toLocaleString() + ' of ' + st.total.toLocaleString() : st.total.toLocaleString()) + ' papers (run ' + run.id + ')';
-  $('setCounts').textContent = 'Whole result set: ' + st.total + ' papers. ' + (filtersOn() ? 'Matching the type and geography filters: ' + st.inView + '. ' : '') + 'Loaded in the table so far: ' + st.shown + (st.shown < st.inView ? ' (use "Show more" for the rest; all ' + st.inView + ' are already in the browser and are filtered and exported without searching again)' : '') + '.';
+  $('resultTitle').textContent = filtersOn()
+    ? t('results.count_filtered', { shown: st.inView.toLocaleString(uiLang), total: st.total.toLocaleString(uiLang), id: run.id })
+    : t('results.count', { n: st.total.toLocaleString(uiLang), id: run.id });
+  $('setCounts').textContent = t('set.total', { n: st.total }) + ' ' + (filtersOn() ? t('set.matching', { n: st.inView }) + ' ' : '') + t('set.loaded', { n: st.shown }) + (st.shown < st.inView ? ' ' + t('set.more', { n: st.inView }) : '');
 }
 function renderTypes() {
   const rows = (run.type_report || { rows: [] }).rows, counts = countByType(run.papers);
   $('typeReport').replaceChildren(...rows.map(r => el('li', { class: counts[r.id] ? '' : 'zero' }, r.message
-    + (r.id !== 'manual' && counts[r.id] && r.can_supply.length ? ' Selected libraries that can supply it: ' + r.can_supply.join(', ') + '.' : ''))));
+    + (r.id !== 'manual' && counts[r.id] && r.can_supply.length ? ' ' + t('types.supply', { libs: r.can_supply.join(', ') }) : ''))));
   $('typeFilter').replaceChildren(...rows.map(r => {
-    const n = counts[r.id] || 0;
+    const n = counts[r.id] || 0, name = r.id === 'manual' ? t('type.manual.label') : typeLabel(r.id, r.label);
     const b = el('button', { type: 'button', class: 'chip' + (n ? '' : ' zero'), 'aria-pressed': typeFilter.has(r.id) ? 'true' : 'false',
-      title: n ? 'Show only ' + r.label + ' (click again to remove this filter).' : r.message }, r.label + ': ' + n);
-    b.onclick = () => { if (typeFilter.has(r.id)) typeFilter.delete(r.id); else typeFilter.add(r.id); shown = 0; renderTypes(); renderRows(); $('all').checked = false; updateSelection(); };
+      title: n ? t('filter.only', { name }) : r.message }, name + ': ' + n);
+    b.onclick = () => { if (typeFilter.has(r.id)) typeFilter.delete(r.id); else typeFilter.add(r.id); filterChanged(); renderTypes(); };
     return b;
   }));
   if (typeFilter.size) {
-    const clear = el('button', { type: 'button', class: 'chip', title: 'Show every type again.' }, 'Clear filter');
-    clear.onclick = () => { typeFilter.clear(); shown = 0; renderTypes(); renderRows(); $('all').checked = false; updateSelection(); };
+    const clear = el('button', { type: 'button', class: 'chip', title: t('filter.clear_type.help') }, t('filter.clear'));
+    clear.onclick = () => { typeFilter.clear(); filterChanged(); renderTypes(); };
     $('typeFilter').append(clear);
   }
   renderGeoFilter();
+  renderLangFilter();
 }
-function geoChanged() { shown = 0; renderGeoFilter(); renderRows(); $('all').checked = false; updateSelection(); }
+function filterChanged() { shown = 0; renderRows(); $('all').checked = false; updateSelection(); }
+function geoChanged() { renderGeoFilter(); filterChanged(); }
 function renderGeoFilter() {
   const counts = countByGeo(run.papers), chips = [];
   const chip = (key, label, title) => {
@@ -759,31 +940,60 @@ function renderGeoFilter() {
     b.onclick = () => { if (geoFilter.has(key)) geoFilter.delete(key); else geoFilter.add(key); geoChanged(); };
     chips.push(b);
   };
-  for (const r of regionData ? regionData.regions : []) chip('r:' + r.id, r.name, 'Show only papers with an author affiliation in ' + r.name + ' (click again to remove).');
+  for (const r of regionData ? regionData.regions : []) chip('r:' + r.id, r.name, t('geo.only', { name: r.name }));
   const nameOf = Object.fromEntries((regionData ? regionData.countries : []).map(c => [c.code, c.name]));
-  Object.keys(counts).filter(k => k.startsWith('c:')).sort().forEach(k => chip(k, nameOf[k.slice(2)] || k.slice(2), 'Show only papers with an author affiliation in ' + (nameOf[k.slice(2)] || k.slice(2)) + '.'));
-  chip('unknown', 'Unknown', 'Papers with no affiliation country in the source record. Unknown does not mean excluded.');
+  Object.keys(counts).filter(k => k.startsWith('c:')).sort().forEach(k => chip(k, nameOf[k.slice(2)] || k.slice(2), t('geo.only_country', { name: nameOf[k.slice(2)] || k.slice(2) })));
+  chip('unknown', t('geo.unknown'), t('geo.unknown_help'));
   if (geoFilter.size) {
-    const clear = el('button', { type: 'button', class: 'chip', title: 'Show every country again.' }, 'Clear geography filter');
+    const clear = el('button', { type: 'button', class: 'chip', title: t('geo.clear.help') }, t('geo.clear'));
     clear.onclick = () => { geoFilter.clear(); geoChanged(); };
     chips.push(clear);
   }
   $('geoFilter').replaceChildren(...chips);
-  $('geoFilterNote').textContent = 'Geography uses author-affiliation countries from the source. A paper with several countries counts under each; countries with no loaded papers are not listed.';
+  $('geoFilterNote').textContent = t('geo.filter_note');
+}
+/* Language chips: every chosen search language (even with 0 papers), every other language found, and
+   "unknown language" always listed. Counts come from the loaded results; filtering is client-side. */
+const langFilter = new Set();               // active language keys; empty = all
+const searchedLanguages = () => ((run && run.request && run.request.profile && run.request.profile.languages) || []).filter(c => UI_LANGS.includes(c));
+function renderLangFilter() {
+  const chosen = searchedLanguages(), counts = countByLanguage(run.papers, chosen), names = {};
+  run.papers.forEach(p => { names[langKeyOf(p)] = p.language_name; });
+  const chips = languageChipOrder(counts, chosen).map(key => {
+    const n = counts[key] || 0, name = langLabel(key, names[key]);
+    const title = key === 'unknown' ? t('lang.unknown_help') : (chosen.includes(key) && !n ? t('lang.zero_help', { name }) : t('lang.only', { name }));
+    const b = el('button', { type: 'button', class: 'chip' + (n ? '' : ' zero'), 'aria-pressed': langFilter.has(key) ? 'true' : 'false', title }, name + ': ' + n);
+    b.onclick = () => { if (langFilter.has(key)) langFilter.delete(key); else langFilter.add(key); renderLangFilter(); filterChanged(); };
+    return b;
+  });
+  if (langFilter.size) {
+    const clear = el('button', { type: 'button', class: 'chip', title: t('lang.clear.help') }, t('lang.clear'));
+    clear.onclick = () => { langFilter.clear(); renderLangFilter(); filterChanged(); };
+    chips.push(clear);
+  }
+  $('langFilter').replaceChildren(...chips);
+  $('langFilterNote').textContent = t('lang.note');
+}
+function renderLangQueryNote(s) {
+  const q = s.language_queries;
+  const box = $('langQueryNote');
+  if (!(q && q.per_language)) { box.textContent = ''; return; }
+  const lines = Object.entries(q.queries).map(([c, text]) => langLabel(c, c) + ': ' + text);
+  box.replaceChildren(t('langq.ran') + ' ', ...lines.flatMap((line, i) => [i ? '; ' : '', el('span', { dir: 'auto' }, line)]));
+  for (const lib of (q.notes || [])) box.append(el('br'), lib);
 }
 function renderGeoReport(s) {
   const g = s.geography, box = $('geoReport');
   box.classList.toggle('hidden', !(g && g.active));
   if (!(g && g.active)) return;
-  const chips = [['Matched', g.matched], ['Country unknown', g.unknown]];
-  if (g.outside) chips.push(['Outside the chosen area', g.outside]);
+  const chips = [[t('geo.matched'), g.matched], [t('geo.country_unknown'), g.unknown]];
+  if (g.outside) chips.push([t('geo.outside'), g.outside]);
   $('geoCounts').replaceChildren(...chips.map(([k, v]) => el('span', { class: 'chip' }, k + ' (' + v + ')')));
   const names = (regionData ? regionData.regions : []).filter(r => g.regions.includes(r.id)).map(r => r.name);
-  $('geoNote').textContent = (g.mode === 'exclude' ? 'Excluding ' : 'Including ') + 'author-affiliation countries: ' + [...names, ...g.countries].join(', ')
-    + ' (' + g.expanded_countries.length + ' country codes, regions list ' + g.regions_version + '). Country unknown does not mean excluded: those papers are kept here because their source record has no affiliation country.';
+  $('geoNote').textContent = t(g.mode === 'exclude' ? 'geo.note_exclude' : 'geo.note_include', { areas: [...names, ...g.countries].join(', '), codes: g.expanded_countries.length, version: g.regions_version });
   const unknown = run.papers.filter(p => p.geo_status === 'unknown');
-  $('unknownSummary').textContent = 'Country unknown (' + unknown.length + ')';
-  $('unknownList').replaceChildren(...(unknown.length ? unknown.map(p => el('div', { class: 'small' }, (p.year || 'n.d.') + ' · ' + (p.title || '(untitled)') + ' · ' + p.source)) : [el('p', { class: 'note' }, 'None.')]));
+  $('unknownSummary').textContent = t('geo.unknown_summary', { n: unknown.length });
+  $('unknownList').replaceChildren(...(unknown.length ? unknown.map(p => el('div', { class: 'small' }, (p.year || t('row.nd')) + ' · ', el('span', { dir: 'auto', ...paperLang(p) }, p.title || t('row.untitled')), ' · ' + p.source)) : [el('p', { class: 'note' }, t('geo.none'))]));
 }
 async function refreshRun() {
   const r = await json('/api/runs/' + run.id);
@@ -791,65 +1001,70 @@ async function refreshRun() {
   for (const [k, p] of [...selected]) { const fresh = r.papers.find(x => keyOf(x) === k); if (fresh) selected.set(k, fresh); }
   renderTypes(); renderRows(); updateSelection(); refreshPdfCells(); loadManuals(); loadUploads();
 }
-function renderRun(r) {
-  run = r; shown = 0; selected.clear(); typeFilter.clear(); geoFilter.clear(); scopeTouched = false; lastAnalysis = null;
-  $('promptBox').classList.add('hidden'); $('gapMsg').textContent = ''; $('exportMsg').textContent = '';
+/* `relabel` = only redraw the text of the current run (interface language changed); keep the user's
+   ticks, filters and prompt. */
+function renderRun(r, relabel) {
+  run = r; shown = 0;
+  if (!relabel) { selected.clear(); typeFilter.clear(); geoFilter.clear(); langFilter.clear(); scopeTouched = false; lastAnalysis = null; $('promptBox').classList.add('hidden'); $('gapMsg').textContent = ''; $('exportMsg').textContent = ''; }
   const s = r.summary;
   $('resultCard').classList.remove('hidden'); $('gapCard').classList.remove('hidden');
-  $('resultTitle').textContent = r.papers.length.toLocaleString() + ' papers (run ' + r.id + ')';
-  const chips = [['scanned', s.scanned], ['duplicates removed', s.duplicates]];
+  const chips = [[t('sum.scanned'), s.scanned], [t('sum.duplicates'), s.duplicates]];
   for (const [k, v] of Object.entries(s.by_library || {})) chips.push([k, v]);
-  for (const [k, v] of Object.entries(s.by_category || {})) chips.push([categoryLabels[k] || k, v]);
+  for (const [k, v] of Object.entries(s.by_category || {})) chips.push([typeLabel(k, categoryLabels[k] || k), v]);
   $('summary').replaceChildren(...chips.map(([k, v]) => el('span', { class: 'chip' }, k + ': ' + v)));
   const notes = [];
-  const stop = { scan_limit: 'Stopped at the scan limit; more matching papers may exist.', limit: 'Stopped at the result limit; more matching papers exist.', exhausted: 'The libraries had no more matching papers.', complete: 'All year quotas were filled.' }[s.stopped];
-  if (stop) notes.push(el('p', { class: 'note' }, stop));
+  const stopKey = { scan_limit: 'stop.scan', limit: 'stop.limit', exhausted: 'stop.exhausted', complete: 'stop.complete' }[s.stopped];
+  if (stopKey) notes.push(el('p', { class: 'note' }, t(stopKey)));
   for (const w of s.warnings || []) notes.push(el('p', { class: 'warnmsg' }, w));
   const un = Object.entries(s.unapplied_filters || {}).filter(([, v]) => v.length);
-  if (un.length) notes.push(el('p', { class: 'note' }, 'Filters a library could not apply: ' + un.map(([k, v]) => k + ' (' + v.join(', ') + ')').join('; ') + '. Results were not guessed or post-filtered for these.'));
-  if (s.filtered_by_type) notes.push(el('p', { class: 'note' }, s.filtered_by_type + ' returned papers were dropped by the reference-type filter.'));
+  if (un.length) notes.push(el('p', { class: 'note' }, t('notes.unapplied', { list: un.map(([k, v]) => k + ' (' + v.join(', ') + ')').join('; ') })));
+  if (s.filtered_by_type) notes.push(el('p', { class: 'note' }, t('notes.type_dropped', { n: s.filtered_by_type })));
   const d = s.doi_lookup;
-  if (d && d.attempted) notes.push(el('p', { class: 'note' }, 'Automatic DOI lookup (Crossref): ' + d.matched + ' found, ' + d.no_match + ' no confident match, ' + d.failed + ' failed, ' + d.cache_hits + ' from cache.'));
+  if (d && d.attempted) notes.push(el('p', { class: 'note' }, t('notes.doi', { matched: d.matched, nomatch: d.no_match, failed: d.failed, cache: d.cache_hits })));
   const sf = Object.entries(s.shortfalls || {});
-  if (sf.length) notes.push(el('p', { class: 'warnmsg' }, 'Shortfalls (fewer papers found than requested, not padded): ' + sf.map(([y, v]) => y + ' ' + v.collected + '/' + v.quota).join(', ')));
+  if (sf.length) notes.push(el('p', { class: 'warnmsg' }, t('notes.shortfalls', { list: sf.map(([y, v]) => y + ' ' + v.collected + '/' + v.quota).join(', ') })));
   $('notes').replaceChildren(...notes);
-  $('all').checked = false; $('dlMsg').textContent = '';
+  if (!relabel) { $('all').checked = false; $('dlMsg').textContent = ''; }
   renderGeoReport(s);
-  renderTypes(); renderRows(); updateSelection(); loadDownloads(); loadManuals();
+  renderLangQueryNote(s);
+  renderTypes(); renderRows(); updateSelection();
+  if (!relabel) { loadDownloads(); loadManuals(); } else refreshPdfCells();
 }
 function updateSelection() {
   const n = selected.size, withAbs = [...selected.values()].filter(p => p.abstract).length;
   const inView = run ? viewPapers().filter(p => selected.has(keyOf(p))).length : 0;
-  $('selectedCount').textContent = n + ' selected' + (filtersOn() ? ' (' + inView + ' in the filtered view)' : '');
+  $('selectedCount').textContent = t('sel.count', { n }) + (filtersOn() ? ' ' + t('sel.in_view', { n: inView }) : '');
   if (run) {
     const sc = $('exportScope'), prev = sc.value, view = viewPapers();
     sc.replaceChildren(
-      el('option', { value: 'selected' }, 'Ticked papers (' + n + ')'),
-      el('option', { value: 'view' }, 'Filtered view (' + view.length + ')'),
-      el('option', { value: 'all' }, 'All results (' + run.papers.length + ')'));
+      el('option', { value: 'selected' }, t('export.scope.selected', { n })),
+      el('option', { value: 'view' }, t('export.scope.view', { n: view.length })),
+      el('option', { value: 'all' }, t('export.scope.all', { n: run.papers.length })));
     sc.value = scopeTouched && prev ? prev : (n ? 'selected' : (filtersOn() ? 'view' : 'all'));
   }
-  $('gapScope').textContent = n ? n + ' paper' + (n === 1 ? '' : 's') + ' selected (' + withAbs + ' with an abstract).' : 'No papers selected. Tick papers in the results table first.';
-  $('exportXlsx').title = 'Download the papers chosen in the Export box as an Excel workbook.';
-  $('exportCsv').title = 'Download the papers chosen in the Export box as a CSV file.';
+  $('gapScope').textContent = n ? t('gap.selected', { n, abs: withAbs }) : t('gap.none');
+  $('exportXlsx').title = t('export.xlsx.help');
+  $('exportCsv').title = t('export.csv.help');
 }
 
 async function search() {
-  $('searchErr').textContent = ''; $('go').disabled = true; $('status').textContent = 'Searching…';
+  $('searchErr').textContent = ''; $('go').disabled = true; $('status').textContent = t('search.searching');
   try {
     const quota = parseInt($('quota').value, 10);
+    const languages = getLangs();
     const body = {
       profile: {
         query: $('query').value.trim(),
         year_from: parseInt($('yFrom').value, 10), year_to: parseInt($('yTo').value, 10),
-        document_types: getTypes(), languages: getLangs(),
+        document_types: getTypes(), languages,
+        queries_by_language: queriesForRequest(languages, readLangBoxes()),
         ...getGeo(),
       },
       libraries: getLibs(), weighting: $('weighting').value,
     };
-    if (!body.libraries.length) throw new Error('Choose at least one library.');
-    if (!body.profile.document_types.length) throw new Error('Choose at least one reference type.');
-    if (!body.profile.languages.length) throw new Error('Choose at least one language.');
+    if (!body.libraries.length) throw new Error(t('err.libs'));
+    if (!body.profile.document_types.length) throw new Error(t('err.types'));
+    if (!body.profile.languages.length) throw new Error(t('err.langs'));
     if (quota) body.quota_total = quota;
     const r = await post('/api/search', body);
     renderRun(await json('/api/runs/' + r.id)); loadRuns();
@@ -861,17 +1076,17 @@ async function loadRuns() {
   try {
     const runs = await json('/api/runs');
     $('runs').replaceChildren(...(runs.length ? runs.map(r => {
-      const a = el('a', { href: '#' }, 'Run ' + r.id + ' · ' + r.created_at + ' · ' + r.summary.found + ' papers');
+      const a = el('a', { href: '#' }, t('runs.item', { id: r.id, date: r.created_at, n: r.summary.found }));
       a.addEventListener('click', async ev => { ev.preventDefault(); renderRun(await json('/api/runs/' + r.id)); $('resultCard').scrollIntoView({ behavior: 'smooth' }); });
       return el('div', {}, a);
-    }) : [document.createTextNode('None yet.')]));
+    }) : [document.createTextNode(t('runs.none'))]));
   } catch (e) { /* not signed in */ }
 }
 
 /* ---------- manuals (added by URL or upload; never searched) ---------- */
 function titleEditor(paperId, current, done) {
-  const input = el('input', { type: 'text', value: current || '', maxlength: 300, 'aria-label': 'Manual title', style: 'width:260px' });
-  const save = el('button', { type: 'button' }, 'Save title'), msg = el('span', { class: 'note', role: 'status' });
+  const input = el('input', { type: 'text', value: current || '', maxlength: 300, 'aria-label': t('manual.title_aria'), dir: 'auto', style: 'width:260px' });
+  const save = el('button', { type: 'button' }, t('manual.save_title')), msg = el('span', { class: 'note', role: 'status' });
   save.onclick = async () => {
     try { await json('/api/manuals/' + encodeURIComponent(paperId), { method: 'PATCH', body: JSON.stringify({ title: input.value }) }); await done(); }
     catch (e) { msg.textContent = e.message; }
@@ -882,26 +1097,26 @@ async function loadManuals() {
   let items = [];
   try { items = await json('/api/manuals'); } catch (e) { return; }
   const inRun = new Set(run ? run.papers.map(keyOf) : []);
-  $('manualList').replaceChildren(el('h3', {}, 'My manuals (' + items.length + ')'), ...(items.length ? items.map(m => {
-    const p = m.paper, row = el('div', { class: 'bar' }, el('span', {}, p.title), el('span', { class: 'usermark' }, 'user-supplied · ' + m.origin));
-    if (m.download.has_file) row.append(el('a', { class: 'read', target: '_blank', rel: 'noopener noreferrer', href: '/api/downloads/file?source=user&paper_id=' + encodeURIComponent(p.id) }, 'Open PDF'));
-    const edit = el('button', { type: 'button', class: 'ghost' }, 'Edit title');
+  $('manualList').replaceChildren(el('h3', {}, t('manual.list', { n: items.length })), ...(items.length ? items.map(m => {
+    const p = m.paper, row = el('div', { class: 'bar' }, el('span', { dir: 'auto' }, p.title), el('span', { class: 'usermark' }, t('row.usersupplied') + ' · ' + m.origin));
+    if (m.download.has_file) row.append(el('a', { class: 'read', target: '_blank', rel: 'noopener noreferrer', href: '/api/downloads/file?source=user&paper_id=' + encodeURIComponent(p.id) }, t('pdf.open')));
+    const edit = el('button', { type: 'button', class: 'ghost' }, t('row.edit'));
     edit.onclick = () => edit.replaceWith(titleEditor(p.id, p.title, async () => { if (run) await refreshRun(); else await loadManuals(); }));
     row.append(edit);
     if (run && !inRun.has(keyOf(p))) {
-      const add = el('button', { type: 'button', class: 'ghost' }, 'Add to this run');
+      const add = el('button', { type: 'button', class: 'ghost' }, t('manual.add_to_run'));
       add.onclick = async () => { try { await post('/api/runs/' + run.id + '/manuals', { paper_id: p.id }); await refreshRun(); } catch (e) { $('manualMsg').textContent = e.message; } };
       row.append(add);
     }
     return row;
-  }) : [el('p', { class: 'note' }, 'No manuals added yet.')]));
+  }) : [el('p', { class: 'note' }, t('manual.none'))]));
 }
 async function addManual() {
   const msg = $('manualMsg'), url = $('manualUrl').value.trim(), file = $('manualFile').files[0], title = $('manualTitle').value.trim();
   const runId = $('manualTarget').value === 'run' && run ? run.id : null;
-  if (!url && !file) { msg.textContent = 'Enter a public PDF link or choose a PDF file.'; return; }
-  if (url && file) { msg.textContent = 'Use either a link or a file, not both.'; return; }
-  $('manualAdd').disabled = true; msg.textContent = url ? 'Fetching and checking the PDF…' : 'Checking the PDF…';
+  if (!url && !file) { msg.textContent = t('manual.err_none'); return; }
+  if (url && file) { msg.textContent = t('manual.err_both'); return; }
+  $('manualAdd').disabled = true; msg.textContent = url ? t('manual.fetching') : t('manual.checking');
   try {
     let r;
     if (url) r = await post('/api/manuals/url', { url, title, run_id: runId });
@@ -911,7 +1126,7 @@ async function addManual() {
       r = await (await api('/api/manuals/upload?' + q, { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file })).json();
     }
     $('manualUrl').value = ''; $('manualFile').value = ''; $('manualTitle').value = '';
-    msg.textContent = 'Added "' + r.paper.title + '" (user-supplied, ' + r.origin + '). ' + r.download.detail;
+    msg.textContent = t('manual.added', { title: r.paper.title, origin: r.origin }) + ' ' + r.download.detail;
     if (run) await refreshRun(); else await loadManuals();
   } catch (e) { msg.textContent = e.message; }
   finally { $('manualAdd').disabled = false; }
@@ -920,21 +1135,21 @@ async function addManual() {
 /* ---------- export ---------- */
 async function exportRun(format) {
   if (!run) return;
-  $('exportMsg').textContent = 'Preparing…';
+  $('exportMsg').textContent = t('export.preparing');
   try {
     const scope = $('exportScope').value;
     const chosen = exportPapers(scope, run.papers, viewPapers(), [...selected.values()]);
-    if (!chosen.length) { $('exportMsg').textContent = scope === 'selected' ? 'Tick at least one paper, or choose the filtered view or all results.' : 'There is nothing to export in that choice.'; return; }
+    if (!chosen.length) { $('exportMsg').textContent = scope === 'selected' ? t('export.err_tick') : t('export.err_empty'); return; }
     const body = { format };
     if (scope !== 'all') {
-      if (chosen.length > 500) { $('exportMsg').textContent = 'At most 500 papers can be exported by selection; choose "All results" or narrow the filter.'; return; }
+      if (chosen.length > 500) { $('exportMsg').textContent = t('export.err_max'); return; }
       body.papers = chosen.map(ref);
     }
     const r = await api('/api/runs/' + run.id + '/export', { method: 'POST', body: JSON.stringify(body) });
     const blob = await r.blob();
     const a = el('a', { href: URL.createObjectURL(blob), download: 'bayan-run-' + run.id + '.' + format });
     document.body.append(a); a.click(); a.remove();
-    $('exportMsg').textContent = 'Exported ' + chosen.length + ' papers (' + { selected: 'ticked', view: 'filtered view', all: 'all results' }[scope] + ') as ' + (format === 'xlsx' ? 'Excel' : 'CSV') + '.';
+    $('exportMsg').textContent = t('export.done', { n: chosen.length, scope: t('export.name.' + scope), format: format === 'xlsx' ? 'Excel' : 'CSV' });
   } catch (e) { $('exportMsg').textContent = e.message; }
 }
 
@@ -944,18 +1159,18 @@ function showAnalysis(r, filename) {
   $('promptText').value = r.prompt;
   $('promptBox').classList.remove('hidden');
   const p = r.packet;
-  $('gapMsg').textContent = r.note + ' ' + p.papers_included + ' of ' + p.papers_selected + ' selected papers are in the prompt; ' + p.papers_with_abstract + ' have an abstract.' + (p.truncated ? ' Only the first 40 fit; select fewer papers for a tighter review.' : '');
+  $('gapMsg').textContent = r.note + ' ' + t('gap.included', { included: p.papers_included, selected: p.papers_selected, abs: p.papers_with_abstract }) + (p.truncated ? ' ' + t('gap.truncated') : '');
 }
 async function analysis(kind) {
-  if (!selected.size) { $('gapMsg').textContent = 'Tick at least one paper in the results first.'; return; }
-  $('gapMsg').textContent = 'Preparing…';
+  if (!selected.size) { $('gapMsg').textContent = t('gap.err_tick'); return; }
+  $('gapMsg').textContent = t('export.preparing');
   try {
     const papers = [...selected.values()].map(ref), question = $('question').value.trim(), run_id = run ? run.id : null;
     if (kind === 'gaps') {
       showAnalysis(await post('/api/analysis/gaps', { papers, question, run_id, gap_count: parseInt($('gapCount').value, 10) }), 'research-gaps-prompt.txt');
     } else {
       const gap_text = $('gapText').value.trim();
-      if (!gap_text) { $('gapMsg').textContent = 'Paste the research gap(s) you want to develop before creating proposals.'; $('gapText').focus(); return; }
+      if (!gap_text) { $('gapMsg').textContent = t('gap.err_paste'); $('gapText').focus(); return; }
       showAnalysis(await post('/api/analysis/proposals', { papers, question, run_id, gap_text, proposal_count: parseInt($('propCount').value, 10) }), 'research-proposals-prompt.txt');
     }
   } catch (e) { $('gapMsg').textContent = e.message; }
@@ -986,41 +1201,33 @@ $('exportCsv').onclick = () => exportRun('csv');
 $('gapForm').onsubmit = ev => { ev.preventDefault(); analysis('gaps'); };
 $('createProps').onclick = () => analysis('proposals');
 $('copyPrompt').onclick = async () => {
-  try { await navigator.clipboard.writeText($('promptText').value); $('gapMsg').textContent = 'Prompt copied. Paste it into your AI assistant and submit it there.'; }
-  catch (e) { $('promptText').focus(); $('promptText').select(); $('gapMsg').textContent = 'Select and copy the prompt manually (Ctrl+C).'; }
+  try { await navigator.clipboard.writeText($('promptText').value); $('gapMsg').textContent = t('prompt.copied'); }
+  catch (e) { $('promptText').focus(); $('promptText').select(); $('gapMsg').textContent = t('prompt.copy_manual'); }
 };
 $('dlPrompt').onclick = () => lastAnalysis && download(lastAnalysis.filename, lastAnalysis.prompt, 'text/plain');
 $('dlPacket').onclick = () => lastAnalysis && download(lastAnalysis.filename.replace('-prompt.txt', '-evidence.json'), JSON.stringify(lastAnalysis.packet, null, 2), 'application/json');
 
+/* Help text per element id: locale keys (shown as the tooltip and aria-description). */
 const HELP = {
-  go: 'Search the chosen libraries with your research area and filters. Results show up to 200 papers.',
-  exportXlsx: 'Download the ticked papers, or all results if none are ticked, as an Excel workbook with a Search sheet that records your criteria.',
-  exportCsv: 'Download the ticked papers, or all results if none are ticked, as a CSV file that Excel opens with Arabic and Chinese text intact.',
-  clearSel: 'Untick every paper.',
-  more: 'Show the next 50 papers.',
-  findGaps: 'Prepare an evidence prompt asking an AI assistant for the chosen number of candidate research gaps, based on the ticked papers. No analysis runs in BAYAN.',
-  createProps: 'Prepare a prompt asking an AI assistant for 1 to 5 distinct research proposals based on the gaps you pasted and the ticked papers.',
-  copyPrompt: 'Copy the prepared prompt to your clipboard, then paste it into an AI assistant and submit it there.',
-  dlPrompt: 'Save the prepared prompt as a text file.',
-  dlPacket: 'Save the identifiers, metadata and abstracts used by this request as a JSON file.',
-  openClaude: 'Open Claude in a new tab. Paste the prepared prompt there.',
-  openChatgpt: 'Open ChatGPT in a new tab. Paste the prepared prompt there.',
-  logout: 'Sign out of BAYAN on this browser.', login: 'Sign in with your email and password.',
-  register: 'Create a new account with this email and password.',
-  query: 'Words describing your research area. They are matched against titles and abstracts by each library.',
-  yFrom: 'Include works published in this year or later.', yTo: 'Include works published in this year or earlier.',
-  geoSummary: 'Optional. Choose regions and/or countries and include or exclude them. Matches the countries of the authors\' institutions (not the place studied) in libraries that support it; papers with no affiliation country are listed separately as "Country unknown".',
-  quota: 'Optional. Spread this many papers across the years you chose instead of taking the first results.',
-  weighting: 'How the wanted papers are shared between years: equally, or giving recent years more.',
-  gapCount: 'How many candidate research gaps to ask for (1 to 5).', propCount: 'How many distinct research proposals to ask for (1 to 5).',
-  question: 'The research question or area the gaps and proposals should address.',
-  gapText: 'The research gap(s) to turn into proposals. Include paper numbers like [P2] from the review and note what still needs verifying.',
-  themeSummary: 'Choose light, dark or system mode and a colour palette.',
+  go: 'help.go', exportXlsx: 'help.exportXlsx', exportCsv: 'help.exportCsv', clearSel: 'help.clearSel',
+  more: 'help.more', findGaps: 'help.findGaps', createProps: 'help.createProps', copyPrompt: 'help.copyPrompt',
+  dlPrompt: 'help.dlPrompt', dlPacket: 'help.dlPacket', openClaude: 'help.openClaude', openChatgpt: 'help.openChatgpt',
+  logout: 'help.logout', login: 'help.login', register: 'help.register', query: 'help.query',
+  yFrom: 'help.yFrom', yTo: 'help.yTo', geoSummary: 'help.geoSummary', quota: 'help.quota',
+  weighting: 'help.weighting', gapCount: 'help.gapCount', propCount: 'help.propCount', question: 'help.question',
+  gapText: 'help.gapText', themeSummary: 'theme.help', uiLang: 'ui.language.help', dlPdfs: 'help.dlPdfs',
 };
-for (const [id, text] of Object.entries(HELP)) { const e = $(id); if (e) { e.title = text; e.setAttribute('aria-description', text); } }
+$('query').oninput = renderLangQueries;
+$('uiLang').onchange = () => setUiLanguage($('uiLang').value, true);
 
-initTheme();
-loadMeta().then(() => json('/api/me')).then(m => showSignedIn(m.email)).catch(() => showSignedOut());
+async function start() {
+  initTheme();
+  // Saved choice first; else the browser language if it is one of the six; else English.
+  const code = pickUiLanguage(store.get('bayan.lang'), navigator.language);
+  await setUiLanguage(code, false);
+  loadMeta().then(() => { renderLangQueries(); return json('/api/me'); }).then(m => showSignedIn(m.email)).catch(() => showSignedOut());
+}
+start();
 </script>
 </body>
 </html>

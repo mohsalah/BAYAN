@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlsplit
 
 from .models import MANUAL_KIND, USER_SOURCE, Paper
 from .search import _store_paper
+from .textnorm import index_text
 
 MAX_TITLE = 300
 DEFAULT_TITLE = "Untitled manual"
@@ -64,5 +65,5 @@ def rename_manual(conn: sqlite3.Connection, paper_id: str, title: str) -> None:
     conn.execute("UPDATE papers SET title = ? WHERE source = ? AND id = ?",
                  (title, USER_SOURCE, paper_id))
     conn.execute("UPDATE paper_search SET title = ? WHERE source = ? AND id = ?",
-                 (title, USER_SOURCE, paper_id))
+                 (index_text(title), USER_SOURCE, paper_id))
     conn.commit()

@@ -11,10 +11,11 @@ from pydantic import BaseModel, Field
 
 from .connectors.base import FILTERS, Connector
 from .doi_lookup import DoiLooker, DoiLookup
-from .models import DOCUMENT_TYPES, USER_SOURCE, Paper, SearchProfile
+from .models import DOCUMENT_TYPES, USER_SOURCE, Paper, SearchProfile, language_key
 from .quotas import allocate_quotas
 from .regions import REGIONS_VERSION
 from .retrieval import collect
+from .textnorm import index_text
 
 SCAN_FACTOR = 20  # a run reads at most search_max_results * SCAN_FACTOR works before stopping
 
@@ -55,8 +56,37 @@ def requested_filters(profile: SearchProfile) -> list[str]:
     return [f for f in FILTERS if asked[f]]
 
 
+def _splits_by_language(connector: Connector) -> bool:
+    return "languages" in getattr(connector, "supported_filters", frozenset())
+
+
+def per_language_plan(profile: SearchProfile, connectors: list[Connector]) -> dict:
+    """What each language searched for, and which libraries could use it (for reruns).
+
+    A library that cannot filter by language runs the main query once; that is noted.
+    """
+    pairs = profile.language_queries()
+    return {
+        "per_language": bool(pairs),
+        "queries": dict(pairs),
+        "main_query": profile.query,
+        "run_per_language": [c.name for c in connectors if pairs and _splits_by_language(c)],
+        "notes": [f"{c.name} cannot filter by language, so it ran the main query once, "
+                  "not the per-language text."
+                  for c in connectors if pairs and not _splits_by_language(c)],
+    }
+
+
 def _counted(connector: Connector, profile: SearchProfile, state: dict) -> Iterator[Paper]:
-    for paper in connector.search(profile):
+    """One library's records. With per-language text and a language filter, one query per
+    chosen language, round-robin, so the combined stream feeds de-duplication and limits."""
+    pairs = profile.language_queries()
+    if pairs and _splits_by_language(connector):
+        source = _interleave(
+            [connector.search(profile.for_language(code, text)) for code, text in pairs])
+    else:
+        source = connector.search(profile)
+    for paper in source:
         state["scanned_by_library"][connector.name] += 1
         yield paper
 
@@ -182,7 +212,8 @@ def run_search(
         # Every selected category is listed, with 0 when nothing was found.
         "by_category": {c: by_category[c] for c in (profile.document_types or DOCUMENT_TYPES)},
         "geography": geography,
-        "by_language": dict(Counter(p.language or "unknown" for p in result.papers)),
+        "by_language": dict(Counter(language_key(p.language) for p in result.papers)),
+        "language_queries": per_language_plan(profile, connectors),
         # Crossref DOI lookup for papers found without a DOI (cache hits are not "attempted").
         "doi_lookup": lookup.counts if lookup else dict(NO_DOI_LOOKUP),
         # DOIs filled in by the lookup in this run, with the title-match score.
@@ -232,7 +263,8 @@ def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
     conn.execute(
         "INSERT INTO paper_search(source, id, title, abstract, keywords, topic)"
         " VALUES(?,?,?,?,?,?)",
-        (p.source, p.id, p.title, p.abstract, " ".join(p.keywords), p.topic),
+        (p.source, p.id, index_text(p.title), index_text(p.abstract),
+         index_text(" ".join(p.keywords)), index_text(p.topic)),
     )
 
 
