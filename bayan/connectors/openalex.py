@@ -13,14 +13,40 @@ SELECT = (
     "id,doi,title,publication_year,type,language,primary_location,open_access,"
     "cited_by_count,authorships,abstract_inverted_index,keywords,primary_topic"
 )
-# App document type -> OpenAlex `type`. Manuals are not indexed by OpenAlex
-# (user uploads and URLs only), so they map to nothing here.
+# Category -> OpenAlex `type` values used as a coarse pre-filter. `other` has none: it is
+# "everything else", so asking for it sends no type filter at all.
 OPENALEX_TYPES = {
-    "article": "article",
-    "review": "review",
-    "report": "report",
-    "thesis": "dissertation",
+    "peer_reviewed": ["article", "review"],
+    "proceedings": ["article", "review"],  # told apart from journals by the source type
+    "thesis": ["dissertation"],
+    "report": ["report"],
 }
+
+
+def classify_work(work: dict) -> tuple[str, str]:
+    """OpenAlex work -> (category, basis). Uses only `type` and `primary_location.source.type`.
+
+    article/review + journal source -> peer_reviewed; + conference source -> proceedings;
+    dissertation -> thesis; report -> report; preprint, book, book-chapter, dataset,
+    standard and every other or missing type -> other. An article whose source is not a
+    journal or conference (repository, book series, none) -> other, with the reason.
+    """
+    native = work.get("type") or ""
+    source_type = (((work.get("primary_location") or {}).get("source")) or {}).get("type") or ""
+    if native in ("article", "review"):
+        if source_type == "journal":
+            return "peer_reviewed", f"type '{native}' in a journal source"
+        if source_type == "conference":
+            return "proceedings", f"type '{native}' in a conference source"
+        shown = f"source type '{source_type}'" if source_type else "no source type"
+        return "other", f"type '{native}' but {shown}: not a journal or conference"
+    if native == "dissertation":
+        return "thesis", "type 'dissertation'"
+    if native == "report":
+        return "report", "type 'report'"
+    if native:
+        return "other", f"type '{native}' is not one of the four categories"
+    return "other", "no type in the record"
 
 
 def rebuild_abstract(inverted: dict[str, list[int]] | None) -> str:
@@ -36,6 +62,7 @@ def parse_work(work: dict) -> Paper:
     oa = work.get("open_access") or {}
     authors = work.get("authorships") or []
     doi = (work.get("doi") or "").removeprefix("https://doi.org/").lower()
+    category, basis = classify_work(work)
     return Paper(
         source="openalex",
         id=work["id"].rsplit("/", 1)[-1],
@@ -43,7 +70,9 @@ def parse_work(work: dict) -> Paper:
         title=work.get("title") or "",
         abstract=rebuild_abstract(work.get("abstract_inverted_index")),
         year=work.get("publication_year"),
-        document_type=work.get("type") or "",
+        native_type=work.get("type") or "",
+        category=category,
+        category_basis=basis,
         language=work.get("language") or "",
         venue=src.get("display_name") or "",
         first_author=(authors[0]["author"]["display_name"] if authors else ""),
@@ -59,7 +88,10 @@ def parse_work(work: dict) -> Paper:
 
 def build_filter(profile: SearchProfile) -> str:
     parts = [f"publication_year:{profile.year_from}-{profile.year_to}", "is_retracted:false"]
-    types = [OPENALEX_TYPES[t] for t in profile.document_types if t in OPENALEX_TYPES]
+    types: list[str] = []
+    if "other" not in profile.document_types:
+        types = list(dict.fromkeys(
+            t for c in profile.document_types for t in OPENALEX_TYPES.get(c, [])))
     if types:
         parts.append("type:" + "|".join(types))
     if profile.languages:

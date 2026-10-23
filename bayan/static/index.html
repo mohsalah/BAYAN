@@ -22,6 +22,9 @@ input[type=text],input[type=email],input[type=password],input[type=number],selec
 .checks{display:flex;flex-wrap:wrap;gap:6px 14px}
 .checks label{display:flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-size:14px}
 .checks label.off{color:var(--mute)}
+details.dropdown{border:1px solid var(--line);border-radius:7px;padding:6px 10px;background:var(--bg)}
+details.dropdown summary{cursor:pointer;font-size:14px}
+details.dropdown .checks{flex-direction:column;margin-top:8px}
 button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:7px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer}
 button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
 button:disabled{opacity:.55;cursor:wait}
@@ -64,7 +67,8 @@ a{color:var(--accent)}
       <div><label for="weighting">Year weighting</label><select id="weighting"><option value="equal">Equal per year</option><option value="recent">Favour recent years</option></select></div>
     </div>
     <label>Libraries</label><div class="checks" id="libs"></div>
-    <label>Document types</label><div class="checks" id="types"></div>
+    <label>Reference types</label>
+    <details id="typesBox" class="dropdown"><summary id="typesSummary">Peer-reviewed papers</summary><div class="checks" id="types"></div></details>
     <label>Languages</label><div class="checks" id="langs"></div>
     <label for="countries">Author-affiliation countries (ISO codes, comma separated, optional)</label>
     <input id="countries" type="text" placeholder="e.g. EG, US, CA">
@@ -100,13 +104,19 @@ async function api(path, opts = {}) {
 }
 const ACCESS = { open_copy_listed: 'open copy listed', no_open_copy_listed: 'needs access' };
 let meta = {};
+let CATEGORY_LABEL = {};
+const catLabel = id => CATEGORY_LABEL[id] || id;
+function updateTypesSummary() {
+  const ids = picked('type');
+  $('typesSummary').textContent = ids.length ? ids.map(catLabel).join(', ') : 'All reference types';
+}
 
 function checks(box, items, name) {
   box.replaceChildren(...items.map(i => {
     const cb = el('input', { type: 'checkbox', name, value: i.value });
     if (i.checked) cb.checked = true;
     if (i.disabled) cb.disabled = true;
-    return el('label', { class: i.disabled ? 'off' : '' }, cb, i.label, ...(i.badge ? [el('span', { class: 'badge' }, i.badge)] : []));
+    return el('label', { class: i.disabled ? 'off' : '', ...(i.title ? { title: i.title } : {}) }, cb, i.label, ...(i.badge ? [el('span', { class: 'badge' }, i.badge)] : []));
   }));
 }
 const picked = name => [...document.querySelectorAll('input[name=' + name + ']:checked')].map(c => c.value);
@@ -114,7 +124,10 @@ const picked = name => [...document.querySelectorAll('input[name=' + name + ']:c
 async function loadMeta() {
   const [libs, types, langs] = await Promise.all([api('/api/libraries'), api('/api/document-types'), api('/api/languages')]);
   checks($('libs'), libs.map(l => ({ value: l.id, label: l.name + (l.tier === 'membership' ? ' (membership)' : ''), checked: l.status === 'available' && l.role === 'search', disabled: l.status !== 'available' || l.role !== 'search', badge: l.role === 'lookup' ? 'automatic DOI lookup' : l.status === 'available' ? '' : (l.status === 'unconfirmed' ? 'not available yet' : 'planned') })), 'lib');
-  checks($('types'), types.map(t => ({ value: t, label: t, checked: t === 'article' || t === 'review', disabled: t === 'manual', badge: t === 'manual' ? 'uploads later' : '' })), 'type');
+  CATEGORY_LABEL = Object.fromEntries(types.map(t => [t.id, t.label]));
+  checks($('types'), types.map(t => ({ value: t.id, label: t.label, title: t.description, checked: t.id === 'peer_reviewed' })), 'type');
+  $('types').addEventListener('change', updateTypesSummary);
+  updateTypesSummary();
   checks($('langs'), Object.entries(langs).map(([c, v]) => ({ value: c, label: v.name, checked: c === 'en' })), 'lang');
 }
 
@@ -141,7 +154,8 @@ function renderRun(run) {
   $('resultTitle').textContent = 'Results (run ' + run.id + ')';
   const chips = [['found', s.found], ['scanned', s.scanned], ['duplicates removed', s.duplicates]];
   for (const [k, v] of Object.entries(s.by_library || {})) chips.push(['from ' + k, v]);
-  for (const [k, v] of Object.entries(s.by_document_type || {})) chips.push([k, v]);
+  if (s.filtered_by_type !== undefined) chips.push(['dropped by type', s.filtered_by_type]);
+  for (const [k, v] of Object.entries(s.by_category || {})) chips.push([catLabel(k), v]);
   for (const [k, v] of Object.entries(s.by_language || {})) chips.push(['lang ' + k, v]);
   $('summary').replaceChildren(...chips.map(([k, v]) => el('span', { class: 'chip' }, k + ': ' + v)));
   const notes = [];
@@ -151,7 +165,7 @@ function renderRun(run) {
   if (sf.length) notes.push(el('p', { class: 'warn' }, 'Shortfalls (fewer papers found than requested, not padded): ' + sf.map(([y, v]) => y + ' ' + v.collected + '/' + v.quota).join(', ')));
   const d = s.doi_lookup;
   if (d) notes.push(el('p', { class: 'note' }, 'Automatic DOI lookup (Crossref): ' + d.matched + ' found, ' + d.no_match + ' no confident match, ' + d.failed + ' failed, ' + d.skipped_over_budget + ' skipped (over budget), ' + d.cache_hits + ' from cache; ' + d.attempted + ' lookups made.'));
-  const names = { years: 'period', document_types: 'document types', languages: 'languages', countries: 'countries' };
+  const names = { years: 'period', document_types: 'reference types', languages: 'languages', countries: 'countries' };
   for (const [lib, fs] of Object.entries(s.unapplied_filters || {})) {
     if (fs.length) notes.push(el('p', { class: 'warn' }, lib + ' could not apply: ' + fs.map(f => names[f] || f).join(', ') + ' (its results are not filtered on these).'));
   }
@@ -159,7 +173,7 @@ function renderRun(run) {
   $('rows').replaceChildren(...(run.papers || []).map(p => {
     const href = p.doi ? 'https://doi.org/' + p.doi : (p.landing_url || '');
     const title = href && /^https?:\/\//.test(href) ? el('a', { href, target: '_blank', rel: 'noopener noreferrer' }, p.title || '(untitled)') : document.createTextNode(p.title || '(untitled)');
-    return el('tr', {}, el('td', {}, title), el('td', {}, p.year ?? ''), el('td', {}, p.document_type), el('td', {}, p.language), el('td', {}, (p.countries || []).join(', ')), el('td', {}, ACCESS[p.access] || p.access));
+    return el('tr', {}, el('td', {}, title), el('td', {}, p.year ?? ''), el('td', { title: [p.native_type ? 'Source type: ' + p.native_type : 'Source type: not reported', p.category_basis].filter(Boolean).join(' — ') }, catLabel(p.category)), el('td', {}, p.language), el('td', {}, (p.countries || []).join(', ')), el('td', {}, ACCESS[p.access] || p.access));
   }));
 }
 

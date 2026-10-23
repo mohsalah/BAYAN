@@ -22,7 +22,7 @@ def _key(paper: Paper) -> str:
 
 def merge_into(base: Paper, other: Paper) -> None:
     """Fold a duplicate into the kept paper: fill gaps, keep the richer value, keep base's DOI."""
-    for name in ("title", "language", "venue", "first_author", "document_type", "oa_url",
+    for name in ("title", "language", "venue", "first_author", "oa_url",
                  "landing_url", "topic"):
         if not getattr(base, name) and getattr(other, name):
             setattr(base, name, getattr(other, name))

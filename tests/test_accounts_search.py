@@ -26,7 +26,8 @@ class FakeConnector:
 
 def make_paper(i, year=2020, **kw):
     return Paper(source="openalex", id=f"W{i}", doi=f"10.1/{i}", title=f"Paper {i}", year=year,
-                 document_type="article", language="en", oa_url=kw.pop("oa_url", ""), **kw)
+                 native_type="article", category="peer_reviewed", language="en",
+                 oa_url=kw.pop("oa_url", ""), **kw)
 
 
 @pytest.fixture
@@ -97,7 +98,10 @@ def test_search_stores_run_and_returns_papers(setup):
     assert run["summary"]["found"] == 10 and run["summary"]["stopped"] == "exhausted"
     detail = client.get(f"/api/runs/{run['id']}").json()
     assert len(detail["papers"]) == 10 and detail["papers"][0]["access"] == "no_open_copy_listed"
-    assert detail["summary"]["by_document_type"] == {"article": 10}
+    assert detail["summary"]["by_category"] == {"peer_reviewed": 10}
+    assert detail["summary"]["filtered_by_type"] == 0
+    assert detail["papers"][0]["category"] == "peer_reviewed"
+    assert detail["papers"][0]["native_type"] == "article"
     assert fake.profiles[0].query == "reactor"
     assert [r["id"] for r in client.get("/api/runs").json()] == [run["id"]]
 

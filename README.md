@@ -8,6 +8,20 @@ automatically to find the DOI of papers found elsewhere that have none (title, y
 author must all match confidently; at most 50 lookups per run, cached; the run summary reports
 `doi_lookup` counts). Semantic Scholar, CORE and Unpaywall are still planned.
 
+## Reference types
+
+Every library's own type labels are mapped to one common set, chosen from a dropdown
+(default: Peer-reviewed papers): **Peer-reviewed papers**, **Proceedings papers**, **Theses**,
+**Reports** and **Other** (everything that is not one of the four: preprints, books, book
+chapters, datasets, standards, manuals, unknown). The library's own label is kept as
+`native_type`, and `category_basis` records why a record got its category. When the metadata
+does not decide it, the record goes to `Other`; titles and abstracts are never used to guess.
+
+"Peer-reviewed" here only means the source metadata says journal article or review. It is not
+verified peer review, and a preprint later published as a journal article is not upgraded
+automatically. The run summary reports `by_category` (selected categories, zeros included) and
+`filtered_by_type` (scanned records dropped because their category was not selected).
+
 ## Run locally
 
 ```bash

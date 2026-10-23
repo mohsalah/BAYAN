@@ -14,7 +14,10 @@ def test_health_libraries_languages(tmp_path):
         assert client.get("/api/languages").json()["ar"]["rtl"] is True
         libs = {lib["id"]: lib for lib in client.get("/api/libraries").json()}
         assert libs["openalex"]["status"] == "available"
-        assert "manual" in client.get("/api/document-types").json()
+        types = client.get("/api/document-types").json()
+        assert [t["id"] for t in types] == [
+            "peer_reviewed", "proceedings", "thesis", "report", "other"]
+        assert "not verified" in types[0]["description"]
 
 
 def test_only_implemented_connectors_are_available():

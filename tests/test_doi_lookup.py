@@ -239,7 +239,8 @@ def test_search_fills_missing_dois_stores_duplicates_once_and_reports_counts(tmp
     with TestClient(create_app(settings, connector_factory=factory)) as client:
         sign_in(client)
         res = client.post("/api/search", json={"libraries": ["openalex", "arxiv"],
-                                               "profile": {"year_from": 2015}})
+                                               "profile": {"year_from": 2015,
+                                                           "document_types": ["other"]}})
         assert res.status_code == 200, res.text
         run = res.json()
         s = run["summary"]
@@ -276,7 +277,8 @@ def test_search_survives_crossref_outage(tmp_path):
     with TestClient(create_app(settings, connector_factory=factory)) as client:
         sign_in(client)
         res = client.post("/api/search", json={"libraries": ["arxiv"],
-                                               "profile": {"year_from": 2015}})
+                                               "profile": {"year_from": 2015,
+                                                           "document_types": ["other"]}})
         assert res.status_code == 200, res.text
         s = res.json()["summary"]
         assert s["found"] == 1 and s["doi_lookup"]["failed"] == 1

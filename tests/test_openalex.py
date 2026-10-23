@@ -51,12 +51,14 @@ def test_rebuild_abstract_handles_empty():
 def test_filter_includes_period_types_languages_countries():
     profile = SearchProfile(
         year_from=2000, year_to=2010,
-        document_types=["article", "thesis", "manual"],
+        document_types=["peer_reviewed", "thesis"],
         languages=["ar", "fr"], countries=["eg", "ca"],
     )
     f = build_filter(profile)
     assert "publication_year:2000-2010" in f and "is_retracted:false" in f
-    assert "type:article|dissertation" in f and "manual" not in f
+    assert "type:article|review|dissertation" in f
+    # `other` means "not one of the four", so it cannot be pre-filtered: no type filter
+    assert "type:" not in build_filter(SearchProfile(document_types=["thesis", "other"]))
     assert "language:ar|fr" in f
     assert "authorships.institutions.country_code:EG|CA" in f
 

@@ -101,7 +101,8 @@ def test_crossref_parse_item():
     assert (p.source, p.id, p.doi, p.year) == ("crossref", SHARED_DOI, SHARED_DOI, 2021)
     assert p.abstract == "Hello world & more."
     assert p.first_author == "Ada Lovelace" and p.venue == "Ann. Nucl. Energy"
-    assert p.document_type == "journal-article" and p.citations == 4
+    assert p.native_type == "journal-article" and p.citations == 4
+    assert p.category == "peer_reviewed"
     assert p.countries == [] and p.oa_url == "" and not p.is_oa
 
 
@@ -112,10 +113,13 @@ def test_crossref_leaves_missing_fields_empty():
 
 def test_crossref_filter_mapping():
     f = crossref_filter(SearchProfile(year_from=2000, year_to=2010,
-                                      document_types=["article", "thesis", "review", "manual"]))
+                                      document_types=["peer_reviewed", "thesis"]))
     assert "from-pub-date:2000" in f and "until-pub-date:2010" in f
     assert "type:journal-article" in f and "type:dissertation" in f
-    assert "review" not in f and "manual" not in f
+    assert "proceedings-article" not in f and "type:report" not in f
+    # `other` cannot be expressed as a type list, so it sends no type filter at all
+    f = crossref_filter(SearchProfile(document_types=["peer_reviewed", "other"]))
+    assert "type:" not in f
 
 
 def test_crossref_pages_with_cursor_and_sends_polite_email():
@@ -126,7 +130,7 @@ def test_crossref_pages_with_cursor_and_sends_polite_email():
         (200, {"message": {"items": [], "next-cursor": "c4"}}, {}),
     ], seen)
     conn = CrossrefConnector(contact_email="me@example.org", client=client)
-    papers = list(conn.search(SearchProfile(query="neutron")))
+    papers = list(conn.search(SearchProfile(query="neutron", document_types=[])))
     assert [p.doi for p in papers] == [SHARED_DOI, "10.5555/cr-only"]
     assert [r.url.params["cursor"] for r in seen] == ["*", "c2", "c3"]
     assert seen[0].url.params["mailto"] == "me@example.org"
@@ -134,18 +138,10 @@ def test_crossref_pages_with_cursor_and_sends_polite_email():
     assert "me@example.org" in seen[0].headers["user-agent"]
 
 
-def test_crossref_only_unmappable_types_asks_nothing():
-    seen = []
-    client = sequence([], seen)
-    profile = SearchProfile(document_types=["manual", "review"])
-    assert list(CrossrefConnector(client=client).search(profile)) == []
-    assert seen == []
-
-
 def test_crossref_skips_records_without_doi():
     client = sequence([(200, {"message": {"items": [{"title": ["No DOI"]}], "next-cursor": "n"}},
                         {}), (200, {"message": {"items": []}}, {})])
-    assert list(CrossrefConnector(client=client).search(SearchProfile())) == []
+    assert list(CrossrefConnector(client=client).search(SearchProfile(document_types=[]))) == []
 
 
 # ---- retries (all three share the helper) ----
@@ -166,7 +162,7 @@ def test_retries_429_with_retry_after_then_succeeds(index):
     ]
     sleeps = []
     client = sequence([(429, {}, {"Retry-After": "7"}), (503, {}, {}), (200, bodies[index], {})])
-    assert list(make_all(client, sleeps)[index].search(SearchProfile())) == []
+    assert list(make_all(client, sleeps)[index].search(SearchProfile(document_types=[]))) == []
     assert sleeps == [7.0, 4.0]
 
 
@@ -175,7 +171,8 @@ def test_failure_message_has_no_keys_email_or_params(index):
     sleeps = []
     client = sequence([(500, {}, {})] * 3)
     with pytest.raises(ConnectorError) as exc:
-        list(make_all(client, sleeps)[index].search(SearchProfile(query="topsecretquery")))
+        profile = SearchProfile(query="topsecretquery", document_types=[])
+        list(make_all(client, sleeps)[index].search(profile))
     text = str(exc.value)
     assert "HTTP 500" in text
     assert "secret@example.org" not in text and "topsecretquery" not in text
@@ -186,7 +183,8 @@ def test_non_retryable_status_fails_immediately():
     sleeps = []
     client = sequence([(400, {}, {})])
     with pytest.raises(ConnectorError, match="HTTP 400"):
-        list(CrossrefConnector(client=client, sleep=sleeps.append).search(SearchProfile()))
+        conn = CrossrefConnector(client=client, sleep=sleeps.append)
+        list(conn.search(SearchProfile(document_types=[])))
     assert sleeps == []
 
 
@@ -196,7 +194,7 @@ def test_transport_error_is_reported_by_type_only():
 
     with pytest.raises(ConnectorError) as exc:
         list(EuropePMCConnector(client=client_for(boom), sleep=lambda s: None,
-                                max_attempts=2).search(SearchProfile()))
+                                max_attempts=2).search(SearchProfile(document_types=[])))
     assert "ConnectError" in str(exc.value) and "secret.host" not in str(exc.value)
 
 
@@ -207,10 +205,12 @@ def test_arxiv_parse_and_query():
     feed = ARXIV_FEED.format(total=1, entries=arxiv_entry("2103.00001", "10.1234/SHARED.2021"))
     conn = ArxivConnector(contact_email="me@example.org", client=sequence([(200, feed, {})], seen),
                           sleep=lambda s: None)
-    (p,) = conn.search(SearchProfile(query="spectral methods", year_from=2020, year_to=2022))
+    (p,) = conn.search(SearchProfile(query="spectral methods", year_from=2020, year_to=2022,
+                                      document_types=[]))
     assert (p.source, p.id, p.doi, p.year) == ("arxiv", "2103.00001", SHARED_DOI, 2021)
     assert p.title == "Spectral methods" and p.abstract == "An abstract."
-    assert p.first_author == "Grace Hopper" and p.document_type == "preprint"
+    assert p.first_author == "Grace Hopper" and p.native_type == "preprint"
+    assert p.category == "other" and p.category_basis
     assert p.is_oa and p.oa_url == "http://arxiv.org/pdf/2103.00001v2"
     assert p.keywords == ["physics.comp-ph", "math.NA"] and p.topic == "physics.comp-ph"
     assert p.language == "" and p.countries == []
@@ -222,7 +222,8 @@ def test_arxiv_parse_and_query():
 
 def test_arxiv_without_doi_leaves_it_empty():
     feed = ARXIV_FEED.format(total=1, entries=arxiv_entry("2103.00002"))
-    (p,) = ArxivConnector(client=sequence([(200, feed, {})])).search(SearchProfile())
+    conn = ArxivConnector(client=sequence([(200, feed, {})]))
+    (p,) = conn.search(SearchProfile(document_types=[]))
     assert p.doi == ""
 
 
@@ -232,7 +233,7 @@ def test_arxiv_paging_waits_between_pages_and_stops_at_total():
     page2 = ARXIV_FEED.format(total=3, entries=arxiv_entry("3"))
     conn = ArxivConnector(client=sequence([(200, page1, {}), (200, page2, {})], seen),
                           sleep=sleeps.append, page_size=2)
-    assert [p.id for p in conn.search(SearchProfile())] == ["1", "2", "3"]
+    assert [p.id for p in conn.search(SearchProfile(document_types=[]))] == ["1", "2", "3"]
     assert [r.url.params["start"] for r in seen] == ["0", "2"]
     assert sleeps == [3.0]
 
@@ -242,12 +243,14 @@ def test_arxiv_error_entry_raises():
         "<entry><id>http://arxiv.org/api/errors#bad</id><title>Error</title>"
         "<summary>bad query text</summary></entry>"))
     with pytest.raises(ConnectorError, match="rejected"):
-        list(ArxivConnector(client=sequence([(200, feed, {})])).search(SearchProfile()))
+        conn = ArxivConnector(client=sequence([(200, feed, {})]))
+        list(conn.search(SearchProfile(document_types=[])))
 
 
 def test_arxiv_garbage_response_raises():
     with pytest.raises(ConnectorError, match="unreadable"):
-        list(ArxivConnector(client=sequence([(200, "<html>not xml", {})])).search(SearchProfile()))
+        conn = ArxivConnector(client=sequence([(200, "<html>not xml", {})]))
+        list(conn.search(SearchProfile(document_types=[])))
 
 
 # ---- Europe PMC ----
@@ -255,7 +258,8 @@ def test_arxiv_garbage_response_raises():
 def test_europepmc_parse_result():
     p = parse_result(EPMC_RECORD)
     assert (p.source, p.id, p.doi, p.year) == ("europepmc", "MED:123", SHARED_DOI, 2021)
-    assert p.language == "en" and p.document_type == "review" and p.venue == "J Med Phys"
+    assert p.language == "en" and p.native_type == "Journal Article; Review"
+    assert p.category == "peer_reviewed" and p.venue == "J Med Phys"
     assert p.first_author == "Curie M" and p.is_oa and p.oa_url == "https://x/p.pdf"
     assert p.landing_url == "https://europepmc.org/article/MED/123" and p.keywords == ["neutron"]
 
@@ -263,13 +267,18 @@ def test_europepmc_parse_result():
 def test_europepmc_missing_fields_and_preprint():
     p = parse_result({"id": "PPR1", "source": "PPR"})
     assert (p.doi, p.year, p.language, p.oa_url, p.first_author) == ("", None, "", "", "")
-    assert p.document_type == "preprint" and not p.is_oa
+    assert p.native_type == "preprint" and not p.is_oa
+    assert p.category == "other" and "PPR" in p.category_basis
 
 
 def test_europepmc_query_maps_years_and_languages():
     q = epmc_query(SearchProfile(query="neutron", year_from=2000, year_to=2010,
                                  languages=["en", "fr"], countries=["EG"]))
-    assert q == "(neutron) AND (PUB_YEAR:[2000 TO 2010]) AND (LANG:eng OR LANG:fre)"
+    assert q == ("(neutron) AND (PUB_YEAR:[2000 TO 2010]) AND (LANG:eng OR LANG:fre)"
+                 " AND (NOT SRC:PPR)")
+    # no preprint pre-filter when `other` is selected or nothing is selected
+    for types in (["other"], ["peer_reviewed", "other"], []):
+        assert "SRC:PPR" not in epmc_query(SearchProfile(document_types=types))
 
 
 def test_europepmc_cursor_paging_stops_on_repeat_or_empty():
@@ -280,7 +289,7 @@ def test_europepmc_cursor_paging_stops_on_repeat_or_empty():
          {}),
     ], seen)
     papers = list(EuropePMCConnector(contact_email="me@example.org", client=client)
-                  .search(SearchProfile()))
+                  .search(SearchProfile(document_types=[])))
     assert [p.id for p in papers] == ["MED:123", "MED:9"]
     assert [r.url.params["cursorMark"] for r in seen] == ["*", "AoE2"]
     assert seen[0].url.params["format"] == "json"
@@ -292,20 +301,24 @@ def test_supported_filters_declared_everywhere():
     assert OpenAlexConnector.supported_filters == {"years", "document_types", "languages",
                                                    "countries"}
     assert CrossrefConnector.supported_filters == {"years", "document_types"}
-    assert ArxivConnector.supported_filters == {"years"}
-    assert EuropePMCConnector.supported_filters == {"years", "languages"}
+    assert ArxivConnector.supported_filters == {"years", "document_types"}
+    assert EuropePMCConnector.supported_filters == {"years", "languages", "document_types"}
 
 
 # ---- through /api/search: dedupe, per-library counts, unapplied filters ----
 
 def openalex_client():
+    journal = {"primary_location": {"source": {"type": "journal", "display_name": "J"}}}
     work = {"id": "https://openalex.org/W1", "doi": "https://doi.org/10.1234/SHARED.2021",
             "title": "Shared work", "publication_year": 2021, "type": "article",
-            "language": "en"}
+            "language": "en", **journal}
     own = {"id": "https://openalex.org/W2", "doi": "https://doi.org/10.9/oa-only",
            "title": "OpenAlex only", "publication_year": 2020, "type": "article",
-           "language": "en"}
-    return sequence([(200, {"results": [work, own], "meta": {"next_cursor": None}}, {})])
+           "language": "en", **journal}
+    preprint = {"id": "https://openalex.org/W3", "title": "A preprint",
+                "publication_year": 2020, "type": "preprint", "language": "en"}
+    return sequence([(200, {"results": [work, own, preprint], "meta": {"next_cursor": None}},
+                      {})])
 
 
 def make_factory(tmp_path):
@@ -342,28 +355,29 @@ def test_three_library_search_stores_each_work_once(tmp_path):
                                                 "password": "correct horse battery"})
         body = {"libraries": ["openalex", "arxiv", "europepmc"],
                 "profile": {"query": "neutron", "year_from": 2015, "year_to": 2022,
-                            "document_types": ["article"], "languages": ["en"],
+                            "document_types": ["peer_reviewed"], "languages": ["en"],
                             "countries": ["EG"]}}
         res = client.post("/api/search", json=body)
         assert res.status_code == 200, res.text
         run = res.json()
         s = run["summary"]
-        # 2 openalex + 2 arxiv + 1 europepmc scanned; the shared DOI appears 3 times
-        assert s["scanned"] == 5 and s["duplicates"] == 2 and s["found"] == 3
-        assert s["scanned_by_library"] == {"openalex": 2, "arxiv": 2, "europepmc": 1}
-        assert s["by_library"] == {"openalex": 2, "arxiv": 1, "europepmc": 0}
-        # the one DOI-less arXiv paper was looked up and Crossref had no confident match
-        assert s["doi_lookup"] == {"attempted": 1, "matched": 0, "no_match": 1, "failed": 0,
-                                   "skipped_over_budget": 0, "cache_hits": 0}
+        # openalex scans 3 (one preprint dropped by the type filter), europepmc 1 (a
+        # duplicate of the shared DOI); arXiv holds only preprints, so it is not even asked
+        assert s["scanned"] == 4 and s["duplicates"] == 1 and s["found"] == 2
+        assert s["filtered_by_type"] == 1
+        assert s["scanned_by_library"] == {"openalex": 3, "arxiv": 0, "europepmc": 1}
+        assert s["by_library"] == {"openalex": 2, "arxiv": 0, "europepmc": 0}
+        assert s["by_category"] == {"peer_reviewed": 2}
         assert s["unapplied_filters"] == {
             "openalex": [],
-            "arxiv": ["document_types", "languages", "countries"],
-            "europepmc": ["document_types", "countries"],
+            "arxiv": ["languages", "countries"],
+            "europepmc": ["countries"],
         }
         detail = client.get(f"/api/runs/{run['id']}").json()
         dois = [p["doi"] for p in detail["papers"] if p["doi"]]
         assert len(dois) == len(set(dois)) and SHARED_DOI in dois
-        assert {p["source"] for p in detail["papers"]} == {"openalex", "arxiv"}
+        assert {p["source"] for p in detail["papers"]} == {"openalex"}
+        assert {p["category"] for p in detail["papers"]} == {"peer_reviewed"}
 
 
 def test_interleaving_lets_every_library_contribute_when_limit_is_small(tmp_path):
@@ -373,7 +387,8 @@ def test_interleaving_lets_every_library_contribute_when_limit_is_small(tmp_path
     with TestClient(create_app(settings, connector_factory=factory)) as client:
         client.post("/api/auth/register", json={"email": "ada@example.org",
                                                 "password": "correct horse battery"})
-        body = {"libraries": ["openalex", "arxiv"], "profile": {"year_from": 2015}}
+        body = {"libraries": ["openalex", "arxiv"],
+                "profile": {"year_from": 2015, "document_types": ["other"]}}
         s = client.post("/api/search", json=body).json()["summary"]
         assert s["stopped"] == "scan_limit" or s["found"] >= 1
         assert s["scanned_by_library"]["openalex"] >= 1 and s["scanned_by_library"]["arxiv"] >= 1
