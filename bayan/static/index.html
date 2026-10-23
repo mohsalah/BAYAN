@@ -260,6 +260,23 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
     </div>
   </section>
 
+  <section class="card hidden" id="memberCard" aria-labelledby="memberTitle">
+    <h2 id="memberTitle">Membership access</h2>
+    <p class="note">An email address alone gives no access to paid content. Here you can store your own publisher API keys (encrypted on the server, never shown again) and an institutional proxy link. <strong>No connector uses these keys yet</strong>, so saving a key does not change any search or download today. BAYAN never logs in for you, never fetches through your proxy and never stores a library password.</p>
+    <p class="err" id="keysOff" role="alert"></p>
+    <div id="keyList"></div>
+    <h3 style="margin:14px 0 4px;font-size:1rem">Institutional proxy link</h3>
+    <form id="proxyForm">
+      <label for="proxyTemplate">Link template (https, containing {url} or {doi})<input id="proxyTemplate" type="text" style="width:420px" autocomplete="off" placeholder="https://ezproxy.myuni.edu/login?url={url}"></label>
+      <button type="submit" id="proxySave">Save</button>
+      <button type="button" class="ghost" id="proxyRemove">Remove</button>
+    </form>
+    <p class="note" id="proxyExample" aria-live="polite"></p>
+    <p class="err" id="memberErr" role="alert"></p>
+    <h3 style="margin:14px 0 4px;font-size:1rem">My uploaded PDFs</h3>
+    <div id="uploadList" class="note"></div>
+  </section>
+
   <section class="card hidden" id="runsCard">
     <h2>Earlier searches</h2><div id="runs" class="note"></div>
   </section>
@@ -398,13 +415,15 @@ async function loadMeta() {
 
 /* ---------- accounts ---------- */
 function showSignedIn(email) {
-  for (const id of ['searchCard', 'runsCard', 'logout', 'whoEmail']) $(id).classList.remove('hidden');
+  for (const id of ['searchCard', 'runsCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.remove('hidden');
   $('authCard').classList.add('hidden');
   $('whoEmail').textContent = email;
   loadRuns();
+  loadMembership();
 }
 function showSignedOut() {
-  for (const id of ['searchCard', 'resultCard', 'gapCard', 'runsCard', 'logout', 'whoEmail']) $(id).classList.add('hidden');
+  proxyTemplate = '';
+  for (const id of ['searchCard', 'resultCard', 'gapCard', 'runsCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.add('hidden');
   $('authCard').classList.remove('hidden');
 }
 async function auth(kind) {
@@ -414,6 +433,97 @@ async function auth(kind) {
     $('password').value = '';
     showSignedIn(r.email);
   } catch (e) { $('authErr').textContent = e.message; }
+}
+
+/* ---------- membership: keys, proxy template, my uploads ---------- */
+let proxyTemplate = '';
+function keyRow(p, enabled) {
+  const input = el('input', { type: 'password', id: 'key-' + p.id, autocomplete: 'off', spellcheck: 'false', style: 'width:260px', placeholder: p.needs_reentry ? 'Enter the key again' : 'Paste your key', 'aria-label': p.name + ' API key' });
+  const state = p.needs_reentry ? 'saved, but needs re-entry (the server secret changed)'
+    : p.saved ? 'saved' + (p.last4 ? ' (ends in ' + p.last4 + ')' : '') + (p.saved_at ? ', ' + p.saved_at : '') : 'not saved';
+  const save = el('button', { type: 'button', title: 'Encrypt and store this key. It is not shown again.' }, 'Save key');
+  save.disabled = !enabled;
+  save.onclick = async () => {
+    $('memberErr').textContent = '';
+    const value = input.value;
+    try {
+      const r = await json('/api/membership/' + p.id + '/key', { method: 'PUT', body: JSON.stringify({ key: value }) });
+      input.value = '';                      // never keep the key in the page
+      renderMembership(r);
+    } catch (e) { $('memberErr').textContent = e.message; }
+    input.value = '';
+  };
+  const row = el('div', { class: 'row', style: 'align-items:center;gap:8px;margin:6px 0' },
+    el('strong', { style: 'min-width:170px' }, p.name), input, save);
+  if (p.saved) {
+    const rm = el('button', { type: 'button', class: 'ghost', title: 'Delete the stored key.' }, 'Remove');
+    rm.onclick = async () => {
+      try { renderMembership(await json('/api/membership/' + p.id + '/key', { method: 'DELETE' })); }
+      catch (e) { $('memberErr').textContent = e.message; }
+    };
+    row.append(rm);
+  }
+  row.append(el('span', { class: 'small' }, state));
+  return row;
+}
+function renderMembership(m) {
+  $('keysOff').textContent = m.keys_enabled ? '' : 'Keys cannot be saved: ' + m.keys_disabled_reason + '. Ask the administrator to set APP_SECRET_KEY.';
+  $('keyList').replaceChildren(...m.publishers.map(p => keyRow(p, m.keys_enabled)));
+  proxyTemplate = m.proxy ? m.proxy.template : '';
+  $('proxyTemplate').value = proxyTemplate;
+  showProxyExample(m.proxy ? m.proxy.example : '');
+}
+function showProxyExample(link) {
+  const box = $('proxyExample');
+  box.replaceChildren();
+  if (!link) { box.textContent = 'No proxy link saved. Example links appear here as you type.'; return; }
+  box.append('Example for DOI 10.1000/xyz123: ', el('a', { href: link, target: '_blank', rel: 'noopener noreferrer' }, link));
+}
+let exampleTimer = null;
+$('proxyTemplate').oninput = () => {
+  clearTimeout(exampleTimer);
+  const template = $('proxyTemplate').value.trim();
+  exampleTimer = setTimeout(async () => {
+    if (!template) { showProxyExample(''); return; }
+    try {
+      const r = await post('/api/membership/proxy-link', { doi: '10.1000/xyz123', template });
+      $('memberErr').textContent = '';
+      showProxyExample(r.link);
+    } catch (e) { $('proxyExample').textContent = e.message; }
+  }, 400);
+};
+$('proxyForm').onsubmit = async ev => {
+  ev.preventDefault();
+  $('memberErr').textContent = '';
+  try {
+    renderMembership(await json('/api/membership/proxy', { method: 'PUT', body: JSON.stringify({ template: $('proxyTemplate').value }) }));
+    if (run) refreshRun();
+  } catch (e) { $('memberErr').textContent = e.message; }
+};
+$('proxyRemove').onclick = async () => {
+  try { renderMembership(await json('/api/membership/proxy', { method: 'DELETE' })); if (run) refreshRun(); }
+  catch (e) { $('memberErr').textContent = e.message; }
+};
+async function loadUploads() {
+  const box = $('uploadList');
+  try {
+    const list = await json('/api/uploads');
+    if (!list.length) { box.textContent = 'You have not uploaded any PDFs. Uploads are private to your account.'; return; }
+    box.replaceChildren(...list.map(u => {
+      const del = el('button', { type: 'button', class: 'ghost', title: 'Delete this uploaded file from the server.' }, 'Delete');
+      del.onclick = async () => {
+        try {
+          await api('/api/uploads?source=' + encodeURIComponent(u.source) + '&paper_id=' + encodeURIComponent(u.id), { method: 'DELETE' });
+          loadUploads();
+        } catch (e) { $('memberErr').textContent = e.message; }
+      };
+      return el('div', { style: 'margin:4px 0' }, (u.title || u.id) + ' (' + u.kind + ', ' + Math.round((u.size || 0) / 1024) + ' KB) ', del);
+    }));
+  } catch (e) { box.textContent = e.message; }
+}
+async function loadMembership() {
+  try { renderMembership(await json('/api/membership')); } catch (e) { $('memberErr').textContent = e.message; }
+  loadUploads();
 }
 
 /* ---------- results ---------- */
@@ -450,6 +560,9 @@ function paperRow(p) {
   const link = p.landing_url || p.oa_url || (p.doi ? 'https://doi.org/' + p.doi : '');
   const src = el('td', {});
   if (/^https?:\/\//.test(link)) src.append(el('a', { class: 'read', href: link, target: '_blank', rel: 'noopener noreferrer', title: 'Open the paper\'s online page. A publisher may require library access.' }, 'Open'));
+  if (p.proxy_link && /^https:\/\//.test(p.proxy_link)) {
+    src.append(' ', el('a', { class: 'read', href: p.proxy_link, target: '_blank', rel: 'noopener noreferrer', title: 'Opens your institution\'s proxy link in a new tab. Sign in to your institution there; BAYAN does not log in for you.' }, 'Open via my institution'));
+  }
   src.append(el('small', {}, ACCESS[p.access] || p.access));
   tr.append(el('td', {}, box), el('td', {}, p.year ?? ''), titleCell,
     el('td', { title: p.native_type ? 'Source type: ' + p.native_type : '' }, p.type_label || p.category_label || categoryLabels[p.category] || p.category),
@@ -566,7 +679,7 @@ async function refreshRun() {
   const r = await json('/api/runs/' + run.id);
   run = r; shown = 0;
   for (const [k, p] of [...selected]) { const fresh = r.papers.find(x => keyOf(x) === k); if (fresh) selected.set(k, fresh); }
-  renderTypes(); renderRows(); updateSelection(); refreshPdfCells(); loadManuals();
+  renderTypes(); renderRows(); updateSelection(); refreshPdfCells(); loadManuals(); loadUploads();
 }
 function renderRun(r) {
   run = r; shown = 0; selected.clear(); typeFilter.clear(); scopeTouched = false; lastAnalysis = null;
