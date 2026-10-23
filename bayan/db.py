@@ -44,6 +44,19 @@ CREATE TABLE IF NOT EXISTS doi_lookup_cache(
   cache_key TEXT PRIMARY KEY, doi TEXT NOT NULL DEFAULT '', score REAL,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS downloads(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, paper_id TEXT NOT NULL, status TEXT NOT NULL,
+  reason TEXT, detail TEXT, origin TEXT, path TEXT, size INTEGER, sha256 TEXT,
+  source_url TEXT, final_url TEXT, http_status INTEGER, retrieved_at TEXT,
+  license TEXT, version TEXT, identity_score REAL, identity_basis TEXT,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, source, paper_id)
+);
+CREATE TABLE IF NOT EXISTS download_attempts(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS usage(
   id INTEGER PRIMARY KEY, user_id TEXT, month TEXT, model TEXT,
   input_tokens INTEGER, output_tokens INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP

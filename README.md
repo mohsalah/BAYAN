@@ -22,6 +22,47 @@ verified peer review, and a preprint later published as a journal article is not
 automatically. The run summary reports `by_category` (selected categories, zeros included) and
 `filtered_by_type` (scanned records dropped because their category was not selected).
 
+## PDF download (M14)
+
+Tick papers in the results table and press **Download selected PDFs**. A PDF may only come from,
+in order: a PDF you uploaded for that paper, the open-access URL the library listed, or an
+[Unpaywall](https://unpaywall.org/products/api) lookup by DOI (needs `CONTACT_EMAIL`, sent as the
+polite `email` parameter). Nothing else is tried: no scraping behind logins, no CAPTCHA bypass,
+no stored library passwords.
+
+A file is saved only if it starts with `%PDF-`, is not empty, is at most 100 MB and parses with
+`pypdf`. It is written to a `.part` file and renamed atomically. The size, SHA-256, source URL,
+final URL (query strings are never stored), HTTP status, retrieval time and the license/version
+Unpaywall gives are recorded. After download the first pages are compared with the title and DOI.
+
+| Status | Meaning |
+| --- | --- |
+| `downloaded_verified` | The DOI is printed in the file, or the title matches (similarity >= 0.9). |
+| `downloaded_unverified_identity` | A valid PDF, but identity could not be confirmed (for example a scan with no text). |
+| `identity_mismatch` | Suspected other paper. The file is kept under `_identity_mismatch/`, never served as the paper. |
+| `needs_access` | No legal copy was obtained. `reason` is `no_open_link`, `html_returned`, `http_error`, `too_large`, `not_pdf`, `unsafe_url` or `network_error`, with a `detail` sentence. |
+| `pending` | Queued, not finished. |
+
+Requests: one at a time per host, at least `BAYAN_DOWNLOAD_HOST_DELAY` seconds (default 1)
+between requests to a host, `Retry-After` honoured (capped at 60 s), at most 2 retries. Only public
+http(s) URLs are fetched (no credentials, no private/loopback/link-local addresses, checked again on
+every redirect, at most 5 redirects). Each user may queue `BAYAN_DOWNLOADS_PER_HOUR` papers per hour
+(default 100); beyond that the API answers 429.
+
+Files live under `BAYAN_PDF_ROOT` (default `pdfs/`) as `<user_id>/<source>/<paper_id>.pdf` (ids are
+escaped to be filesystem safe) and are served only to the owning signed-in user.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/downloads` | Body `{"run_id": 1, "papers": [{"source": "openalex", "id": "W1"}]}` (1 to 50 papers of your run). Returns 202 with `job_id`, `queued`, and `already_downloaded` (validated papers are not fetched again). |
+| `GET /api/downloads/jobs/{job_id}` | Job `status` (`pending`, `running`, `done`, `failed`) and the per-paper records. Poll this. |
+| `GET /api/downloads?run_id=1` | Download records for the papers of a run. |
+| `POST /api/downloads/upload?source=..&paper_id=..` | Upload your own PDF as the raw body with `Content-Type: application/pdf` (max 100 MB, same validation; 415/413/422 on rejection). |
+| `GET /api/downloads/file?source=..&paper_id=..` | The validated PDF; 404 unless it is yours and validated. |
+
+The download job runs in the API process through FastAPI background tasks and the `jobs` table; a
+restart while it runs leaves its papers `pending`, and selecting them again re-queues them.
+
 ## Run locally
 
 ```bash

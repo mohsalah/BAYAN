@@ -20,6 +20,11 @@ class Settings:
     searches_per_hour: int = 20
     search_max_results: int = 200
     doi_lookup_budget: int = 50  # Crossref DOI lookups per run (cache hits are free)
+    pdf_root: Path = Path("pdfs")  # pdfs/<user_id>/<source>/<paper_id>.pdf
+    downloads_per_hour: int = 100  # papers a user may queue for download per hour
+    download_host_delay: float = 1.0  # minimum seconds between requests to the same host
+    download_retries: int = 2
+    pdf_max_bytes: int = 100 * 1024 * 1024
 
 
 def load_settings() -> Settings:
@@ -32,5 +37,8 @@ def load_settings() -> Settings:
         model_reader=os.environ.get("BAYAN_MODEL_READER", "claude-sonnet-5-5"),
         model_screener=os.environ.get("BAYAN_MODEL_SCREENER", "claude-haiku-5-5"),
         doi_lookup_budget=int(os.environ.get("BAYAN_DOI_LOOKUP_BUDGET", "50")),
+        pdf_root=Path(os.environ.get("BAYAN_PDF_ROOT", "pdfs")),
+        downloads_per_hour=int(os.environ.get("BAYAN_DOWNLOADS_PER_HOUR", "100")),
+        download_host_delay=float(os.environ.get("BAYAN_DOWNLOAD_HOST_DELAY", "1.0")),
         cookie_secure=os.environ.get("BAYAN_COOKIE_SECURE", "").lower() in ("1", "true", "yes"),
     )
