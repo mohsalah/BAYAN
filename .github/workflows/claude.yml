@@ -23,8 +23,13 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Install the project so Claude can run the tests and linter itself.
+      - run: pip install -e ".[dev]"
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Let Claude open pull requests itself instead of posting a link.
-          claude_args: '--allowedTools "Bash(gh pr create:*)"'
+          # Claude may open pull requests and run only the test and lint tools (no arbitrary python).
+          claude_args: '--allowedTools "Bash(gh pr create:*),Bash(pytest:*),Bash(ruff:*),Bash(python -m pytest:*),Bash(python -m ruff:*)"'

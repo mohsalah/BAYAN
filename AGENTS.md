@@ -37,3 +37,5 @@ Full design and milestones: `docs/BUILD_PLAN.md`. Read it before starting any is
 - Test: `.venv/bin/pytest`
 - Lint: `.venv/bin/ruff check .`
 - Run: `.venv/bin/uvicorn bayan.api:app --reload`
+- In the GitHub cloud job the project is already installed: run `pytest` and `ruff check .` directly
+  (there is no `.venv`). Run both before opening a pull request and report the results.
