@@ -73,3 +73,6 @@ class Paper(BaseModel):
     landing_url: str = ""
     keywords: list[str] = Field(default_factory=list)
     topic: str = ""
+    # Set only when the DOI was found by the automatic Crossref lookup (never for source DOIs).
+    doi_source: str = ""
+    doi_match_score: float | None = None

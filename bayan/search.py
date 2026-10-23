@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .connectors.base import FILTERS, Connector
+from .doi_lookup import DoiLooker, DoiLookup
 from .models import Paper, SearchProfile
 from .quotas import allocate_quotas
 from .retrieval import collect
@@ -32,6 +33,9 @@ def quota_weights(profile: SearchProfile, weighting: str) -> dict[int, int]:
         return {y: 1 for y in years}
     return {y: 4 if y >= 2010 else 3 if y >= 2000 else 1 for y in years}
 
+
+NO_DOI_LOOKUP = {"attempted": 0, "matched": 0, "no_match": 0, "failed": 0,
+                 "skipped_over_budget": 0, "cache_hits": 0}
 
 _DONE = object()
 
@@ -71,6 +75,8 @@ def run_search(
     request: SearchRequest,
     connectors: list[Connector],
     max_results: int,
+    doi_lookup: DoiLooker | None = None,
+    doi_budget: int = 0,
 ) -> dict:
     profile = request.profile
     quotas = None
@@ -83,7 +89,8 @@ def run_search(
                    max_results * SCAN_FACTOR, state)
     if quotas is None:
         stream = _first(stream, wanted, state)
-    result = collect(stream, quotas)
+    lookup = DoiLookup(conn, doi_lookup, doi_budget) if doi_lookup is not None else None
+    result = collect(stream, quotas, enrich=lookup)
     if quotas is not None and not result.shortfalls:
         state["stopped"] = "complete"
 
@@ -106,6 +113,12 @@ def run_search(
         "skipped_no_year": result.skipped_no_year,
         "by_document_type": dict(Counter(p.document_type or "unknown" for p in result.papers)),
         "by_language": dict(Counter(p.language or "unknown" for p in result.papers)),
+        # Crossref DOI lookup for papers found without a DOI (cache hits are not "attempted").
+        "doi_lookup": lookup.counts if lookup else dict(NO_DOI_LOOKUP),
+        # DOIs filled in by the lookup in this run, with the title-match score.
+        "doi_matches": [{"source": p.source, "id": p.id, "doi": p.doi,
+                         "score": p.doi_match_score}
+                        for p in result.papers if p.doi_source],
         "shortfalls": {str(y): {"quota": q, "collected": c}
                        for y, (q, c) in result.shortfalls.items()},
     }

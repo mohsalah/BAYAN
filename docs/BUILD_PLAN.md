@@ -44,7 +44,8 @@ One interface: `search(profile, years, cursor) -> Iterator[Paper]` and `find_ful
 
 | Tier | Source | Access |
 |---|---|---|
-| Open | OpenAlex (primary index), Crossref, arXiv, Europe PMC/PubMed, Semantic Scholar, CORE, Unpaywall | Free; send a contact email for polite pools; OpenAlex key from env |
+| Open | OpenAlex (primary index), arXiv, Europe PMC/PubMed, Semantic Scholar, CORE, Unpaywall | Free; send a contact email for polite pools; OpenAlex key from env |
+| Open (automatic DOI lookup, not a search source) | Crossref | Free; polite pool. Keyword search returned off-topic papers, so Crossref is only used to find the DOI of a paper already found elsewhere that has none (`query.bibliographic` = title + first author + year). A DOI is accepted only if the normalised title similarity is >= 0.95, the year is within +/-1 and the first author's family name matches; otherwise it stays empty. At most 50 lookups per run (`BAYAN_DOI_LOOKUP_BUDGET`), sequential, cached including "no match". Papers get `doi_source = crossref_lookup` and the match score. `/api/search` rejects `crossref` in `libraries`. |
 | Membership | IEEE Xplore, Elsevier/ScienceDirect, Springer Nature, Wiley | Per-user API key/token (encrypted), institutional proxy link, or user-uploaded PDF |
 
 Membership handling (decided): the user can (a) paste their own API key/token, (b) enter an institutional proxy URL template (EZproxy/OpenAthens) so the app emits links the user opens while logged in, (c) upload PDFs they have rights to, (d) use open sources only. An email address alone gives no access; it is used only for Unpaywall and polite-pool headers.

@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS jobs(
   id INTEGER PRIMARY KEY, kind TEXT NOT NULL, payload TEXT, status TEXT NOT NULL DEFAULT 'pending',
   error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS doi_lookup_cache(
+  cache_key TEXT PRIMARY KEY, doi TEXT NOT NULL DEFAULT '', score REAL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS usage(
   id INTEGER PRIMARY KEY, user_id TEXT, month TEXT, model TEXT,
   input_tokens INTEGER, output_tokens INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP

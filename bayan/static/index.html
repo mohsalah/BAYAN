@@ -113,7 +113,7 @@ const picked = name => [...document.querySelectorAll('input[name=' + name + ']:c
 
 async function loadMeta() {
   const [libs, types, langs] = await Promise.all([api('/api/libraries'), api('/api/document-types'), api('/api/languages')]);
-  checks($('libs'), libs.map(l => ({ value: l.id, label: l.name + (l.tier === 'membership' ? ' (membership)' : ''), checked: l.status === 'available', disabled: l.status !== 'available', badge: l.status === 'available' ? '' : (l.status === 'unconfirmed' ? 'not available yet' : 'planned') })), 'lib');
+  checks($('libs'), libs.map(l => ({ value: l.id, label: l.name + (l.tier === 'membership' ? ' (membership)' : ''), checked: l.status === 'available' && l.role === 'search', disabled: l.status !== 'available' || l.role !== 'search', badge: l.role === 'lookup' ? 'automatic DOI lookup' : l.status === 'available' ? '' : (l.status === 'unconfirmed' ? 'not available yet' : 'planned') })), 'lib');
   checks($('types'), types.map(t => ({ value: t, label: t, checked: t === 'article' || t === 'review', disabled: t === 'manual', badge: t === 'manual' ? 'uploads later' : '' })), 'type');
   checks($('langs'), Object.entries(langs).map(([c, v]) => ({ value: c, label: v.name, checked: c === 'en' })), 'lang');
 }
@@ -149,6 +149,8 @@ function renderRun(run) {
   if (stop) notes.push(el('p', { class: 'note' }, stop));
   const sf = Object.entries(s.shortfalls || {});
   if (sf.length) notes.push(el('p', { class: 'warn' }, 'Shortfalls (fewer papers found than requested, not padded): ' + sf.map(([y, v]) => y + ' ' + v.collected + '/' + v.quota).join(', ')));
+  const d = s.doi_lookup;
+  if (d) notes.push(el('p', { class: 'note' }, 'Automatic DOI lookup (Crossref): ' + d.matched + ' found, ' + d.no_match + ' no confident match, ' + d.failed + ' failed, ' + d.skipped_over_budget + ' skipped (over budget), ' + d.cache_hits + ' from cache; ' + d.attempted + ' lookups made.'));
   const names = { years: 'period', document_types: 'document types', languages: 'languages', countries: 'countries' };
   for (const [lib, fs] of Object.entries(s.unapplied_filters || {})) {
     if (fs.length) notes.push(el('p', { class: 'warn' }, lib + ' could not apply: ' + fs.map(f => names[f] || f).join(', ') + ' (its results are not filtered on these).'));
