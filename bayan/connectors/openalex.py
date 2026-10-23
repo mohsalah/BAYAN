@@ -121,9 +121,12 @@ class OpenAlexConnector:
         self._sleep = sleep
         self._max_attempts = max_attempts
         self._per_page = per_page
+        # Plain-language notes for the run summary (for example a paging limit that was hit).
+        self.warnings: list[str] = []
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
         cursor: str | None = "*"
+        first_page = True
         while cursor:
             params = {
                 "filter": build_filter(profile),
@@ -137,7 +140,17 @@ class OpenAlexConnector:
                 params["mailto"] = self._email
             if self._api_key:
                 params["api_key"] = self._api_key
-            data = self._get(params)
+            try:
+                data = self._get(params)
+            except ConnectorError as exc:
+                # OpenAlex needs a free API key to page past the first page of results.
+                if not first_page and not self._api_key and "HTTP 401" in str(exc):
+                    self.warnings.append(
+                        f"OpenAlex returned only its first {self._per_page} results. Paging "
+                        "further needs a free OpenAlex API key (set OPENALEX_API_KEY).")
+                    return
+                raise
+            first_page = False
             for work in data.get("results", []):
                 yield parse_work(work)
             cursor = (data.get("meta") or {}).get("next_cursor")

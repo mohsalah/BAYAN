@@ -178,3 +178,10 @@ def test_web_page_is_served(setup):
     client, _, _ = setup
     r = client.get("/")
     assert r.status_code == 200 and "BAYAN" in r.text
+
+
+def test_connector_warnings_appear_in_run_summary(setup):
+    client, fake, _ = setup
+    fake.warnings = ["OpenAlex returned only its first 200 results."]
+    register(client)
+    assert search(client).json()["summary"]["warnings"] == fake.warnings
