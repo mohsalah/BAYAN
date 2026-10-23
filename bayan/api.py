@@ -3,11 +3,12 @@
 import json
 import sqlite3
 from collections.abc import Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -32,6 +33,18 @@ from .connectors import (
 )
 from .connectors.base import Connector
 from .db import connect, init_db
+from .downloads import (
+    DOWNLOADED,
+    PENDING,
+    Fetcher,
+    finalize_pdf,
+    new_part,
+    now_iso,
+    pdf_path,
+    public_record,
+    record_verdict,
+    run_download_job,
+)
 from .export import to_csv, to_xlsx
 from .libraries import LIBRARIES
 from .models import CATEGORY_INFO, LANGUAGES, normalize_document_types
@@ -51,6 +64,11 @@ class Credentials(BaseModel):
 class PaperRef(BaseModel):
     source: str
     id: str
+
+
+class DownloadRequest(BaseModel):
+    run_id: int
+    papers: list[PaperRef] = Field(min_length=1, max_length=50)
 
 
 class ExportRequest(BaseModel):
@@ -95,9 +113,13 @@ def default_connector_factory(settings: Settings) -> ConnectorFactory:
 
 
 def create_app(
-    settings: Settings | None = None, connector_factory: ConnectorFactory | None = None
+    settings: Settings | None = None, connector_factory: ConnectorFactory | None = None,
+    fetcher: Fetcher | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
+    fetcher = fetcher or Fetcher(host_delay=settings.download_host_delay,
+                                 max_retries=settings.download_retries,
+                                 contact_email=settings.contact_email)
     make_connector = connector_factory or default_connector_factory(settings)
 
     @asynccontextmanager
@@ -380,6 +402,130 @@ def create_app(
         return {"id": row["id"], "kind": row["kind"], "run_id": row["run_id"],
                 "created_at": row["created_at"], "request": json.loads(row["request"]),
                 "prompt": row["prompt"], "packet": json.loads(row["packet"])}
+
+    # ---- PDF downloads: selection, background job, status, upload, owner-only file ----
+
+    def download_rows(conn: sqlite3.Connection, user_id: int,
+                      keys: list[tuple[str, str]]) -> list[dict]:
+        out = []
+        for source, paper_id in keys:
+            row = conn.execute(
+                "SELECT * FROM downloads WHERE user_id = ? AND source = ? AND paper_id = ?",
+                (user_id, source, paper_id)).fetchone()
+            out.append(public_record(row) if row else
+                       {"source": source, "id": paper_id, "status": "not_requested"})
+        return out
+
+    @app.post("/api/downloads", status_code=202)
+    def start_downloads(body: DownloadRequest, background: BackgroundTasks, user: User,
+                        conn: Conn) -> dict:
+        run = owned_run(conn, body.run_id, user["id"])
+        in_run = {(p["source"], p["id"]) for p in run_papers(conn, run["id"], {})}
+        wanted = list(dict.fromkeys((r.source, r.id) for r in body.papers))
+        if any(k not in in_run for k in wanted):
+            raise HTTPException(404, "One or more papers are not in this run")
+        have = {(r["source"], r["paper_id"]) for r in conn.execute(
+            "SELECT source, paper_id FROM downloads WHERE user_id = ? AND status IN (?, ?)",
+            (user["id"], *DOWNLOADED))}
+        queue = [k for k in wanted if k not in have]
+        already = [k for k in wanted if k in have]
+        recent = conn.execute(
+            "SELECT COUNT(*) FROM download_attempts WHERE user_id = ?"
+            " AND created_at > datetime('now', '-1 hour')", (user["id"],)).fetchone()[0]
+        if recent + len(queue) > settings.downloads_per_hour:
+            raise HTTPException(
+                429, f"Download limit reached: {settings.downloads_per_hour} papers per hour "
+                f"({max(0, settings.downloads_per_hour - recent)} left). Try again later.")
+        job_id = None
+        if queue:
+            conn.executemany("INSERT INTO download_attempts(user_id) VALUES(?)",
+                             [(user["id"],)] * len(queue))
+            for source, paper_id in queue:
+                conn.execute(
+                    "INSERT INTO downloads(user_id, source, paper_id, status) VALUES(?,?,?,?)"
+                    " ON CONFLICT(user_id, source, paper_id) DO UPDATE SET status = ?,"
+                    " reason = NULL, detail = NULL, updated_at = CURRENT_TIMESTAMP",
+                    (user["id"], source, paper_id, PENDING, PENDING))
+            cur = conn.execute(
+                "INSERT INTO jobs(kind, payload, status) VALUES('pdf_download', ?, 'pending')",
+                (json.dumps({"user_id": user["id"], "run_id": run["id"], "papers": queue}),))
+            job_id = cur.lastrowid
+            conn.commit()
+            background.add_task(run_download_job, settings.database_path, job_id, fetcher,
+                                settings)
+        return {"job_id": job_id,
+                "queued": [{"source": s, "id": i} for s, i in queue],
+                "already_downloaded": [{"source": s, "id": i} for s, i in already]}
+
+    @app.get("/api/downloads/jobs/{job_id}")
+    def download_job(job_id: int, user: User, conn: Conn) -> dict:
+        job = conn.execute("SELECT id, kind, payload, status, error FROM jobs WHERE id = ?",
+                           (job_id,)).fetchone()
+        payload = json.loads(job["payload"]) if job and job["kind"] == "pdf_download" else {}
+        if not payload or payload.get("user_id") != user["id"]:
+            raise HTTPException(404, "Job not found")
+        papers = download_rows(conn, user["id"], [tuple(p) for p in payload["papers"]])
+        return {"id": job["id"], "status": job["status"], "error": job["error"],
+                "total": len(papers),
+                "finished": sum(p["status"] != PENDING for p in papers), "papers": papers}
+
+    @app.get("/api/downloads")
+    def download_status(run_id: int, user: User, conn: Conn) -> list[dict]:
+        run = owned_run(conn, run_id, user["id"])
+        keys = [(p["source"], p["id"]) for p in run_papers(conn, run["id"], {})]
+        return [r for r in download_rows(conn, user["id"], keys)
+                if r["status"] != "not_requested"]
+
+    @app.post("/api/downloads/upload")
+    async def upload_pdf(source: str, paper_id: str, request: Request, user: User) -> dict:
+        # The request-scoped connection belongs to another thread, so open short-lived ones here.
+        def lookup() -> sqlite3.Row:
+            with closing(connect(settings.database_path)) as c:
+                return user_papers(c, user["id"], [PaperRef(source=source, id=paper_id)])[0]
+
+        paper = await run_in_threadpool(lookup)
+        if not request.headers.get("content-type", "").lower().startswith("application/pdf"):
+            raise HTTPException(415, "Upload a PDF (Content-Type: application/pdf)")
+        limit = settings.pdf_max_bytes
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > limit:
+            raise HTTPException(413, "The PDF is larger than the allowed size")
+        part = new_part(settings.pdf_root, user["id"], source, paper_id)
+        part.parent.mkdir(parents=True, exist_ok=True)
+        size = 0
+        try:
+            with open(part, "wb") as out:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > limit:
+                        raise HTTPException(413, "The PDF is larger than the allowed size")
+                    out.write(chunk)
+        except BaseException:
+            part.unlink(missing_ok=True)
+            raise
+        def finish() -> dict:
+            verdict = finalize_pdf(part, settings.pdf_root, user["id"], source, paper_id,
+                                   paper["title"] or "", paper["doi"] or "", limit)
+            if verdict.status == "needs_access":
+                raise HTTPException(422, verdict.detail)
+            with closing(connect(settings.database_path)) as c:
+                record_verdict(c, user["id"], source, paper_id, verdict, origin="upload",
+                               source_url="upload", retrieved_at=now_iso())
+                return download_rows(c, user["id"], [(source, paper_id)])[0]
+
+        return await run_in_threadpool(finish)
+
+    @app.get("/api/downloads/file")
+    def download_file(source: str, paper_id: str, user: User, conn: Conn) -> FileResponse:
+        row = conn.execute(
+            "SELECT status FROM downloads WHERE user_id = ? AND source = ? AND paper_id = ?",
+            (user["id"], source, paper_id)).fetchone()
+        path = pdf_path(settings.pdf_root, user["id"], source, paper_id)
+        if row is None or row["status"] not in DOWNLOADED or not path.is_file():
+            raise HTTPException(404, "No validated PDF for this paper")
+        return FileResponse(path, media_type="application/pdf",
+                            headers={"Cache-Control": "private, no-store",
+                                     "X-Content-Type-Options": "nosniff"})
 
     return app
 

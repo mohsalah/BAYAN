@@ -87,6 +87,8 @@ td.title details{margin-top:6px}
 td.title summary{cursor:pointer;color:var(--link)}
 td.title details p{font-size:14px;margin:6px 0 0;color:var(--ink)}
 tr.sel td{background:var(--tint)}
+.badge{display:inline-block;border-radius:4px;padding:1px 8px;font-size:12px;border:1px solid var(--line);cursor:help}
+.badge.ok{color:var(--accent);border-color:var(--accent)}.badge.bad{color:var(--bad);border-color:var(--bad)}.badge.warn{color:var(--warn);border-color:var(--warn)}
 .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 10px;font-size:12px;margin:2px 4px 2px 0;color:var(--ink)}
 .read{display:inline-block;background:var(--accent);color:var(--on-accent);border-radius:5px;padding:5px 10px;text-decoration:none}
 /* theme control */
@@ -183,17 +185,24 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
       <button type="button" id="exportXlsx">Export Excel</button>
       <button type="button" id="exportCsv" class="ghost">Export CSV</button>
       <button type="button" id="clearSel" class="ghost">Clear selection</button>
+      <button type="button" id="dlPdfs" title="Download the full-text PDF of each ticked paper, from legal open-access sources only.">Download selected PDFs</button>
       <span class="spacer"></span>
       <span id="exportMsg" class="note" role="status"></span>
     </div>
+    <p id="dlMsg" class="note" role="status"></p>
     <div class="tablewrap">
       <table>
         <thead><tr>
           <th><input type="checkbox" id="all" aria-label="Select displayed papers"></th>
-          <th>Year</th><th>Title &amp; abstract</th><th>Reference type</th><th>Lang</th><th>DOI</th><th>Source</th>
+          <th>Year</th><th>Title &amp; abstract</th><th>Reference type</th><th>Lang</th><th>DOI</th><th>Source</th><th>PDF</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
+    </div>
+    <div id="needsAccess" class="hidden">
+      <h3>Needs access</h3>
+      <p class="note">No legal open copy could be downloaded for these papers. Get the PDF through your library, then upload it here. Nothing was fetched from behind a login.</p>
+      <div id="needsList"></div>
     </div>
     <div class="bar"><button type="button" class="ghost hidden" id="more">Show more</button></div>
   </section>
@@ -385,8 +394,85 @@ function paperRow(p) {
   src.append(el('small', {}, ACCESS[p.access] || p.access));
   tr.append(el('td', {}, box), el('td', {}, p.year ?? ''), titleCell,
     el('td', { title: p.native_type ? 'Source type: ' + p.native_type : '' }, p.category_label || categoryLabels[p.category] || p.category),
-    el('td', {}, p.language), doi, src);
+    el('td', {}, p.language), doi, src, pdfCell(p));
   return tr;
+}
+
+/* ---------- PDF downloads ---------- */
+const dl = new Map();                       // key -> download record from the API
+const STATUS = {
+  downloaded_verified: ['PDF verified', 'ok'], downloaded_unverified_identity: ['PDF, identity not verified', 'warn'],
+  identity_mismatch: ['Wrong paper?', 'bad'], needs_access: ['Needs access', 'bad'], pending: ['Pending…', ''],
+};
+function badge(rec) {
+  const [label, cls] = STATUS[rec.status] || [rec.status, ''];
+  const why = rec.status === 'needs_access' ? (rec.reason_text || '') + ' ' + (rec.detail || '') : (rec.detail || '');
+  return el('span', { class: 'badge ' + cls, title: why.trim() || label }, label);
+}
+function pdfCell(p) {
+  const td = el('td', { 'data-key': keyOf(p) });
+  fillPdfCell(td, p);
+  return td;
+}
+function fillPdfCell(td, p) {
+  const rec = dl.get(keyOf(p));
+  if (!rec) { td.replaceChildren(); return; }
+  const kids = [badge(rec)];
+  if (rec.has_file) kids.push(el('br'), el('a', { class: 'read', target: '_blank', rel: 'noopener noreferrer',
+    href: '/api/downloads/file?source=' + encodeURIComponent(p.source) + '&paper_id=' + encodeURIComponent(p.id) }, 'Open PDF'));
+  td.replaceChildren(...kids);
+}
+function refreshPdfCells() {
+  $('rows').querySelectorAll('td[data-key]').forEach(td => {
+    const p = run.papers.find(x => keyOf(x) === td.getAttribute('data-key'));
+    if (p) fillPdfCell(td, p);
+  });
+  const needs = run.papers.filter(p => ['needs_access', 'identity_mismatch'].includes((dl.get(keyOf(p)) || {}).status));
+  $('needsAccess').classList.toggle('hidden', !needs.length);
+  $('needsList').replaceChildren(...needs.map(p => {
+    const rec = dl.get(keyOf(p));
+    const file = el('input', { type: 'file', accept: 'application/pdf,.pdf', 'aria-label': 'Upload your own PDF for ' + (p.title || 'paper') });
+    const msg = el('span', { class: 'note', role: 'status' });
+    file.onchange = async () => {
+      if (!file.files[0]) return;
+      msg.textContent = 'Checking…';
+      try {
+        const r = await api('/api/downloads/upload?source=' + encodeURIComponent(p.source) + '&paper_id=' + encodeURIComponent(p.id),
+          { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file.files[0] });
+        dl.set(keyOf(p), await r.json()); refreshPdfCells();
+      } catch (e) { msg.textContent = e.message; }
+    };
+    return el('div', { class: 'bar' }, badge(rec), el('span', {}, (p.title || '(untitled)') + ' — ' + (rec.reason_text || rec.detail || '')), 'Upload your own PDF: ', file, msg);
+  }));
+}
+async function loadDownloads() {
+  dl.clear();
+  try { (await json('/api/downloads?run_id=' + run.id)).forEach(r => dl.set(r.source + '\u0000' + r.id, r)); } catch (e) { /* none yet */ }
+  refreshPdfCells();
+}
+async function downloadSelected() {
+  if (!selected.size) { $('dlMsg').textContent = 'Tick at least one paper first.'; return; }
+  const papers = [...selected.values()].map(ref);
+  if (papers.length > 50) { $('dlMsg').textContent = 'At most 50 papers per download request; you ticked ' + papers.length + '.'; return; }
+  $('dlPdfs').disabled = true; $('dlMsg').textContent = 'Starting…';
+  try {
+    const r = await post('/api/downloads', { run_id: run.id, papers });
+    const note = r.already_downloaded.length ? r.already_downloaded.length + ' already downloaded. ' : '';
+    if (!r.job_id) { $('dlMsg').textContent = note + 'Nothing new to download.'; return; }
+    r.queued.forEach(q => dl.set(q.source + '\u0000' + q.id, { ...q, status: 'pending' })); refreshPdfCells();
+    for (;;) {
+      const job = await json('/api/downloads/jobs/' + r.job_id);
+      job.papers.forEach(rec => dl.set(rec.source + '\u0000' + rec.id, rec)); refreshPdfCells();
+      const ok = job.papers.filter(x => x.has_file).length;
+      $('dlMsg').textContent = note + job.finished + ' of ' + job.total + ' checked; ' + ok + ' PDF' + (ok === 1 ? '' : 's') + ' saved.';
+      if (job.status === 'done' || job.status === 'failed') {
+        if (job.status === 'failed') $('dlMsg').textContent += ' The job failed: ' + (job.error || 'unknown error') + '.';
+        break;
+      }
+      await new Promise(res => setTimeout(res, 1500));
+    }
+  } catch (e) { $('dlMsg').textContent = e.message; }
+  finally { $('dlPdfs').disabled = false; }
 }
 function renderRows() {
   const tbody = $('rows');
@@ -419,8 +505,8 @@ function renderRun(r) {
   const sf = Object.entries(s.shortfalls || {});
   if (sf.length) notes.push(el('p', { class: 'warnmsg' }, 'Shortfalls (fewer papers found than requested, not padded): ' + sf.map(([y, v]) => y + ' ' + v.collected + '/' + v.quota).join(', ')));
   $('notes').replaceChildren(...notes);
-  $('all').checked = false;
-  renderRows(); updateSelection();
+  $('all').checked = false; $('dlMsg').textContent = '';
+  renderRows(); updateSelection(); loadDownloads();
 }
 function updateSelection() {
   const n = selected.size, withAbs = [...selected.values()].filter(p => p.abstract).length;
@@ -519,6 +605,7 @@ $('all').onchange = () => {
   updateSelection();
 };
 $('clearSel').onclick = () => { selected.clear(); $('all').checked = false; $('rows').querySelectorAll('input[type=checkbox]').forEach(b => { b.checked = false; b.closest('tr').className = ''; }); updateSelection(); };
+$('dlPdfs').onclick = downloadSelected;
 $('exportXlsx').onclick = () => exportRun('xlsx');
 $('exportCsv').onclick = () => exportRun('csv');
 $('gapForm').onsubmit = ev => { ev.preventDefault(); analysis('gaps'); };
