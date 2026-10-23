@@ -438,7 +438,7 @@ async function auth(kind) {
 /* ---------- membership: keys, proxy template, my uploads ---------- */
 let proxyTemplate = '';
 function keyRow(p, enabled) {
-  const input = el('input', { type: 'password', id: 'key-' + p.id, autocomplete: 'off', spellcheck: 'false', style: 'width:260px', placeholder: p.needs_reentry ? 'Enter the key again' : 'Paste your key', 'aria-label': p.name + ' API key' });
+  const input = el('input', { type: 'password', id: 'key-' + p.id, autocomplete: 'new-password', spellcheck: 'false', style: 'width:260px', placeholder: p.needs_reentry ? 'Enter the key again' : 'Paste your key', 'aria-label': p.name + ' API key' });
   const state = p.needs_reentry ? 'saved, but needs re-entry (the server secret changed)'
     : p.saved ? 'saved' + (p.last4 ? ' (ends in ' + p.last4 + ')' : '') + (p.saved_at ? ', ' + p.saved_at : '') : 'not saved';
   const save = el('button', { type: 'button', title: 'Encrypt and store this key. It is not shown again.' }, 'Save key');
@@ -656,6 +656,7 @@ function renderRows() {
   $('more').textContent = 'Show more (' + (view.length - shown) + ' left)';
   if (!view.length && run.papers.length) tbody.replaceChildren(el('tr', {}, el('td', { colspan: 8 }, 'No loaded papers match the chosen reference type(s). Clear the filter to see all ' + run.papers.length + '.')));
   const st = setStats(run.papers, [...typeFilter], shown);
+  $('resultTitle').textContent = (typeFilter.size ? st.inView.toLocaleString() + ' of ' + st.total.toLocaleString() : st.total.toLocaleString()) + ' papers (run ' + run.id + ')';
   $('setCounts').textContent = 'Whole result set: ' + st.total + ' papers. ' + (typeFilter.size ? 'Matching the type filter: ' + st.inView + '. ' : '') + 'Loaded in the table so far: ' + st.shown + (st.shown < st.inView ? ' (use "Show more" for the rest; all ' + st.inView + ' are already in the browser and are filtered and exported without searching again)' : '') + '.';
 }
 function renderTypes() {
