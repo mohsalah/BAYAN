@@ -54,3 +54,8 @@ LIBRARIES: list[Library] = [
     {"id": "dialnet", "name": "Dialnet", "tier": "open", "status": "unconfirmed",
      "languages": ["es"], "access_modes": [], "role": "search"},
 ]
+
+
+def key_publishers() -> list[Library]:
+    """Libraries where a user can store their own API key (data-driven from `access_modes`)."""
+    return [lib for lib in LIBRARIES if "api_key" in lib["access_modes"]]

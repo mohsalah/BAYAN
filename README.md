@@ -97,6 +97,46 @@ are rejected and nothing is saved). The same file cannot be added twice.
 | `PATCH /api/manuals/{paper_id}` | `{"title": "…"}` edit the title (404 unless it is yours). |
 | `POST /api/runs/{run_id}/manuals` | `{"paper_id": "m-…"}` put a collection manual into one of your runs. |
 
+## Membership access (M7)
+
+An email address alone gives no access to paid content. A user can instead (a) store their own
+publisher API key, (b) save an institutional proxy link template, or (c) upload PDFs they have
+the right to use. **No publisher connector uses the stored keys yet**; this milestone only stores
+them and exposes `bayan.membership.get_user_key(user_id, publisher)` for a future connector.
+
+**Keys.** Publishers come from `bayan/libraries.py` (libraries with the `api_key` access mode:
+`ieee`, `elsevier`, `springer`, `wiley`). Each key is encrypted with Fernet; the Fernet key is
+derived from `APP_SECRET_KEY` with HKDF-SHA256 and a fixed context string. If `APP_SECRET_KEY` is
+unset, shorter than 16 characters or still a placeholder such as `change-me`, saving a key answers
+503 and nothing is stored (there is no plaintext fallback). The full key is never returned by any
+endpoint, logged, put in an error message, run summary or export; the status shows saved yes/no,
+the last four characters (only for keys of 12+ characters) and the save time. If the secret is
+rotated, old keys cannot be decrypted: they show `needs_reentry` and the user pastes the key
+again. Rotating the secret does not migrate keys.
+
+**Proxy link.** One template per user, `https` only, no username or password in it, host must
+not be localhost, a private/link-local address or a `.local`/`.internal`-style name (no DNS lookup
+is made: BAYAN never connects to this host), at most 500 characters, and it must contain `{url}`
+(the paper link, percent-encoded) or `{doi}`, for example `https://ezproxy.myuni.edu/login?url={url}`
+or `https://go.openathens.net/redirector/myuni.edu?url={url}`. A DOI stands in for `{url}` as
+`https://doi.org/<doi>`. BAYAN only builds the link; the user opens it in their browser while
+logged in to their institution. It does not log in, does not fetch through the proxy and stores
+no library password. When a template is saved, result rows get an *Open via my institution* link.
+
+**Uploads.** The M14/M21 upload routes are reused. `GET /api/uploads` lists your uploaded PDFs
+(papers and manuals) and `DELETE /api/uploads?source=..&paper_id=..` removes the file and its
+record (a manual is removed entirely). Everything is scoped to the signed-in user: another
+user's files cannot be listed, fetched or deleted (404).
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/membership` | Status per publisher (`saved`, `needs_reentry`, `last4`, `saved_at`), whether keys can be saved, and the proxy template with an example link. |
+| `PUT /api/membership/{publisher}/key` | `{"key": "..."}` (8 to 512 characters, no spaces). 503 without a usable `APP_SECRET_KEY`, 422 for a bad key, 404 for an unknown publisher. |
+| `DELETE /api/membership/{publisher}/key` | Remove the stored key. |
+| `PUT /api/membership/proxy` / `DELETE /api/membership/proxy` | Save (validated) or remove the proxy template. |
+| `POST /api/membership/proxy-link` | `{"doi": "10.1/x"}` or `{"url": "https://..."}`, optional `template` to preview an unsaved one. Returns `link`. |
+| `GET /api/uploads`, `DELETE /api/uploads` | Your uploaded PDFs. |
+
 ## Run locally
 
 ```bash

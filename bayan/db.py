@@ -63,6 +63,15 @@ CREATE TABLE IF NOT EXISTS manuals(
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(user_id, paper_id)
 );
+CREATE TABLE IF NOT EXISTS membership_keys(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  publisher TEXT NOT NULL, ciphertext TEXT NOT NULL, saved_at TEXT NOT NULL,
+  PRIMARY KEY(user_id, publisher)
+);
+CREATE TABLE IF NOT EXISTS membership_proxy(
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  template TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS usage(
   id INTEGER PRIMARY KEY, user_id TEXT, month TEXT, model TEXT,
   input_tokens INTEGER, output_tokens INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP

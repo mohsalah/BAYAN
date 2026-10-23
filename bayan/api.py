@@ -5,7 +5,7 @@ import sqlite3
 from collections.abc import Callable
 from contextlib import asynccontextmanager, closing
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
@@ -47,11 +47,12 @@ from .downloads import (
     pdf_path,
     pdf_sink,
     public_record,
+    quarantine_path,
     record_verdict,
     run_download_job,
 )
 from .export import to_csv, to_xlsx
-from .libraries import LIBRARIES
+from .libraries import LIBRARIES, key_publishers
 from .manuals import (
     add_to_run,
     clean_title,
@@ -60,6 +61,22 @@ from .manuals import (
     rename_manual,
     store_manual,
     title_from_url,
+)
+from .membership import (
+    EXAMPLE_DOI,
+    InvalidInput,
+    SecretNotConfigured,
+    build_link,
+    clean_key,
+    delete_key,
+    delete_template,
+    get_template,
+    key_status,
+    paper_proxy_link,
+    save_key,
+    save_template,
+    secret_problem,
+    validate_template,
 )
 from .models import CATEGORY_INFO, LANGUAGES, USER_SOURCE, normalize_document_types
 from .search import SearchRequest, paper_row_to_dict, run_search
@@ -118,6 +135,21 @@ class ProposalRequest(BaseModel):
     gap_text: str = Field(min_length=1, max_length=MAX_GAP_TEXT)
     question: str = Field(default="", max_length=1000)
     run_id: int | None = None
+
+
+class KeyBody(BaseModel):
+    # Deliberately unconstrained: a pydantic length error would echo the key in its 422 body.
+    key: Any = None
+
+
+class TemplateBody(BaseModel):
+    template: Any = None
+
+
+class ProxyLinkRequest(BaseModel):
+    doi: str | None = Field(default=None, max_length=300)
+    url: str | None = Field(default=None, max_length=2048)
+    template: Any = None  # preview with an unsaved template; default is the saved one
 
 
 CATEGORY_LABELS = {c["id"]: c["label"] for c in CATEGORY_INFO}
@@ -366,6 +398,10 @@ def create_app(
             # Runs stored before the five categories used article/review/manual.
             profile["document_types"] = normalize_document_types(profile["document_types"])
         selected = (profile or {}).get("document_types", []) if isinstance(profile, dict) else []
+        proxy = get_template(conn, user["id"])
+        if proxy is not None:
+            for d in out:
+                d["proxy_link"] = paper_proxy_link(proxy["template"], d)
         return {"id": run["id"], "created_at": run["created_at"],
                 "request": request, "summary": summary, "papers": out,
                 "type_report": type_report(selected, out, request.get("libraries", []))}
@@ -676,6 +712,118 @@ def create_app(
         add_to_run(conn, run_id, body.paper_id)
         conn.commit()
         return manual_view(conn, user["id"], body.paper_id, run_id)
+
+    # ---- Membership: encrypted keys, institutional proxy link, private uploads ----
+
+    publisher_names = {lib["id"]: lib["name"] for lib in key_publishers()}
+
+    def known_publisher(publisher: str) -> str:
+        if publisher not in publisher_names:
+            raise HTTPException(404, "Unknown publisher")
+        return publisher
+
+    def membership_view(conn: sqlite3.Connection, user_id: int) -> dict:
+        problem = secret_problem(settings.app_secret_key)
+        proxy = get_template(conn, user_id)
+        return {
+            "keys_enabled": not problem,
+            "keys_disabled_reason": problem or None,
+            "publishers": [
+                {"id": pid, "name": name,
+                 **key_status(conn, settings.app_secret_key, user_id, pid)}
+                for pid, name in publisher_names.items()],
+            "proxy": ({"template": proxy["template"], "updated_at": proxy["updated_at"],
+                       "example": build_link(proxy["template"], doi=EXAMPLE_DOI)}
+                      if proxy else None),
+            "note": "An email address alone gives no access. Saved keys are stored encrypted "
+                    "and no connector uses them yet.",
+        }
+
+    @app.get("/api/membership")
+    def membership(user: User, conn: Conn) -> dict:
+        return membership_view(conn, user["id"])
+
+    @app.put("/api/membership/proxy")
+    def put_proxy(body: TemplateBody, user: User, conn: Conn) -> dict:
+        try:
+            save_template(conn, user["id"], validate_template(body.template))
+        except InvalidInput as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return membership_view(conn, user["id"])
+
+    @app.delete("/api/membership/proxy")
+    def remove_proxy(user: User, conn: Conn) -> dict:
+        delete_template(conn, user["id"])
+        return membership_view(conn, user["id"])
+
+    @app.post("/api/membership/proxy-link")
+    def proxy_link(body: ProxyLinkRequest, user: User, conn: Conn) -> dict:
+        try:
+            if body.template is not None:
+                template = validate_template(body.template)
+            else:
+                saved = get_template(conn, user["id"])
+                if saved is None:
+                    raise HTTPException(404, "Save an institutional proxy template first")
+                template = saved["template"]
+            link = build_link(template, doi=body.doi, url=body.url)
+        except InvalidInput as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return {"link": link,
+                "note": "Open this link in your browser while signed in to your institution. "
+                        "BAYAN does not log in or fetch through the proxy."}
+
+    @app.put("/api/membership/{publisher}/key")
+    def put_key(publisher: str, body: KeyBody, user: User, conn: Conn) -> dict:
+        known_publisher(publisher)
+        try:
+            save_key(conn, settings.app_secret_key, user["id"], publisher, clean_key(body.key))
+        except SecretNotConfigured as exc:
+            raise HTTPException(503, str(exc)) from exc
+        except InvalidInput as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return membership_view(conn, user["id"])
+
+    @app.delete("/api/membership/{publisher}/key")
+    def remove_key(publisher: str, user: User, conn: Conn) -> dict:
+        delete_key(conn, user["id"], known_publisher(publisher))
+        return membership_view(conn, user["id"])
+
+    def upload_rows(conn: sqlite3.Connection, user_id: int) -> list[sqlite3.Row]:
+        return conn.execute(
+            "SELECT d.*, p.title, p.document_kind FROM downloads d"
+            " LEFT JOIN papers p ON p.source = d.source AND p.id = d.paper_id"
+            " WHERE d.user_id = ? AND d.origin = 'upload' ORDER BY d.updated_at DESC, d.rowid DESC",
+            (user_id,)).fetchall()
+
+    @app.get("/api/uploads")
+    def my_uploads(user: User, conn: Conn) -> list[dict]:
+        return [{**public_record(r), "title": r["title"] or "",
+                 "kind": "manual" if r["document_kind"] == "manual" else "paper"}
+                for r in upload_rows(conn, user["id"])]
+
+    @app.delete("/api/uploads")
+    def delete_upload(source: str, paper_id: str, user: User, conn: Conn) -> dict:
+        mine = {(r["source"], r["paper_id"]) for r in upload_rows(conn, user["id"])}
+        if (source, paper_id) not in mine:
+            raise HTTPException(404, "Upload not found")
+        for path in (pdf_path(settings.pdf_root, user["id"], source, paper_id),
+                     quarantine_path(settings.pdf_root, user["id"], source, paper_id)):
+            path.unlink(missing_ok=True)
+        conn.execute("DELETE FROM downloads WHERE user_id = ? AND source = ? AND paper_id = ?",
+                     (user["id"], source, paper_id))
+        if source == USER_SOURCE and owns_manual(conn, user["id"], paper_id):
+            # A manual is nothing without its file: remove the record and its run entries too.
+            conn.execute("DELETE FROM manuals WHERE user_id = ? AND paper_id = ?",
+                         (user["id"], paper_id))
+            conn.execute("DELETE FROM run_papers WHERE source = ? AND paper_id = ?",
+                         (USER_SOURCE, paper_id))
+            conn.execute("DELETE FROM paper_search WHERE source = ? AND id = ?",
+                         (USER_SOURCE, paper_id))
+            conn.execute("DELETE FROM papers WHERE source = ? AND id = ?",
+                         (USER_SOURCE, paper_id))
+        conn.commit()
+        return {"deleted": {"source": source, "id": paper_id}}
 
     return app
 
