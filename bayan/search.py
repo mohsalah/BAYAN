@@ -13,6 +13,7 @@ from .connectors.base import FILTERS, Connector
 from .doi_lookup import DoiLooker, DoiLookup
 from .models import DOCUMENT_TYPES, USER_SOURCE, Paper, SearchProfile
 from .quotas import allocate_quotas
+from .regions import REGIONS_VERSION
 from .retrieval import collect
 
 SCAN_FACTOR = 20  # a run reads at most search_max_results * SCAN_FACTOR works before stopping
@@ -50,7 +51,7 @@ def _interleave(streams: list[Iterator[Paper]]) -> Iterator[Paper]:
 
 def requested_filters(profile: SearchProfile) -> list[str]:
     asked = {"years": True, "document_types": bool(profile.document_types),
-             "languages": bool(profile.languages), "countries": bool(profile.countries)}
+             "languages": bool(profile.languages), "countries": bool(profile.geo_countries)}
     return [f for f in FILTERS if asked[f]]
 
 
@@ -79,6 +80,56 @@ def _type_filtered(stream: Iterator[Paper], profile: SearchProfile, state: dict)
         yield paper
 
 
+def geo_status(countries: list[str], codes: set[str], mode: str) -> str:
+    """matched / unknown / outside from the countries a record itself reports (structured data).
+
+    No reported country means "unknown": never a match and never a reason to exclude.
+    """
+    if not countries:
+        return "unknown"
+    hit = bool(codes.intersection(countries))
+    if mode == "exclude":
+        return "outside" if hit else "matched"
+    return "matched" if hit else "outside"
+
+
+def _geo_filtered(stream: Iterator[Paper], profile: SearchProfile, state: dict) -> Iterator[Paper]:
+    """Drop records whose reported countries are outside the chosen area; keep unknown ones."""
+    codes = set(profile.geo_countries)
+    for paper in stream:
+        if codes and geo_status(paper.countries, codes, profile.geo_mode) == "outside":
+            state["geo_outside"] += 1
+            continue
+        yield paper
+
+
+def _geography_summary(profile: SearchProfile, papers: list[Paper], state: dict) -> dict:
+    """What was asked, what it expanded to (for reruns) and the matched/unknown/outside counts."""
+    codes = profile.geo_countries
+    counts: Counter = Counter()
+    if codes:
+        for paper in list(papers):
+            status = geo_status(paper.countries, set(codes), profile.geo_mode)
+            if status == "outside":
+                # A merged duplicate revealed countries after the first check: drop it now.
+                papers.remove(paper)
+                state["geo_outside"] += 1
+            else:
+                counts[status] += 1
+    return {
+        "active": bool(codes),
+        "basis": profile.geo_basis,
+        "mode": profile.geo_mode,
+        "regions": profile.regions,
+        "countries": profile.countries,
+        "expanded_countries": codes,
+        "regions_version": REGIONS_VERSION,
+        "matched": counts["matched"],
+        "unknown": counts["unknown"],
+        "outside": state["geo_outside"],
+    }
+
+
 def run_search(
     conn: sqlite3.Connection,
     user_id: int,
@@ -93,11 +144,12 @@ def run_search(
     if request.quota_total is not None:
         quotas = allocate_quotas(request.quota_total, quota_weights(profile, request.weighting))
     wanted = request.quota_total or max_results
-    state = {"scanned": 0, "stopped": "exhausted", "filtered_by_type": 0,
+    state = {"scanned": 0, "stopped": "exhausted", "filtered_by_type": 0, "geo_outside": 0,
              "scanned_by_library": {c.name: 0 for c in connectors}}
     stream = _scan(_interleave([_counted(c, profile, state) for c in connectors]),
                    max_results * SCAN_FACTOR, state)
     stream = _type_filtered(stream, profile, state)
+    stream = _geo_filtered(stream, profile, state)
     if quotas is None:
         stream = _first(stream, wanted, state)
     lookup = DoiLookup(conn, doi_lookup, doi_budget) if doi_lookup is not None else None
@@ -105,6 +157,7 @@ def run_search(
     if quotas is not None and not result.shortfalls:
         state["stopped"] = "complete"
 
+    geography = _geography_summary(profile, result.papers, state)
     by_category = Counter(p.category for p in result.papers)
     summary = {
         "libraries": [c.name for c in connectors],
@@ -128,6 +181,7 @@ def run_search(
         "filtered_by_type": state["filtered_by_type"],
         # Every selected category is listed, with 0 when nothing was found.
         "by_category": {c: by_category[c] for c in (profile.document_types or DOCUMENT_TYPES)},
+        "geography": geography,
         "by_language": dict(Counter(p.language or "unknown" for p in result.papers)),
         # Crossref DOI lookup for papers found without a DOI (cache hits are not "attempted").
         "doi_lookup": lookup.counts if lookup else dict(NO_DOI_LOOKUP),
