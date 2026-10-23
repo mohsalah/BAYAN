@@ -12,7 +12,8 @@ from openpyxl.utils import get_column_letter
 COLUMNS: list[tuple[str, str, int]] = [
     ("title", "Title", 60), ("year", "Year", 7), ("first_author", "First author", 24),
     ("venue", "Venue", 30), ("doi", "DOI", 30), ("category_label", "Reference type", 20),
-    ("native_type", "Source type", 16), ("language", "Language", 9),
+    ("native_type", "Source type", 16), ("document_kind", "Document kind", 12),
+    ("origin", "Origin", 16), ("language", "Language", 9),
     ("countries", "Affiliation countries", 18), ("source", "Library", 12),
     ("citations", "Citations", 10), ("access", "Open copy", 18), ("oa_url", "Open-copy link", 36),
     ("landing_url", "Source page", 36), ("keywords", "Keywords", 30),
@@ -37,6 +38,8 @@ def flatten(paper: dict, category_labels: dict[str, str]) -> dict:
     row["countries"] = "; ".join(paper.get("countries") or [])
     row["keywords"] = "; ".join(paper.get("keywords") or [])
     row["doi"] = paper.get("doi") or ""
+    row["document_kind"] = paper.get("document_kind") or ""
+    row["origin"] = "user-supplied" if paper.get("user_supplied") else "library search"
     row["access"] = ACCESS_LABELS.get(paper.get("access", ""), paper.get("access", ""))
     row["abstract_status"] = ABSTRACT_LABELS.get(
         paper.get("abstract_status", ""), paper.get("abstract_status", ""))

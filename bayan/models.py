@@ -33,6 +33,9 @@ CATEGORY_INFO: tuple[dict[str, str], ...] = (
      "description": "Everything that is not one of the four above: preprints, books, book "
                     "chapters, datasets, standards, manuals and records whose type is unknown."},
 )
+# Library name stored for papers the user added themselves (manuals by URL or upload).
+USER_SOURCE = "user"
+MANUAL_KIND = "manual"
 # Keys written by earlier versions; stored runs may still carry them.
 LEGACY_DOCUMENT_TYPES = {"article": "peer_reviewed", "review": "peer_reviewed", "manual": "other"}
 
@@ -96,6 +99,8 @@ class Paper(BaseModel):
     category: DocumentType = "other"
     # Why the record got this category (always set when the metadata did not decide it).
     category_basis: str = ""
+    # Finer kind inside a category; only "manual" is used (user-supplied manuals, never searched).
+    document_kind: str = ""
     language: str = ""
     venue: str = ""
     first_author: str = ""

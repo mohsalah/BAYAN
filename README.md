@@ -63,6 +63,40 @@ escaped to be filesystem safe) and are served only to the owning signed-in user.
 The download job runs in the API process through FastAPI background tasks and the `jobs` table; a
 restart while it runs leaves its papers `pending`, and selecting them again re-queues them.
 
+## Document-type filter and manuals (M21)
+
+**Counts per type.** `GET /api/runs/{id}` returns `type_report`: one row for every reference
+type you selected, with its count (0 included) and a sentence, for example
+`Theses: 0 found in the chosen libraries (no selected library lists theses).` When a selected
+library can list the type but returned none, the sentence says so instead. Which library can
+supply a type comes from each connector's `supported_categories` (what its classifier can
+return: arXiv only `other`, Europe PMC `peer_reviewed` and `other`, OpenAlex and Crossref all
+five); a library without a recorded capability is reported as "not recorded", never assumed.
+Manuals are a separate row and are not counted under Other. The results card shows the whole
+result set next to how many rows are loaded in the table.
+
+**Filter without searching again.** Chips above the table (type and count) narrow the rows
+already in the browser. Ticked papers stay ticked when the filter changes, "select all" applies
+to the filtered rows, and the Export box offers *Ticked papers*, *Filtered view* or *All
+results*. Export files carry `Document kind` and `Origin` columns.
+
+**Manuals (no web search).** A manual is added by a public PDF link or an uploaded PDF. It is
+stored as category `other`, document kind `manual`, source `user`, always labelled
+user-supplied, and is visible only to the account that added it. The title is yours and
+editable; because of that the file is stored as `downloaded_unverified_identity` (basis
+`user_supplied`), never as verified. Links go through the same SSRF-safe fetcher as paper
+downloads (public http/https only, every redirect hop checked, query strings not stored), count
+towards the hourly download limit, and must be a real PDF (HTML pages, CAPTCHAs and other files
+are rejected and nothing is saved). The same file cannot be added twice.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/manuals/url` | `{"url": "https://…/manual.pdf", "title": "optional", "run_id": 1}`. `run_id` omitted = personal collection only. 422 for unsafe URL / not a PDF, 413 too large, 502 server unreachable or HTTP error, 409 duplicate. |
+| `POST /api/manuals/upload?title=..&run_id=..` | Raw PDF body with `Content-Type: application/pdf` (415/413/422 on rejection). |
+| `GET /api/manuals` | Your manuals collection. |
+| `PATCH /api/manuals/{paper_id}` | `{"title": "…"}` edit the title (404 unless it is yours). |
+| `POST /api/runs/{run_id}/manuals` | `{"paper_id": "m-…"}` put a collection manual into one of your runs. |
+
 ## Run locally
 
 ```bash

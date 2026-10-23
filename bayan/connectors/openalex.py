@@ -105,6 +105,9 @@ class OpenAlexConnector:
     name = "openalex"
     tier = "open"
     supported_filters = frozenset({"years", "document_types", "languages", "countries"})
+    # Reference types classify_work can return (see OPENALEX_TYPES and the `other` fallback).
+    supported_categories = frozenset(
+        {"peer_reviewed", "proceedings", "thesis", "report", "other"})
 
     def __init__(
         self,

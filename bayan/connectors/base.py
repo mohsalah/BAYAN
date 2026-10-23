@@ -22,6 +22,9 @@ class Connector(Protocol):
     tier: str  # "open" or "membership"
     # Subset of FILTERS the source can really apply. Anything else is reported, never guessed.
     supported_filters: frozenset[str]
+    # Reference types (models.DOCUMENT_TYPES) the source can return. A connector without it
+    # is reported as "capability not recorded", never assumed to supply a type.
+    supported_categories: frozenset[str]
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]: ...
 
