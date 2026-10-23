@@ -34,7 +34,7 @@ MAX_TEMPLATE_LENGTH = 500
 MAX_TARGET_LENGTH = 2048
 PLACEHOLDERS = ("{url}", "{doi}")
 EXAMPLE_DOI = "10.1000/xyz123"
-_DOI = re.compile(r"^10\.\d{4,9}/\S+$")
+_DOI = re.compile(r"^10\.\d{1,9}/\S+$")
 _BAD_CHARS = re.compile(r"[\s\x00-\x1f\x7f]")
 LAST_CHARS = 4
 MIN_LENGTH_FOR_LAST_CHARS = 12  # shorter keys would reveal too much of themselves
@@ -234,7 +234,7 @@ def build_link(template: str, doi: str | None = None, url: str | None = None) ->
         url = clean_target_url(url)
     if not doi and not url:
         raise InvalidInput("Give a DOI or a paper link.")
-    target = url or f"https://doi.org/{quote(doi, safe='/')}"
+    target = url or f"https://doi.org/{quote(doi, safe='/()')}"
     out = template
     if "{doi}" in out:
         if not doi:
