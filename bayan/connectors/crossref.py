@@ -14,13 +14,31 @@ from ..models import Paper, SearchProfile
 from .base import ConnectorError, get_with_retry, user_agent
 
 BASE_URL = "https://api.crossref.org/works"
-# App document type -> Crossref `type`. Crossref has no separate "review" type (reviews are
-# journal articles) and does not index manuals, so those map to nothing.
+# Category -> Crossref `type` values, used as the coarse pre-filter and by classify_item.
+# Crossref has no separate "review" type (reviews are journal articles). `other` has no
+# entry: it is "everything else" (posted-content preprints, books, datasets, ...).
 CROSSREF_TYPES = {
-    "article": ["journal-article", "proceedings-article"],
-    "report": ["report"],
+    "peer_reviewed": ["journal-article"],
+    "proceedings": ["proceedings-article"],
     "thesis": ["dissertation"],
+    "report": ["report"],
 }
+
+
+def classify_item(item: dict) -> tuple[str, str]:
+    """Crossref item -> (category, basis), from `type` only.
+
+    journal-article -> peer_reviewed, proceedings-article -> proceedings, dissertation ->
+    thesis, report -> report; posted-content (preprints), book, dataset and every other or
+    missing type -> other.
+    """
+    native = item.get("type") or ""
+    for category, types in CROSSREF_TYPES.items():
+        if native in types:
+            return category, f"type '{native}'"
+    if native:
+        return "other", f"type '{native}' is not one of the four categories"
+    return "other", "no type in the record"
 
 
 def clean_abstract(jats: str | None) -> str:
@@ -35,6 +53,7 @@ def parse_item(item: dict) -> Paper:
     first = authors[0] if authors else {}
     first_author = " ".join(x for x in (first.get("given"), first.get("family")) if x) or (
         first.get("name") or "")
+    category, basis = classify_item(item)
     return Paper(
         source="crossref",
         id=doi,
@@ -42,7 +61,9 @@ def parse_item(item: dict) -> Paper:
         title=((item.get("title") or [""])[0]) or "",
         abstract=clean_abstract(item.get("abstract")),
         year=parts[0] if isinstance(parts[0], int) else None,
-        document_type=item.get("type") or "",
+        native_type=item.get("type") or "",
+        category=category,
+        category_basis=basis,
         language=item.get("language") or "",
         venue=((item.get("container-title") or [""])[0]) or "",
         first_author=first_author,
@@ -53,6 +74,8 @@ def parse_item(item: dict) -> Paper:
 
 
 def mapped_types(profile: SearchProfile) -> list[str]:
+    if "other" in profile.document_types:
+        return []  # `other` cannot be expressed as a type list: send no type filter
     return [t for d in profile.document_types for t in CROSSREF_TYPES.get(d, [])]
 
 
@@ -160,8 +183,6 @@ class CrossrefConnector:
         return best
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
-        if profile.document_types and not mapped_types(profile):
-            return  # only types Crossref cannot express were requested: nothing to ask for
         cursor = "*"
         while True:
             params = {"filter": build_filter(profile), "rows": self._rows, "cursor": cursor}

@@ -12,7 +12,7 @@ Reference projects: `~/Downloads/Reactor physics papers` (corpus, SQLite, eviden
 5. The agent **reads** the chosen papers and extracts page-cited evidence.
 6. The agent builds an interactive **mind map** that links concepts across the chosen papers (section 6a).
 7. From the map and the evidence the agent proposes **research-gap candidates** and a **trend report** for the area (section 6b), then **drafts proposals** from the gaps the user accepts.
-8. The user can restrict by **document type** (articles, reviews, reports, theses, manuals; section 4b) and by **geography** (region or country; section 4c).
+8. The user can restrict by **reference type** (peer-reviewed, proceedings, theses, reports, other; section 4b) and by **geography** (region or country; section 4c).
 9. Any paper, abstract or page can be sent to the **translator** (any language to English or Arabic; section 4d).
 10. All of it works in **English, Arabic, French, Chinese, German and Spanish** (section 4a).
 
@@ -67,9 +67,25 @@ The user chooses one or more of the six languages for **search**, and separately
 - **Interface:** right-to-left layout for Arabic, UTF-8 everywhere, CJK-capable fonts and PDF text extraction, per-language full-text search tokenization (Chinese needs a segmenter), and translated UI strings in a single `locales/` folder.
 - **Labelling:** each paper shows its language; machine translations are always marked as machine translations.
 
-### 4b. Document types: articles, reviews, reports, theses, manuals
+### 4b. Reference types: one common set of five
 
-The user ticks which document types to search. Each paper stores a `document_type` and the filter uses it.
+A live run showed one kind of paper labelled `article`, `journal-article` or `preprint` depending on the library, so every library's labels are mapped to **five reference types**, chosen from a dropdown in the web page (default `peer_reviewed`):
+
+| id | Label | What goes in it |
+|---|---|---|
+| `peer_reviewed` | Peer-reviewed papers | Journal articles and reviews |
+| `proceedings` | Proceedings papers | Conference / proceedings papers |
+| `thesis` | Theses | Theses and dissertations |
+| `report` | Reports | Technical, institutional and government reports |
+| `other` | Other | Everything that is **not** one of the four above: preprints, books, book chapters, datasets, standards, manuals (uploads later), unknown |
+
+**Honest wording.** "Peer-reviewed" means the source metadata says journal article or review. It is not verified peer review. A preprint later published as a journal article is not upgraded automatically.
+
+**Mapping.** One documented, tested function per library returns `(category, basis)`: OpenAlex `classify_work`, Crossref `classify_item`, Europe PMC `classify_result`, arXiv `classify_entry`. When the metadata does not decide it, the record is `other` and `category_basis` says why; titles and abstracts are never used. Each paper stores `native_type` (the library's own label), `category` and `category_basis`.
+
+**Filtering.** The library's own type filter is a coarse pre-filter where it exists (never for `other`, which is "not one of the four", not "all types"). Then every returned record is classified and only selected categories are kept; the run summary reports `filtered_by_type`, and `by_category` lists every selected category, with 0 where nothing was found. Old stored runs (keys `article`, `review`, `manual`, and `by_document_type`) still open.
+
+Earlier plan, kept for the sources that are still to be added:
 
 | Type | Where it is found | Notes |
 |---|---|---|
@@ -102,7 +118,7 @@ Honest limits: coverage of reports and especially manuals is much thinner than f
 
 ## 5. Data model (extends the reference schema)
 
-Additional tables for this version: `paper_selections` (user, paper, requested_at, download_status), `languages` on papers and profiles, `concepts` (label, language, normalized_id), `concept_mentions` (concept, paper, page, quote, evidence_level), `concept_links` (concept A, concept B, relation, supporting mentions, paper IDs, strength), `maps` (workspace, paper set, layout state), `trend_reports` (area, period, method, results, caveats), `translations` (source text hash, source language, target language en/ar, text, machine_translated flag, glossary version), `glossaries` (workspace, area, term pairs), `paper_geo` (paper, affiliation countries, repository country, inferred study location with quote, basis), `regions` (name, ISO country list), and `document_type` / `peer_review_status` columns on papers.
+Additional tables for this version: `paper_selections` (user, paper, requested_at, download_status), `languages` on papers and profiles, `concepts` (label, language, normalized_id), `concept_mentions` (concept, paper, page, quote, evidence_level), `concept_links` (concept A, concept B, relation, supporting mentions, paper IDs, strength), `maps` (workspace, paper set, layout state), `trend_reports` (area, period, method, results, caveats), `translations` (source text hash, source language, target language en/ar, text, machine_translated flag, glossary version), `glossaries` (workspace, area, term pairs), `paper_geo` (paper, affiliation countries, repository country, inferred study location with quote, basis), `regions` (name, ISO country list), and `category` / `native_type` / `category_basis` columns on papers (`peer_review_status` stays a later addition; "peer_reviewed" is metadata-based, not verified).
 
 `users`, `workspaces`, `search_profiles` (area text, topics, keywords, tracks, years, weights, libraries), `papers` (OpenAlex ID primary, DOI, report numbers), `files` (path, SHA-256, source URL, license, version, identity status), `pages` (+FTS), `topic_groups`/`group_members`, `evidence` (dimension, value, level, page, section, quote, source), `gap_candidates` (claim, supporting IDs, counterevidence IDs, coverage, uncertainty, follow-up query, validation plan), `proposals`, `credentials` (encrypted), `usage` (tokens, cost, month), `jobs`.
 

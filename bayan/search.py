@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from .connectors.base import FILTERS, Connector
 from .doi_lookup import DoiLooker, DoiLookup
-from .models import Paper, SearchProfile
+from .models import DOCUMENT_TYPES, Paper, SearchProfile
 from .quotas import allocate_quotas
 from .retrieval import collect
 
@@ -69,6 +69,16 @@ def _scan(stream: Iterator[Paper], limit: int, state: dict) -> Iterator[Paper]:
         yield paper
 
 
+def _type_filtered(stream: Iterator[Paper], profile: SearchProfile, state: dict) -> Iterator[Paper]:
+    """Keep only records whose category was selected; count the rest. No selection = keep all."""
+    selected = set(profile.document_types)
+    for paper in stream:
+        if selected and paper.category not in selected:
+            state["filtered_by_type"] += 1
+            continue
+        yield paper
+
+
 def run_search(
     conn: sqlite3.Connection,
     user_id: int,
@@ -83,10 +93,11 @@ def run_search(
     if request.quota_total is not None:
         quotas = allocate_quotas(request.quota_total, quota_weights(profile, request.weighting))
     wanted = request.quota_total or max_results
-    state = {"scanned": 0, "stopped": "exhausted",
+    state = {"scanned": 0, "stopped": "exhausted", "filtered_by_type": 0,
              "scanned_by_library": {c.name: 0 for c in connectors}}
     stream = _scan(_interleave([_counted(c, profile, state) for c in connectors]),
                    max_results * SCAN_FACTOR, state)
+    stream = _type_filtered(stream, profile, state)
     if quotas is None:
         stream = _first(stream, wanted, state)
     lookup = DoiLookup(conn, doi_lookup, doi_budget) if doi_lookup is not None else None
@@ -94,6 +105,7 @@ def run_search(
     if quotas is not None and not result.shortfalls:
         state["stopped"] = "complete"
 
+    by_category = Counter(p.category for p in result.papers)
     summary = {
         "libraries": [c.name for c in connectors],
         "found": len(result.papers),
@@ -111,7 +123,10 @@ def run_search(
         "duplicates": result.duplicates,
         "skipped_over_quota": result.skipped_over_quota,
         "skipped_no_year": result.skipped_no_year,
-        "by_document_type": dict(Counter(p.document_type or "unknown" for p in result.papers)),
+        # Scanned records dropped because their category was not selected.
+        "filtered_by_type": state["filtered_by_type"],
+        # Every selected category is listed, with 0 when nothing was found.
+        "by_category": {c: by_category[c] for c in (profile.document_types or DOCUMENT_TYPES)},
         "by_language": dict(Counter(p.language or "unknown" for p in result.papers)),
         # Crossref DOI lookup for papers found without a DOI (cache hits are not "attempted").
         "doi_lookup": lookup.counts if lookup else dict(NO_DOI_LOOKUP),
@@ -149,12 +164,12 @@ def _first(stream: Iterator[Paper], n: int, state: dict) -> Iterator[Paper]:
 
 def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO papers(source, id, doi, title, abstract, year, document_type,"
-        " language, venue, first_author, countries, citations, is_oa, oa_url, landing_url,"
-        " keywords, topic) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (p.source, p.id, p.doi, p.title, p.abstract, p.year, p.document_type, p.language,
-         p.venue, p.first_author, json.dumps(p.countries), p.citations, int(p.is_oa), p.oa_url,
-         p.landing_url, json.dumps(p.keywords), p.topic),
+        "INSERT OR REPLACE INTO papers(source, id, doi, title, abstract, year, native_type,"
+        " category, category_basis, language, venue, first_author, countries, citations, is_oa,"
+        " oa_url, landing_url, keywords, topic) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (p.source, p.id, p.doi, p.title, p.abstract, p.year, p.native_type, p.category,
+         p.category_basis, p.language, p.venue, p.first_author, json.dumps(p.countries),
+         p.citations, int(p.is_oa), p.oa_url, p.landing_url, json.dumps(p.keywords), p.topic),
     )
     conn.execute("DELETE FROM paper_search WHERE source=? AND id=?", (p.source, p.id))
     conn.execute(
@@ -169,6 +184,14 @@ def paper_row_to_dict(row: sqlite3.Row) -> dict:
     d["countries"] = json.loads(d["countries"] or "[]")
     d["keywords"] = json.loads(d["keywords"] or "[]")
     d["is_oa"] = bool(d["is_oa"])
+    # Rows stored before categories existed only have the old `document_type` column.
+    legacy = d.pop("document_type", None) or ""
+    if not d.get("category"):
+        d["category"] = "other"
+        d["category_basis"] = ("stored before reference categories existed; "
+                               + (f"native type '{legacy}'" if legacy else "no type stored"))
+    d["native_type"] = d.get("native_type") or legacy
+    d["category_basis"] = d.get("category_basis") or ""
     # Honest wording: a listed open link is not proof that a valid PDF can be downloaded.
     d["access"] = "open_copy_listed" if d["oa_url"] else "no_open_copy_listed"
     d.pop("abstract", None)

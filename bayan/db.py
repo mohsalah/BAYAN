@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS papers(
   source TEXT NOT NULL, id TEXT NOT NULL, doi TEXT, title TEXT, abstract TEXT, year INTEGER,
   document_type TEXT, language TEXT, venue TEXT, first_author TEXT, countries TEXT,
   citations INTEGER, is_oa INTEGER, oa_url TEXT, landing_url TEXT, keywords TEXT, topic TEXT,
+  category TEXT, native_type TEXT, category_basis TEXT,
   PRIMARY KEY(source, id)
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS paper_search USING fts5(
@@ -54,6 +55,14 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+# Columns added after the first release; init_db adds them to an existing file in place.
+PAPER_COLUMNS_ADDED = ("category", "native_type", "category_basis")
+
+
 def init_db(path: Path) -> None:
     with connect(path) as conn:
         conn.executescript(SCHEMA)
+        have = {row["name"] for row in conn.execute("PRAGMA table_info(papers)")}
+        for column in PAPER_COLUMNS_ADDED:
+            if column not in have:
+                conn.execute(f"ALTER TABLE papers ADD COLUMN {column} TEXT")

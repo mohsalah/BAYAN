@@ -20,6 +20,16 @@ def _text(node: ET.Element, path: str) -> str:
     return " ".join((found.text or "").split()) if found is not None else ""
 
 
+def classify_entry(entry: ET.Element) -> tuple[str, str]:
+    """Every arXiv record is a preprint -> other. A journal_ref does not upgrade it."""
+    return "other", "arXiv preprint"
+
+
+def wants_preprints(profile: SearchProfile) -> bool:
+    """arXiv can only return `other`; with other categories selected there is nothing to ask for."""
+    return not profile.document_types or "other" in profile.document_types
+
+
 def parse_entry(entry: ET.Element) -> Paper:
     url = _text(entry, "a:id")
     if "/api/errors" in url:
@@ -29,6 +39,7 @@ def parse_entry(entry: ET.Element) -> Paper:
     pdf = next((link.get("href", "") for link in entry.findall("a:link", NS)
                 if link.get("title") == "pdf"), "")
     primary = entry.find("x:primary_category", NS)
+    category, basis = classify_entry(entry)
     return Paper(
         source="arxiv",
         id=arxiv_id,
@@ -36,7 +47,9 @@ def parse_entry(entry: ET.Element) -> Paper:
         title=_text(entry, "a:title"),
         abstract=_text(entry, "a:summary"),
         year=int(published[:4]) if published[:4].isdigit() else None,
-        document_type="preprint",
+        native_type="preprint",
+        category=category,
+        category_basis=basis,
         venue=_text(entry, "x:journal_ref"),
         first_author=_text(entry, "a:author/a:name"),
         is_oa=True,
@@ -59,8 +72,9 @@ def build_query(profile: SearchProfile) -> str:
 class ArxivConnector:
     name = "arxiv"
     tier = "open"
-    # Everything on arXiv is a preprint; there is no language or affiliation-country field.
-    supported_filters = frozenset({"years"})
+    # Everything on arXiv is a preprint (category `other`); there is no language or
+    # affiliation-country field.
+    supported_filters = frozenset({"years", "document_types"})
 
     def __init__(
         self,
@@ -79,6 +93,8 @@ class ArxivConnector:
         self._page_delay = page_delay
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
+        if not wants_preprints(profile):
+            return
         start = 0
         while True:
             params = {"search_query": build_query(profile), "start": start,

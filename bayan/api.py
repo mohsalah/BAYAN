@@ -32,7 +32,7 @@ from .connectors import (
 from .connectors.base import Connector
 from .db import connect, init_db
 from .libraries import LIBRARIES
-from .models import DOCUMENT_TYPES, LANGUAGES
+from .models import CATEGORY_INFO, LANGUAGES, normalize_document_types
 from .search import SearchRequest, paper_row_to_dict, run_search
 
 COOKIE = "bayan_session"
@@ -124,8 +124,8 @@ def create_app(
         return LANGUAGES
 
     @app.get("/api/document-types")
-    def document_types() -> list[str]:
-        return list(DOCUMENT_TYPES)
+    def document_types() -> list[dict]:
+        return list(CATEGORY_INFO)
 
     @app.post("/api/auth/register", status_code=201)
     def register(body: Credentials, response: Response, conn: Conn) -> dict:
@@ -237,8 +237,13 @@ def create_app(
             d["doi_source"] = "crossref_lookup" if match else ""
             d["doi_match_score"] = match["score"] if match else None
             out.append(d)
+        request = json.loads(run["request"])
+        profile = request.get("profile")
+        if isinstance(profile, dict) and "document_types" in profile:
+            # Runs stored before the five categories used article/review/manual.
+            profile["document_types"] = normalize_document_types(profile["document_types"])
         return {"id": run["id"], "created_at": run["created_at"],
-                "request": json.loads(run["request"]), "summary": summary, "papers": out}
+                "request": request, "summary": summary, "papers": out}
 
     return app
 

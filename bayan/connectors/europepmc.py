@@ -21,18 +21,46 @@ def build_query(profile: SearchProfile) -> str:
         parts.insert(0, f"({profile.query})")
     if profile.languages:
         parts.append("(" + " OR ".join(f"LANG:{LANG_CODES[c]}" for c in profile.languages) + ")")
+    if profile.document_types and "other" not in profile.document_types:
+        parts.append("(NOT SRC:PPR)")  # coarse pre-filter: drop preprints
     return " AND ".join(parts)
 
 
-def _document_type(record: dict) -> str:
+JOURNAL_PUB_TYPES = ("journal article", "research-article", "review", "review-article",
+                     "systematic review")
+
+
+def _native_type(record: dict) -> str:
+    """The record's own type: 'preprint' for source PPR, else its publication types."""
     if record.get("source") == "PPR":
         return "preprint"
+    return "; ".join((record.get("pubTypeList") or {}).get("pubType") or [])
+
+
+def classify_result(record: dict) -> tuple[str, str]:
+    """Europe PMC record -> (category, basis), from `source` and `pubTypeList` only.
+
+    Source PPR (preprint) -> other. A journal article or review publication type ->
+    peer_reviewed. Anything else, or no publication type, -> other with the reason.
+    Peer-review reports (pub type 'peer review') are never counted as papers.
+    """
+    if record.get("source") == "PPR":
+        return "other", "preprint (source PPR)"
     types = [t.lower() for t in ((record.get("pubTypeList") or {}).get("pubType") or [])]
-    if any("review" in t for t in types):
-        return "review"
-    if any(t in ("journal article", "research-article") for t in types):
-        return "article"
-    return ""
+    if not types:
+        return "other", "no publication type in the record"
+    if any(t in ("peer review", "peer-review") for t in types):
+        return "other", "publication type 'peer review' is a review report, not a paper"
+    hit = next((t for t in types if t in JOURNAL_PUB_TYPES), None)
+    if hit:
+        return "peer_reviewed", f"publication type '{hit}'"
+    return "other", "publication types " + ", ".join(repr(t) for t in types) + " not decisive"
+
+
+def can_return(profile: SearchProfile) -> bool:
+    """Europe PMC yields only peer_reviewed and other; skip it when neither is selected."""
+    types = profile.document_types
+    return not types or "peer_reviewed" in types or "other" in types
 
 
 def parse_result(record: dict) -> Paper:
@@ -41,6 +69,7 @@ def parse_result(record: dict) -> Paper:
     open_urls = [u for u in urls if u.get("availability") == "Open access" and u.get("url")]
     open_urls.sort(key=lambda u: u.get("documentStyle") != "pdf")
     year = record.get("pubYear")
+    category, basis = classify_result(record)
     return Paper(
         source="europepmc",
         id=f"{source}:{rid}",
@@ -48,7 +77,9 @@ def parse_result(record: dict) -> Paper:
         title=(record.get("title") or "").strip(),
         abstract=(record.get("abstractText") or "").strip(),
         year=int(year) if str(year).isdigit() else None,
-        document_type=_document_type(record),
+        native_type=_native_type(record),
+        category=category,
+        category_basis=basis,
         language=LANG_BACK.get(record.get("language") or "", ""),
         venue=((record.get("journalInfo") or {}).get("journal") or {}).get("title") or "",
         first_author=(record.get("authorString") or "").split(",")[0].strip(),
@@ -63,9 +94,9 @@ def parse_result(record: dict) -> Paper:
 class EuropePMCConnector:
     name = "europepmc"
     tier = "open"
-    # Document type and affiliation country are not applied: PUB_TYPE values are not
-    # stable enough to map, and AFF is free text, not a country field.
-    supported_filters = frozenset({"years", "languages"})
+    # Document type is a coarse pre-filter (no preprints unless `other` is chosen) plus
+    # classification of every record. Affiliation country is not applied: AFF is free text.
+    supported_filters = frozenset({"years", "languages", "document_types"})
 
     def __init__(
         self,
@@ -82,6 +113,8 @@ class EuropePMCConnector:
         self._page_size = page_size
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
+        if not can_return(profile):
+            return
         cursor = "*"
         while True:
             params = {"query": build_query(profile), "format": "json", "resultType": "core",
