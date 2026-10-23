@@ -75,6 +75,13 @@ details.dd .menu{position:absolute;z-index:20;top:calc(100% + 4px);left:0;min-wi
 details.dd .menu label{display:flex;flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:14px;padding:5px 6px;border-radius:5px}
 details.dd .menu label:hover{background:var(--tint)}
 details.dd .menu label.off{color:var(--mute)}
+details.dd .menu.geo{min-width:320px}
+.geo h4{margin:8px 0 4px;font-size:13px}.geo .small{font-size:12px;color:var(--mute);margin:2px 6px}
+.geo .modes{display:flex;gap:14px}.geo .modes label{display:inline-flex}
+.geo details.expand{margin:0 0 4px 30px;font-size:12px}.geo details.expand summary{cursor:pointer;color:var(--link)}
+.geo .countrylist{max-height:180px;overflow:auto;border-top:1px solid var(--line);margin-top:4px}
+.geo input[type=search]{width:100%;box-sizing:border-box}
+.unknownbox{margin:8px 0}.unknownbox summary{cursor:pointer}
 .badge{font-size:11px;border:1px solid var(--line);border-radius:5px;padding:0 5px;color:var(--mute);margin-left:auto;white-space:nowrap}
 input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent)}
 /* table */
@@ -173,7 +180,7 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
       <label>Languages<details class="dd" id="ddLangs"><summary></summary><div class="menu"></div></details></label>
       <label for="yFrom">From year<select id="yFrom"></select></label>
       <label for="yTo">To year<select id="yTo"></select></label>
-      <label for="countries">Affiliation countries<input id="countries" type="text" style="width:150px" placeholder="EG, US, CA"></label>
+      <label>Geography<details class="dd" id="ddGeo"><summary id="geoSummary"></summary><div class="menu geo" id="geoMenu"></div></details></label>
       <label for="quota">Papers wanted<input id="quota" type="number" min="1" max="200" style="width:110px" placeholder="optional"></label>
       <label for="weighting">Year weighting<select id="weighting"><option value="equal">Equal per year</option><option value="recent">Favour recent years</option></select></label>
       <button type="submit" id="go">Search</button>
@@ -187,10 +194,18 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
     <div class="row" style="align-items:baseline"><h2 id="resultTitle">Results</h2><p id="selectedCount" class="note" aria-live="polite"></p></div>
     <div class="chips" id="summary"></div>
     <div id="notes"></div>
+    <div id="geoReport" class="hidden">
+      <h3>Geography</h3>
+      <div class="chips" id="geoCounts"></div>
+      <p class="note" id="geoNote"></p>
+      <details class="unknownbox" id="unknownBox"><summary id="unknownSummary"></summary><div id="unknownList"></div></details>
+    </div>
     <h3>Reference types</h3>
     <p id="setCounts" class="note" aria-live="polite"></p>
     <ul class="typereport" id="typeReport"></ul>
     <div class="chips" id="typeFilter" role="group" aria-label="Filter loaded results by reference type"></div>
+    <div class="chips" id="geoFilter" role="group" aria-label="Filter loaded results by geography"></div>
+    <p class="note" id="geoFilterNote"></p>
     <details class="manualbox" id="manualBox">
       <summary>Add a manual</summary>
       <p class="note">Manuals are not searched for. Add one by a public PDF link or by uploading a PDF; it is labelled user-supplied and is visible only to you.</p>
@@ -375,6 +390,18 @@ function countByType(papers) {
 function filterByTypes(papers, active) {
   return active.length ? papers.filter(p => active.includes(typeKeyOf(p))) : papers.slice();
 }
+const geoKeysOf = p => {
+  const countries = p.countries || [];
+  return [...(p.regions || []).map(r => 'r:' + r), ...countries.map(c => 'c:' + c), ...(countries.length ? [] : ['unknown'])];
+};
+function countByGeo(papers) {
+  const counts = {};
+  for (const p of papers) for (const k of geoKeysOf(p)) counts[k] = (counts[k] || 0) + 1;
+  return counts;
+}
+function filterByGeo(papers, active) {
+  return active.length ? papers.filter(p => geoKeysOf(p).some(k => active.includes(k))) : papers.slice();
+}
 function toggleType(active, key) {
   return active.includes(key) ? active.filter(k => k !== key) : [...active, key];
 }
@@ -388,14 +415,59 @@ function exportPapers(scope, all, view, ticked) {
   return all.slice();
 }
 /* pure:end */
-const viewPapers = () => filterByTypes(run.papers, [...typeFilter]);
+const geoFilter = new Set();                // active keys: r:<region>, c:<code>, unknown; empty = all
+let regionData = null;                      // /api/regions
+let getGeo = () => ({ regions: [], countries: [], geo_mode: 'include' });
+const viewPapers = () => filterByGeo(filterByTypes(run.papers, [...typeFilter]), [...geoFilter]);
+const filtersOn = () => typeFilter.size + geoFilter.size > 0;
 const selected = new Map();                 // "source\u0000id" -> paper
 const keyOf = p => p.source + '\u0000' + p.id;
 const ref = p => ({ source: p.source, id: p.id });
 let lastAnalysis = null;
 
+/* Geography panel: regions (checkboxes), searchable country multi-select, include/exclude. */
+function buildGeo(data) {
+  const box = $('ddGeo'), menu = $('geoMenu'), summary = $('geoSummary');
+  const nameOf = Object.fromEntries(data.countries.map(c => [c.code, c.name]));
+  const regionBoxes = data.regions.map(r => {
+    const cb = el('input', { type: 'checkbox', name: 'geoRegion', value: r.id });
+    cb.onchange = refresh;
+    const list = el('details', { class: 'expand' }, el('summary', {}, 'Shows the ' + r.countries.length + ' countries it expands to'),
+      el('p', { class: 'small' }, r.countries.map(c => nameOf[c] + ' (' + c + ')').join(', ')));
+    return el('div', {}, el('label', {}, cb, r.name + ' (' + r.countries.length + ')'), list);
+  });
+  const mode = (v, text) => { const r = el('input', { type: 'radio', name: 'geoMode', value: v }); r.checked = v === 'include'; r.onchange = refresh; return el('label', {}, r, text); };
+  const search = el('input', { type: 'search', id: 'geoSearch', placeholder: 'Search countries', 'aria-label': 'Search countries' });
+  const rows = data.countries.map(c => {
+    const cb = el('input', { type: 'checkbox', name: 'geoCountry', value: c.code });
+    cb.onchange = refresh;
+    const row = el('label', {}, cb, c.name + ' (' + c.code + ')');
+    row.dataset.text = (c.name + ' ' + c.code).toLowerCase();
+    return row;
+  });
+  search.oninput = () => { const q = search.value.trim().toLowerCase(); rows.forEach(r => r.classList.toggle('hidden', !!q && !r.dataset.text.includes(q))); };
+  search.onkeydown = ev => { if (ev.key === 'Enter') ev.preventDefault(); };   // Enter must not submit the search form
+  menu.replaceChildren(
+    el('h4', {}, 'Match by'), el('div', { class: 'modes', role: 'radiogroup', 'aria-label': 'Include or exclude' }, mode('include', 'Include'), mode('exclude', 'Exclude')),
+    el('p', { class: 'small' }, 'Author affiliation country (v1). Papers with no affiliation country are kept and listed as "Country unknown".'),
+    el('h4', {}, 'Regions'), ...regionBoxes,
+    el('h4', {}, 'Countries'), search, el('div', { class: 'countrylist' }, ...rows));
+  function read() {
+    const pick = n => [...menu.querySelectorAll('input[name=' + n + ']:checked')].map(c => c.value);
+    return { regions: pick('geoRegion'), countries: pick('geoCountry'), geo_mode: menu.querySelector('input[name=geoMode]:checked').value };
+  }
+  function refresh() {
+    const g = read(), n = g.regions.length + g.countries.length;
+    summary.textContent = 'Geography (' + (n ? g.regions.length + ' regions, ' + g.countries.length + ' countries, ' + g.geo_mode : 'any') + ')';
+  }
+  refresh();
+  box.addEventListener('toggle', () => { if (box.open) document.querySelectorAll('details.dd').forEach(d => { if (d !== box) d.open = false; }); });
+  return read;
+}
 async function loadMeta() {
-  const [libs, types, langs] = await Promise.all([json('/api/libraries'), json('/api/document-types'), json('/api/languages')]);
+  const [libs, types, langs, regions] = await Promise.all([json('/api/libraries'), json('/api/document-types'), json('/api/languages'), json('/api/regions')]);
+  regionData = regions;
+  getGeo = buildGeo(regions);
   categoryLabels = Object.fromEntries(types.map(t => [t.id, t.label]));
   getLibs = dropdown('ddLibs', 'Libraries', libs.map(l => ({
     value: l.id, label: l.name + (l.tier === 'membership' ? ' (membership)' : ''),
@@ -654,10 +726,11 @@ function renderRows() {
   shown += next.length;
   $('more').classList.toggle('hidden', shown >= view.length);
   $('more').textContent = 'Show more (' + (view.length - shown) + ' left)';
-  if (!view.length && run.papers.length) tbody.replaceChildren(el('tr', {}, el('td', { colspan: 8 }, 'No loaded papers match the chosen reference type(s). Clear the filter to see all ' + run.papers.length + '.')));
+  if (!view.length && run.papers.length) tbody.replaceChildren(el('tr', {}, el('td', { colspan: 8 }, 'No loaded papers match the chosen filters. Clear them to see all ' + run.papers.length + '.')));
   const st = setStats(run.papers, [...typeFilter], shown);
-  $('resultTitle').textContent = (typeFilter.size ? st.inView.toLocaleString() + ' of ' + st.total.toLocaleString() : st.total.toLocaleString()) + ' papers (run ' + run.id + ')';
-  $('setCounts').textContent = 'Whole result set: ' + st.total + ' papers. ' + (typeFilter.size ? 'Matching the type filter: ' + st.inView + '. ' : '') + 'Loaded in the table so far: ' + st.shown + (st.shown < st.inView ? ' (use "Show more" for the rest; all ' + st.inView + ' are already in the browser and are filtered and exported without searching again)' : '') + '.';
+  st.inView = view.length; st.shown = Math.min(shown, view.length);
+  $('resultTitle').textContent = (filtersOn() ? st.inView.toLocaleString() + ' of ' + st.total.toLocaleString() : st.total.toLocaleString()) + ' papers (run ' + run.id + ')';
+  $('setCounts').textContent = 'Whole result set: ' + st.total + ' papers. ' + (filtersOn() ? 'Matching the type and geography filters: ' + st.inView + '. ' : '') + 'Loaded in the table so far: ' + st.shown + (st.shown < st.inView ? ' (use "Show more" for the rest; all ' + st.inView + ' are already in the browser and are filtered and exported without searching again)' : '') + '.';
 }
 function renderTypes() {
   const rows = (run.type_report || { rows: [] }).rows, counts = countByType(run.papers);
@@ -675,6 +748,42 @@ function renderTypes() {
     clear.onclick = () => { typeFilter.clear(); shown = 0; renderTypes(); renderRows(); $('all').checked = false; updateSelection(); };
     $('typeFilter').append(clear);
   }
+  renderGeoFilter();
+}
+function geoChanged() { shown = 0; renderGeoFilter(); renderRows(); $('all').checked = false; updateSelection(); }
+function renderGeoFilter() {
+  const counts = countByGeo(run.papers), chips = [];
+  const chip = (key, label, title) => {
+    const n = counts[key] || 0;
+    const b = el('button', { type: 'button', class: 'chip' + (n ? '' : ' zero'), 'aria-pressed': geoFilter.has(key) ? 'true' : 'false', title }, label + ': ' + n);
+    b.onclick = () => { if (geoFilter.has(key)) geoFilter.delete(key); else geoFilter.add(key); geoChanged(); };
+    chips.push(b);
+  };
+  for (const r of regionData ? regionData.regions : []) chip('r:' + r.id, r.name, 'Show only papers with an author affiliation in ' + r.name + ' (click again to remove).');
+  const nameOf = Object.fromEntries((regionData ? regionData.countries : []).map(c => [c.code, c.name]));
+  Object.keys(counts).filter(k => k.startsWith('c:')).sort().forEach(k => chip(k, nameOf[k.slice(2)] || k.slice(2), 'Show only papers with an author affiliation in ' + (nameOf[k.slice(2)] || k.slice(2)) + '.'));
+  chip('unknown', 'Unknown', 'Papers with no affiliation country in the source record. Unknown does not mean excluded.');
+  if (geoFilter.size) {
+    const clear = el('button', { type: 'button', class: 'chip', title: 'Show every country again.' }, 'Clear geography filter');
+    clear.onclick = () => { geoFilter.clear(); geoChanged(); };
+    chips.push(clear);
+  }
+  $('geoFilter').replaceChildren(...chips);
+  $('geoFilterNote').textContent = 'Geography uses author-affiliation countries from the source. A paper with several countries counts under each; countries with no loaded papers are not listed.';
+}
+function renderGeoReport(s) {
+  const g = s.geography, box = $('geoReport');
+  box.classList.toggle('hidden', !(g && g.active));
+  if (!(g && g.active)) return;
+  const chips = [['Matched', g.matched], ['Country unknown', g.unknown]];
+  if (g.outside) chips.push(['Outside the chosen area', g.outside]);
+  $('geoCounts').replaceChildren(...chips.map(([k, v]) => el('span', { class: 'chip' }, k + ' (' + v + ')')));
+  const names = (regionData ? regionData.regions : []).filter(r => g.regions.includes(r.id)).map(r => r.name);
+  $('geoNote').textContent = (g.mode === 'exclude' ? 'Excluding ' : 'Including ') + 'author-affiliation countries: ' + [...names, ...g.countries].join(', ')
+    + ' (' + g.expanded_countries.length + ' country codes, regions list ' + g.regions_version + '). Country unknown does not mean excluded: those papers are kept here because their source record has no affiliation country.';
+  const unknown = run.papers.filter(p => p.geo_status === 'unknown');
+  $('unknownSummary').textContent = 'Country unknown (' + unknown.length + ')';
+  $('unknownList').replaceChildren(...(unknown.length ? unknown.map(p => el('div', { class: 'small' }, (p.year || 'n.d.') + ' · ' + (p.title || '(untitled)') + ' · ' + p.source)) : [el('p', { class: 'note' }, 'None.')]));
 }
 async function refreshRun() {
   const r = await json('/api/runs/' + run.id);
@@ -683,7 +792,7 @@ async function refreshRun() {
   renderTypes(); renderRows(); updateSelection(); refreshPdfCells(); loadManuals(); loadUploads();
 }
 function renderRun(r) {
-  run = r; shown = 0; selected.clear(); typeFilter.clear(); scopeTouched = false; lastAnalysis = null;
+  run = r; shown = 0; selected.clear(); typeFilter.clear(); geoFilter.clear(); scopeTouched = false; lastAnalysis = null;
   $('promptBox').classList.add('hidden'); $('gapMsg').textContent = ''; $('exportMsg').textContent = '';
   const s = r.summary;
   $('resultCard').classList.remove('hidden'); $('gapCard').classList.remove('hidden');
@@ -705,19 +814,20 @@ function renderRun(r) {
   if (sf.length) notes.push(el('p', { class: 'warnmsg' }, 'Shortfalls (fewer papers found than requested, not padded): ' + sf.map(([y, v]) => y + ' ' + v.collected + '/' + v.quota).join(', ')));
   $('notes').replaceChildren(...notes);
   $('all').checked = false; $('dlMsg').textContent = '';
+  renderGeoReport(s);
   renderTypes(); renderRows(); updateSelection(); loadDownloads(); loadManuals();
 }
 function updateSelection() {
   const n = selected.size, withAbs = [...selected.values()].filter(p => p.abstract).length;
   const inView = run ? viewPapers().filter(p => selected.has(keyOf(p))).length : 0;
-  $('selectedCount').textContent = n + ' selected' + (typeFilter.size ? ' (' + inView + ' in the filtered view)' : '');
+  $('selectedCount').textContent = n + ' selected' + (filtersOn() ? ' (' + inView + ' in the filtered view)' : '');
   if (run) {
     const sc = $('exportScope'), prev = sc.value, view = viewPapers();
     sc.replaceChildren(
       el('option', { value: 'selected' }, 'Ticked papers (' + n + ')'),
       el('option', { value: 'view' }, 'Filtered view (' + view.length + ')'),
       el('option', { value: 'all' }, 'All results (' + run.papers.length + ')'));
-    sc.value = scopeTouched && prev ? prev : (n ? 'selected' : (typeFilter.size ? 'view' : 'all'));
+    sc.value = scopeTouched && prev ? prev : (n ? 'selected' : (filtersOn() ? 'view' : 'all'));
   }
   $('gapScope').textContent = n ? n + ' paper' + (n === 1 ? '' : 's') + ' selected (' + withAbs + ' with an abstract).' : 'No papers selected. Tick papers in the results table first.';
   $('exportXlsx').title = 'Download the papers chosen in the Export box as an Excel workbook.';
@@ -733,7 +843,7 @@ async function search() {
         query: $('query').value.trim(),
         year_from: parseInt($('yFrom').value, 10), year_to: parseInt($('yTo').value, 10),
         document_types: getTypes(), languages: getLangs(),
-        countries: $('countries').value.split(',').map(s => s.trim()).filter(Boolean),
+        ...getGeo(),
       },
       libraries: getLibs(), weighting: $('weighting').value,
     };
@@ -899,7 +1009,7 @@ const HELP = {
   register: 'Create a new account with this email and password.',
   query: 'Words describing your research area. They are matched against titles and abstracts by each library.',
   yFrom: 'Include works published in this year or later.', yTo: 'Include works published in this year or earlier.',
-  countries: 'Optional two-letter country codes (for example EG, US, CA). Matches the countries of the authors\' institutions in libraries that support it.',
+  geoSummary: 'Optional. Choose regions and/or countries and include or exclude them. Matches the countries of the authors\' institutions (not the place studied) in libraries that support it; papers with no affiliation country are listed separately as "Country unknown".',
   quota: 'Optional. Spread this many papers across the years you chose instead of taking the first results.',
   weighting: 'How the wanted papers are shared between years: equally, or giving recent years more.',
   gapCount: 'How many candidate research gaps to ask for (1 to 5).', propCount: 'How many distinct research proposals to ask for (1 to 5).',

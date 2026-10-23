@@ -60,7 +60,7 @@ def test_filter_includes_period_types_languages_countries():
     # `other` means "not one of the four", so it cannot be pre-filtered: no type filter
     assert "type:" not in build_filter(SearchProfile(document_types=["thesis", "other"]))
     assert "language:ar|fr" in f
-    assert "authorships.institutions.country_code:EG|CA" in f
+    assert "authorships.institutions.country_code:CA|EG" in f  # sorted, so reruns build the same query
 
 
 def test_profile_rejects_unsupported_language_and_bad_dates():

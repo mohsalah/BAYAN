@@ -9,16 +9,21 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from .regions import REGION_NAMES
+
 COLUMNS: list[tuple[str, str, int]] = [
     ("title", "Title", 60), ("year", "Year", 7), ("first_author", "First author", 24),
     ("venue", "Venue", 30), ("doi", "DOI", 30), ("category_label", "Reference type", 20),
     ("native_type", "Source type", 16), ("document_kind", "Document kind", 12),
     ("origin", "Origin", 16), ("language", "Language", 9),
-    ("countries", "Affiliation countries", 18), ("source", "Library", 12),
+    ("countries", "Affiliation countries", 18), ("region_names", "Region", 26),
+    ("geo_label", "Geography match", 18), ("source", "Library", 12),
     ("citations", "Citations", 10), ("access", "Open copy", 18), ("oa_url", "Open-copy link", 36),
     ("landing_url", "Source page", 36), ("keywords", "Keywords", 30),
     ("abstract_status", "Abstract", 14), ("abstract", "Abstract text", 90),
 ]
+UNKNOWN = "unknown"
+GEO_LABELS = {"matched": "matched", "unknown": "country unknown", "outside": "outside area"}
 ACCESS_LABELS = {"open_copy_listed": "listed by source", "no_open_copy_listed": "none listed"}
 ABSTRACT_LABELS = {"supplied": "supplied", "not_supplied_by_source": "not supplied by source"}
 _FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
@@ -35,7 +40,9 @@ def flatten(paper: dict, category_labels: dict[str, str]) -> dict:
     row = dict(paper)
     category = paper.get("category", "")
     row["category_label"] = category_labels.get(category, category)
-    row["countries"] = "; ".join(paper.get("countries") or [])
+    row["countries"] = "; ".join(paper.get("countries") or []) or UNKNOWN
+    row["region_names"] = "; ".join(REGION_NAMES[r] for r in paper.get("regions") or []) or UNKNOWN
+    row["geo_label"] = GEO_LABELS.get(paper.get("geo_status", ""), "not filtered")
     row["keywords"] = "; ".join(paper.get("keywords") or [])
     row["doi"] = paper.get("doi") or ""
     row["document_kind"] = paper.get("document_kind") or ""
@@ -44,6 +51,14 @@ def flatten(paper: dict, category_labels: dict[str, str]) -> dict:
     row["abstract_status"] = ABSTRACT_LABELS.get(
         paper.get("abstract_status", ""), paper.get("abstract_status", ""))
     return row
+
+
+def _geography_text(geo: dict | None) -> str:
+    if not geo or not geo.get("active"):
+        return "no geography filter"
+    return (f"{geo['mode']} on {geo['basis']}; regions version {geo['regions_version']}; "
+            f"countries: {', '.join(geo['expanded_countries'])}; matched {geo['matched']}, "
+            f"country unknown {geo['unknown']}, outside the area {geo['outside']}")
 
 
 def to_csv(papers: list[dict], category_labels: dict[str, str]) -> bytes:
@@ -88,6 +103,8 @@ def to_xlsx(papers: list[dict], category_labels: dict[str, str], run: dict) -> b
         ("Reference types", ", ".join(profile.get("document_types", []))),
         ("Languages", ", ".join(profile.get("languages", []))),
         ("Affiliation countries", ", ".join(profile.get("countries", []))),
+        ("Regions", ", ".join(profile.get("regions", []))),
+        ("Geography", _geography_text(summary.get("geography"))),
         ("Libraries", ", ".join(request.get("libraries", []))),
         ("Papers in this export", len(papers)),
         ("Papers found by the run", summary.get("found", "")),

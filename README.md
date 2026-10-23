@@ -97,6 +97,31 @@ are rejected and nothing is saved). The same file cannot be added twice.
 | `PATCH /api/manuals/{paper_id}` | `{"title": "…"}` edit the title (404 unless it is yours). |
 | `POST /api/runs/{run_id}/manuals` | `{"paper_id": "m-…"}` put a collection manual into one of your runs. |
 
+## Geographic filter (M23)
+
+The profile takes `regions` (ids from `GET /api/regions`), `countries` (ISO 3166-1 alpha-2),
+`geo_mode` (`include` default, or `exclude`) and `geo_basis` (only `author_affiliation` in v1;
+anything else is rejected). Study location is not inferred.
+
+- **Regions** are fixed, sorted country lists in `bayan/regions.py` with a version string
+  (`REGIONS_VERSION`). Each country is in exactly one region; the file documents the rule for
+  ambiguous cases (Russia is Europe, Turkey and Egypt are Middle East and North Africa, Mexico is
+  Latin America and Caribbean, Kazakhstan is Asia) and the few territories left out.
+- **Expansion.** Regions plus explicit countries become one sorted, de-duplicated code list at
+  search time. The run summary (`summary.geography`) stores the chosen regions, countries, the
+  expanded codes, the mode, the basis and the regions version, so a rerun is reproducible.
+- **Applying it.** OpenAlex gets `authorships.institutions.country_code:` with the codes joined by
+  `|` (include) or prefixed with `!` (exclude). A library that cannot apply it lists `countries` in
+  `unapplied_filters`; nothing is post-filtered by guessing. Only countries a record itself
+  reports (OpenAlex affiliations) are checked, so excluded records cannot slip through.
+- **Unknown location.** A paper with no affiliation country is never dropped and never counted as
+  a match. The run shows *Matched (n)*, *Country unknown (n)* and, when relevant, *Outside the
+  chosen area (n)* (these were dropped), with the unknown papers in their own expandable list.
+  Unknown does not mean excluded. Results have a Geography chip row (regions, countries present,
+  Unknown) that filters the loaded results in the browser without a new search.
+- **Export.** CSV and Excel have *Affiliation countries*, *Region* and *Geography match* columns;
+  missing values read `unknown`.
+
 ## Membership access (M7)
 
 An email address alone gives no access to paid content. A user can instead (a) store their own

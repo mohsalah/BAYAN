@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from .regions import COUNTRY_NAMES, GEO_BASES, REGIONS, expand
+
 # Search and interface languages. The translator (later milestone) is the only
 # feature that accepts other input languages.
 LANGUAGES: dict[str, dict[str, object]] = {
@@ -57,6 +59,11 @@ class SearchProfile(BaseModel):
     languages: list[str] = Field(default_factory=lambda: ["en"])
     # ISO 3166-1 alpha-2 codes; matched against author-affiliation countries.
     countries: list[str] = Field(default_factory=list)
+    # Region ids from bayan.regions; they expand to country codes together with `countries`.
+    regions: list[str] = Field(default_factory=list)
+    geo_mode: Literal["include", "exclude"] = "include"
+    # v1 supports only the authors' affiliation countries (study location is not inferred).
+    geo_basis: str = "author_affiliation"
 
     @field_validator("document_types", mode="before")
     @classmethod
@@ -79,8 +86,32 @@ class SearchProfile(BaseModel):
             code = code.strip().upper()
             if len(code) != 2 or not code.isalpha():
                 raise ValueError(f"country must be an ISO 3166-1 alpha-2 code: {code!r}")
+            if code not in COUNTRY_NAMES:
+                raise ValueError(f"unknown country code: {code!r}")
             out.append(code)
-        return out
+        return list(dict.fromkeys(out))
+
+    @field_validator("regions")
+    @classmethod
+    def _known_regions(cls, v: list[str]) -> list[str]:
+        unknown = [r for r in v if r not in REGIONS]
+        if unknown:
+            raise ValueError(f"unknown region(s): {', '.join(unknown)}")
+        return list(dict.fromkeys(v))
+
+    @field_validator("geo_basis")
+    @classmethod
+    def _supported_basis(cls, v: str) -> str:
+        if v not in GEO_BASES:
+            raise ValueError(
+                f"geography basis {v!r} is not supported; v1 supports only "
+                f"{', '.join(GEO_BASES)} (study location is not inferred)")
+        return v
+
+    @property
+    def geo_countries(self) -> list[str]:
+        """Chosen regions and explicit countries as one sorted list of ISO codes."""
+        return expand(self.regions, self.countries)
 
     def model_post_init(self, __context: object) -> None:
         if self.year_from > self.year_to:

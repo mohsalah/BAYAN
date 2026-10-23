@@ -79,7 +79,8 @@ from .membership import (
     validate_template,
 )
 from .models import CATEGORY_INFO, LANGUAGES, USER_SOURCE, normalize_document_types
-from .search import SearchRequest, paper_row_to_dict, run_search
+from .regions import regions_of, regions_payload
+from .search import SearchRequest, geo_status, paper_row_to_dict, run_search
 
 COOKIE = "bayan_session"
 STATIC = Path(__file__).parent / "static"
@@ -236,6 +237,10 @@ def create_app(
     def languages() -> dict:
         return LANGUAGES
 
+    @app.get("/api/regions")
+    def regions() -> dict:
+        return regions_payload()
+
     @app.get("/api/document-types")
     def document_types() -> list[dict]:
         return list(CATEGORY_INFO)
@@ -329,6 +334,8 @@ def create_app(
 
     def decorate(rows: list[sqlite3.Row], summary: dict) -> list[dict]:
         matches = {(m["source"], m["id"]): m for m in summary.get("doi_matches", [])}
+        geo = summary.get("geography") or {}
+        geo_codes = set(geo.get("expanded_countries") or [])
         out = []
         for p in rows:
             d = paper_row_to_dict(p)
@@ -337,6 +344,9 @@ def create_app(
             d["doi_match_score"] = match["score"] if match else None
             d["category_label"] = CATEGORY_LABELS.get(d["category"], d["category"])
             d["type_key"] = type_key(d)
+            d["regions"] = regions_of(d["countries"])
+            d["geo_status"] = (geo_status(d["countries"], geo_codes, geo.get("mode", "include"))
+                               if geo_codes else "")
             d["type_label"] = ("Manual (user-supplied)" if d["type_key"] == "manual"
                                else d["category_label"])
             out.append(d)

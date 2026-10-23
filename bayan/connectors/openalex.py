@@ -96,8 +96,12 @@ def build_filter(profile: SearchProfile) -> str:
         parts.append("type:" + "|".join(types))
     if profile.languages:
         parts.append("language:" + "|".join(profile.languages))
-    if profile.countries:
-        parts.append("authorships.institutions.country_code:" + "|".join(profile.countries))
+    codes = profile.geo_countries
+    if codes:
+        # Exclude mode negates the whole OR list. The run also re-checks the countries each
+        # record reports, so a different reading of "!" cannot let excluded records in.
+        negate = "!" if profile.geo_mode == "exclude" else ""
+        parts.append("authorships.institutions.country_code:" + negate + "|".join(codes))
     return ",".join(parts)
 
 
