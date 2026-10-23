@@ -97,6 +97,8 @@ class EuropePMCConnector:
     # Document type is a coarse pre-filter (no preprints unless `other` is chosen) plus
     # classification of every record. Affiliation country is not applied: AFF is free text.
     supported_filters = frozenset({"years", "languages", "document_types"})
+    # classify_result only returns these two.
+    supported_categories = frozenset({"peer_reviewed", "other"})
 
     def __init__(
         self,

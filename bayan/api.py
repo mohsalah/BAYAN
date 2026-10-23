@@ -33,21 +33,35 @@ from .connectors import (
 )
 from .connectors.base import Connector
 from .db import connect, init_db
+from .doctypes import type_key, type_report
 from .downloads import (
     DOWNLOADED,
+    NEEDS_ACCESS,
     PENDING,
+    REASONS,
     Fetcher,
+    _plain,
     finalize_pdf,
     new_part,
     now_iso,
     pdf_path,
+    pdf_sink,
     public_record,
     record_verdict,
     run_download_job,
 )
 from .export import to_csv, to_xlsx
 from .libraries import LIBRARIES
-from .models import CATEGORY_INFO, LANGUAGES, normalize_document_types
+from .manuals import (
+    add_to_run,
+    clean_title,
+    new_manual_id,
+    owns_manual,
+    rename_manual,
+    store_manual,
+    title_from_url,
+)
+from .models import CATEGORY_INFO, LANGUAGES, USER_SOURCE, normalize_document_types
 from .search import SearchRequest, paper_row_to_dict, run_search
 
 COOKIE = "bayan_session"
@@ -75,6 +89,20 @@ class ExportRequest(BaseModel):
     format: Literal["csv", "xlsx"] = "csv"
     # None exports every paper of the run; otherwise only these (they must belong to the run).
     papers: list[PaperRef] | None = Field(default=None, max_length=500)
+
+
+class ManualUrl(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+    title: str = Field(default="", max_length=300)
+    run_id: int | None = None  # None = personal manuals collection only
+
+
+class ManualTitle(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+
+
+class ManualToRun(BaseModel):
+    paper_id: str = Field(min_length=1, max_length=100)
 
 
 class GapRequest(BaseModel):
@@ -276,6 +304,9 @@ def create_app(
             d["doi_source"] = "crossref_lookup" if match else ""
             d["doi_match_score"] = match["score"] if match else None
             d["category_label"] = CATEGORY_LABELS.get(d["category"], d["category"])
+            d["type_key"] = type_key(d)
+            d["type_label"] = ("Manual (user-supplied)" if d["type_key"] == "manual"
+                               else d["category_label"])
             out.append(d)
         return out
 
@@ -334,8 +365,10 @@ def create_app(
         if isinstance(profile, dict) and "document_types" in profile:
             # Runs stored before the five categories used article/review/manual.
             profile["document_types"] = normalize_document_types(profile["document_types"])
+        selected = (profile or {}).get("document_types", []) if isinstance(profile, dict) else []
         return {"id": run["id"], "created_at": run["created_at"],
-                "request": request, "summary": summary, "papers": out}
+                "request": request, "summary": summary, "papers": out,
+                "type_report": type_report(selected, out, request.get("libraries", []))}
 
     @app.post("/api/runs/{run_id}/export")
     def export_run(run_id: int, body: ExportRequest, user: User, conn: Conn) -> Response:
@@ -476,21 +509,14 @@ def create_app(
         return [r for r in download_rows(conn, user["id"], keys)
                 if r["status"] != "not_requested"]
 
-    @app.post("/api/downloads/upload")
-    async def upload_pdf(source: str, paper_id: str, request: Request, user: User) -> dict:
-        # The request-scoped connection belongs to another thread, so open short-lived ones here.
-        def lookup() -> sqlite3.Row:
-            with closing(connect(settings.database_path)) as c:
-                return user_papers(c, user["id"], [PaperRef(source=source, id=paper_id)])[0]
-
-        paper = await run_in_threadpool(lookup)
+    async def receive_pdf(request: Request, part: Path) -> None:
+        """Check the upload headers, then stream the body to `part` within the size limit."""
         if not request.headers.get("content-type", "").lower().startswith("application/pdf"):
             raise HTTPException(415, "Upload a PDF (Content-Type: application/pdf)")
         limit = settings.pdf_max_bytes
         declared = request.headers.get("content-length", "")
         if declared.isdigit() and int(declared) > limit:
             raise HTTPException(413, "The PDF is larger than the allowed size")
-        part = new_part(settings.pdf_root, user["id"], source, paper_id)
         part.parent.mkdir(parents=True, exist_ok=True)
         size = 0
         try:
@@ -503,9 +529,22 @@ def create_app(
         except BaseException:
             part.unlink(missing_ok=True)
             raise
+
+    @app.post("/api/downloads/upload")
+    async def upload_pdf(source: str, paper_id: str, request: Request, user: User) -> dict:
+        # The request-scoped connection belongs to another thread, so open short-lived ones here.
+        def lookup() -> sqlite3.Row:
+            with closing(connect(settings.database_path)) as c:
+                return user_papers(c, user["id"], [PaperRef(source=source, id=paper_id)])[0]
+
+        paper = await run_in_threadpool(lookup)
+        part = new_part(settings.pdf_root, user["id"], source, paper_id)
+        await receive_pdf(request, part)
+
         def finish() -> dict:
             verdict = finalize_pdf(part, settings.pdf_root, user["id"], source, paper_id,
-                                   paper["title"] or "", paper["doi"] or "", limit)
+                                   paper["title"] or "", paper["doi"] or "",
+                                   settings.pdf_max_bytes)
             if verdict.status == "needs_access":
                 raise HTTPException(422, verdict.detail)
             with closing(connect(settings.database_path)) as c:
@@ -526,6 +565,117 @@ def create_app(
         return FileResponse(path, media_type="application/pdf",
                             headers={"Cache-Control": "private, no-store",
                                      "X-Content-Type-Options": "nosniff"})
+
+    # ---- Manuals: added by URL or upload, never searched for; private to the owner ----
+
+    def manual_view(conn: sqlite3.Connection, user_id: int, paper_id: str,
+                    run_id: int | None = None) -> dict:
+        row = conn.execute("SELECT * FROM papers WHERE source = ? AND id = ?",
+                           (USER_SOURCE, paper_id)).fetchone()
+        return {"paper": decorate([row], {})[0],
+                "download": download_rows(conn, user_id, [(USER_SOURCE, paper_id)])[0],
+                "origin": conn.execute(
+                    "SELECT origin FROM manuals WHERE user_id = ? AND paper_id = ?",
+                    (user_id, paper_id)).fetchone()["origin"],
+                "run_id": run_id}
+
+    def finish_manual(conn: sqlite3.Connection, user_id: int, paper_id: str, part: Path,
+                      title: str, origin: str, source_url: str, run_id: int | None,
+                      **meta: object) -> dict:
+        verdict = finalize_pdf(part, settings.pdf_root, user_id, USER_SOURCE, paper_id,
+                               "", "", settings.pdf_max_bytes)
+        if verdict.status == NEEDS_ACCESS:
+            raise HTTPException(422, verdict.detail or REASONS.get(verdict.reason, "Not a PDF."))
+        same = conn.execute(
+            "SELECT p.title FROM downloads d JOIN papers p ON p.source = d.source AND"
+            " p.id = d.paper_id WHERE d.user_id = ? AND d.source = ? AND d.sha256 = ?",
+            (user_id, USER_SOURCE, verdict.sha256)).fetchone()
+        if same is not None:
+            if verdict.path:
+                verdict.path.unlink(missing_ok=True)
+            raise HTTPException(409, f"You already added this file as '{same['title']}'")
+        # The title is the user's own words, so the file was not matched against a record.
+        verdict.detail = ("The title is user-supplied; the file's identity was not checked "
+                          "against a library record.")
+        verdict.basis, verdict.score = "user_supplied", None
+        record_verdict(conn, user_id, USER_SOURCE, paper_id, verdict, origin=origin,
+                       source_url=source_url or origin, retrieved_at=now_iso(), **meta)
+        store_manual(conn, user_id, paper_id, title, origin, source_url, run_id)
+        return manual_view(conn, user_id, paper_id, run_id)
+
+    @app.post("/api/manuals/url", status_code=201)
+    async def add_manual_url(body: ManualUrl, user: User) -> dict:
+        def work() -> dict:
+            with closing(connect(settings.database_path)) as c:
+                if body.run_id is not None:
+                    owned_run(c, body.run_id, user["id"])
+                recent = c.execute(
+                    "SELECT COUNT(*) FROM download_attempts WHERE user_id = ?"
+                    " AND created_at > datetime('now', '-1 hour')", (user["id"],)).fetchone()[0]
+                if recent + 1 > settings.downloads_per_hour:
+                    raise HTTPException(
+                        429, f"Download limit reached: {settings.downloads_per_hour} files per "
+                        "hour. Try again later.")
+                c.execute("INSERT INTO download_attempts(user_id) VALUES(?)", (user["id"],))
+                c.commit()
+                url = body.url.strip()
+                paper_id = new_manual_id()
+                part = new_part(settings.pdf_root, user["id"], USER_SOURCE, paper_id)
+                res = fetcher.fetch(url, pdf_sink(part, settings.pdf_max_bytes))
+                if not res.ok:
+                    part.unlink(missing_ok=True)
+                    status = {"unsafe_url": 422, "html_returned": 422, "not_pdf": 422,
+                              "too_large": 413}.get(res.code, 502)
+                    raise HTTPException(status, res.detail or REASONS.get(res.code, "Failed."))
+                title = clean_title(body.title, title_from_url(url))
+                return finish_manual(c, user["id"], paper_id, part, title, "url", _plain(url),
+                                     body.run_id, final_url=res.final_url,
+                                     http_status=res.status)
+
+        return await run_in_threadpool(work)
+
+    @app.post("/api/manuals/upload", status_code=201)
+    async def add_manual_upload(request: Request, user: User, title: str = "",
+                                run_id: int | None = None) -> dict:
+        def check_run() -> None:
+            if run_id is not None:
+                with closing(connect(settings.database_path)) as c:
+                    owned_run(c, run_id, user["id"])
+
+        await run_in_threadpool(check_run)
+        paper_id = new_manual_id()
+        part = new_part(settings.pdf_root, user["id"], USER_SOURCE, paper_id)
+        await receive_pdf(request, part)
+
+        def work() -> dict:
+            with closing(connect(settings.database_path)) as c:
+                return finish_manual(c, user["id"], paper_id, part, clean_title(title),
+                                     "upload", "", run_id)
+
+        return await run_in_threadpool(work)
+
+    @app.get("/api/manuals")
+    def list_manuals(user: User, conn: Conn) -> list[dict]:
+        ids = [r["paper_id"] for r in conn.execute(
+            "SELECT paper_id FROM manuals WHERE user_id = ? ORDER BY created_at DESC, rowid DESC",
+            (user["id"],))]
+        return [manual_view(conn, user["id"], i) for i in ids]
+
+    @app.patch("/api/manuals/{paper_id}")
+    def edit_manual(paper_id: str, body: ManualTitle, user: User, conn: Conn) -> dict:
+        if not owns_manual(conn, user["id"], paper_id):
+            raise HTTPException(404, "Manual not found")
+        rename_manual(conn, paper_id, clean_title(body.title))
+        return manual_view(conn, user["id"], paper_id)
+
+    @app.post("/api/runs/{run_id}/manuals", status_code=201)
+    def add_manual_to_run(run_id: int, body: ManualToRun, user: User, conn: Conn) -> dict:
+        owned_run(conn, run_id, user["id"])
+        if not owns_manual(conn, user["id"], body.paper_id):
+            raise HTTPException(404, "Manual not found")
+        add_to_run(conn, run_id, body.paper_id)
+        conn.commit()
+        return manual_view(conn, user["id"], body.paper_id, run_id)
 
     return app
 

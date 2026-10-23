@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS papers(
   source TEXT NOT NULL, id TEXT NOT NULL, doi TEXT, title TEXT, abstract TEXT, year INTEGER,
   document_type TEXT, language TEXT, venue TEXT, first_author TEXT, countries TEXT,
   citations INTEGER, is_oa INTEGER, oa_url TEXT, landing_url TEXT, keywords TEXT, topic TEXT,
-  category TEXT, native_type TEXT, category_basis TEXT,
+  category TEXT, native_type TEXT, category_basis TEXT, document_kind TEXT,
   PRIMARY KEY(source, id)
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS paper_search USING fts5(
@@ -57,6 +57,12 @@ CREATE TABLE IF NOT EXISTS download_attempts(
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS manuals(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  paper_id TEXT NOT NULL, origin TEXT NOT NULL, source_url TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, paper_id)
+);
 CREATE TABLE IF NOT EXISTS usage(
   id INTEGER PRIMARY KEY, user_id TEXT, month TEXT, model TEXT,
   input_tokens INTEGER, output_tokens INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -74,7 +80,7 @@ def connect(path: Path) -> sqlite3.Connection:
 
 
 # Columns added after the first release; init_db adds them to an existing file in place.
-PAPER_COLUMNS_ADDED = ("category", "native_type", "category_basis")
+PAPER_COLUMNS_ADDED = ("category", "native_type", "category_basis", "document_kind")
 
 
 def init_db(path: Path) -> None:

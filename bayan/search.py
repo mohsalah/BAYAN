@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from .connectors.base import FILTERS, Connector
 from .doi_lookup import DoiLooker, DoiLookup
-from .models import DOCUMENT_TYPES, Paper, SearchProfile
+from .models import DOCUMENT_TYPES, USER_SOURCE, Paper, SearchProfile
 from .quotas import allocate_quotas
 from .retrieval import collect
 
@@ -166,11 +166,13 @@ def _first(stream: Iterator[Paper], n: int, state: dict) -> Iterator[Paper]:
 def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
     conn.execute(
         "INSERT OR REPLACE INTO papers(source, id, doi, title, abstract, year, native_type,"
-        " category, category_basis, language, venue, first_author, countries, citations, is_oa,"
-        " oa_url, landing_url, keywords, topic) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " category, category_basis, document_kind, language, venue, first_author, countries,"
+        " citations, is_oa, oa_url, landing_url, keywords, topic)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (p.source, p.id, p.doi, p.title, p.abstract, p.year, p.native_type, p.category,
-         p.category_basis, p.language, p.venue, p.first_author, json.dumps(p.countries),
-         p.citations, int(p.is_oa), p.oa_url, p.landing_url, json.dumps(p.keywords), p.topic),
+         p.category_basis, p.document_kind or None, p.language, p.venue, p.first_author,
+         json.dumps(p.countries), p.citations, int(p.is_oa), p.oa_url, p.landing_url,
+         json.dumps(p.keywords), p.topic),
     )
     conn.execute("DELETE FROM paper_search WHERE source=? AND id=?", (p.source, p.id))
     conn.execute(
@@ -193,6 +195,8 @@ def paper_row_to_dict(row: sqlite3.Row) -> dict:
                                + (f"native type '{legacy}'" if legacy else "no type stored"))
     d["native_type"] = d.get("native_type") or legacy
     d["category_basis"] = d.get("category_basis") or ""
+    d["document_kind"] = d.get("document_kind") or ""
+    d["user_supplied"] = d["source"] == USER_SOURCE
     # Honest wording: a listed open link is not proof that a valid PDF can be downloaded.
     d["access"] = "open_copy_listed" if d["oa_url"] else "no_open_copy_listed"
     d["abstract"] = d.get("abstract") or ""

@@ -137,6 +137,9 @@ class CrossrefConnector:
     tier = "open"
     # No language or affiliation-country filter exists in the works API.
     supported_filters = frozenset({"years", "document_types"})
+    # Reference types classify_item can return (see CROSSREF_TYPES and the `other` fallback).
+    supported_categories = frozenset(
+        {"peer_reviewed", "proceedings", "thesis", "report", "other"})
 
     def __init__(
         self,

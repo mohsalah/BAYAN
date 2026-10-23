@@ -75,6 +75,7 @@ class ArxivConnector:
     # Everything on arXiv is a preprint (category `other`); there is no language or
     # affiliation-country field.
     supported_filters = frozenset({"years", "document_types"})
+    supported_categories = frozenset({"other"})
 
     def __init__(
         self,
