@@ -104,3 +104,23 @@ def test_gives_up_after_max_attempts():
     conn = OpenAlexConnector(client=client_for(pages), sleep=lambda s: None, max_attempts=3)
     with pytest.raises(ConnectorError):
         list(conn.search(SearchProfile()))
+
+
+def test_paging_past_first_page_without_key_keeps_page_one_and_warns():
+    pages = [
+        (200, {"results": [WORK], "meta": {"next_cursor": "c2"}}, {}),
+        (401, {"error": "API key required for cursor paging"}, {}),
+    ]
+    conn = OpenAlexConnector(client=client_for(pages), sleep=lambda s: None)
+    assert [p.id for p in conn.search(SearchProfile())] == ["W123"]
+    assert len(conn.warnings) == 1 and "OPENALEX_API_KEY" in conn.warnings[0]
+
+
+def test_401_with_a_key_or_on_first_page_is_still_an_error():
+    first = OpenAlexConnector(client=client_for([(401, {}, {})]), sleep=lambda s: None)
+    with pytest.raises(ConnectorError):
+        list(first.search(SearchProfile()))
+    pages = [(200, {"results": [WORK], "meta": {"next_cursor": "c2"}}, {}), (401, {}, {})]
+    keyed = OpenAlexConnector(api_key="K", client=client_for(pages), sleep=lambda s: None)
+    with pytest.raises(ConnectorError):
+        list(keyed.search(SearchProfile()))

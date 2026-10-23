@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS run_papers(
   source TEXT NOT NULL, paper_id TEXT NOT NULL, rank INTEGER NOT NULL,
   PRIMARY KEY(run_id, source, paper_id)
 );
+CREATE TABLE IF NOT EXISTS analysis_requests(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, run_id INTEGER, request TEXT NOT NULL, prompt TEXT NOT NULL,
+  packet TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS jobs(
   id INTEGER PRIMARY KEY, kind TEXT NOT NULL, payload TEXT, status TEXT NOT NULL DEFAULT 'pending',
   error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT

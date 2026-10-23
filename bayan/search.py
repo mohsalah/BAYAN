@@ -120,6 +120,7 @@ def run_search(
                      if f not in getattr(c, "supported_filters", frozenset())]
             for c in connectors},
         "stopped": state["stopped"],
+        "warnings": [w for c in connectors for w in getattr(c, "warnings", [])],
         "duplicates": result.duplicates,
         "skipped_over_quota": result.skipped_over_quota,
         "skipped_no_year": result.skipped_no_year,
@@ -194,5 +195,6 @@ def paper_row_to_dict(row: sqlite3.Row) -> dict:
     d["category_basis"] = d.get("category_basis") or ""
     # Honest wording: a listed open link is not proof that a valid PDF can be downloaded.
     d["access"] = "open_copy_listed" if d["oa_url"] else "no_open_copy_listed"
-    d.pop("abstract", None)
+    d["abstract"] = d.get("abstract") or ""
+    d["abstract_status"] = "supplied" if d["abstract"] else "not_supplied_by_source"
     return d
