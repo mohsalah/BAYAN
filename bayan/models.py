@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .regions import COUNTRY_NAMES, GEO_BASES, REGIONS, expand
 
@@ -17,6 +17,33 @@ LANGUAGES: dict[str, dict[str, object]] = {
     "de": {"name": "German", "rtl": False},
     "es": {"name": "Spanish", "rtl": False},
 }
+
+# Longest research-area text, for the main query and for each per-language query.
+QUERY_MAX_LENGTH = 1000
+# Names for language codes that libraries report on records. Only the six in LANGUAGES can be
+# searched; the extra names exist so a paper is never shown as a bare code.
+OTHER_LANGUAGE_NAMES: dict[str, str] = {
+    "pt": "Portuguese", "it": "Italian", "ru": "Russian", "ja": "Japanese", "ko": "Korean",
+    "nl": "Dutch", "tr": "Turkish", "fa": "Persian", "pl": "Polish", "sv": "Swedish",
+    "he": "Hebrew", "hi": "Hindi", "id": "Indonesian", "uk": "Ukrainian", "cs": "Czech",
+}
+UNKNOWN_LANGUAGE = "unknown"
+
+
+def language_key(code: str | None) -> str:
+    """Grouping key for a paper's language: its code, or 'unknown' when the source gave none."""
+    return (code or "").strip().lower() or UNKNOWN_LANGUAGE
+
+
+def language_name(code: str | None) -> str:
+    """Readable name for a language code. Unknown or unnamed codes are labelled, never hidden."""
+    key = language_key(code)
+    if key == UNKNOWN_LANGUAGE:
+        return "Unknown language"
+    if key in LANGUAGES:
+        return str(LANGUAGES[key]["name"])
+    return OTHER_LANGUAGE_NAMES.get(key) or f"Other language ({key})"
+
 
 # One common set of reference types for every library (docs/BUILD_PLAN.md section 4b).
 DocumentType = Literal["peer_reviewed", "proceedings", "thesis", "report", "other"]
@@ -52,11 +79,14 @@ def normalize_document_types(values: object) -> object:
 class SearchProfile(BaseModel):
     """What the user asked for. Edited by the user before any search runs."""
 
-    query: str = ""
+    query: str = Field(default="", max_length=QUERY_MAX_LENGTH)
     year_from: int = Field(default=1950, ge=1500, le=2100)
     year_to: int = Field(default_factory=lambda: date.today().year, ge=1500, le=2100)
     document_types: list[DocumentType] = Field(default_factory=lambda: ["peer_reviewed"])
     languages: list[str] = Field(default_factory=lambda: ["en"])
+    # Optional keyword text per search language (keys are language codes). A chosen language
+    # without an entry uses `query`. Typed or edited by the user; no model writes it here.
+    queries_by_language: dict[str, str] = Field(default_factory=dict)
     # ISO 3166-1 alpha-2 codes; matched against author-affiliation countries.
     countries: list[str] = Field(default_factory=list)
     # Region ids from bayan.regions; they expand to country codes together with `countries`.
@@ -77,6 +107,22 @@ class SearchProfile(BaseModel):
         if unknown:
             raise ValueError(f"unsupported language(s): {', '.join(unknown)}")
         return v
+
+    @field_validator("queries_by_language")
+    @classmethod
+    def _per_language_queries(cls, v: dict[str, str]) -> dict[str, str]:
+        unknown = [code for code in v if code not in LANGUAGES]
+        if unknown:
+            raise ValueError(
+                f"unsupported language(s) in queries_by_language: {', '.join(unknown)}")
+        out = {}
+        for code, text in v.items():
+            if len(text) > QUERY_MAX_LENGTH:
+                raise ValueError(
+                    f"query for language {code!r} is longer than {QUERY_MAX_LENGTH} characters")
+            if text.strip():
+                out[code] = text.strip()
+        return out
 
     @field_validator("countries")
     @classmethod
@@ -112,6 +158,29 @@ class SearchProfile(BaseModel):
     def geo_countries(self) -> list[str]:
         """Chosen regions and explicit countries as one sorted list of ISO codes."""
         return expand(self.regions, self.countries)
+
+    @model_validator(mode="after")
+    def _queries_match_languages(self) -> "SearchProfile":
+        extra = [code for code in self.queries_by_language if code not in self.languages]
+        if extra:
+            raise ValueError("queries_by_language has text for language(s) that are not chosen "
+                             f"for search: {', '.join(extra)}")
+        return self
+
+    def language_queries(self) -> list[tuple[str, str]]:
+        """(language, query text) per chosen language when per-language text was given.
+
+        Empty when there is none, meaning one search with the main query. A chosen language
+        without its own text uses the main query.
+        """
+        if not self.queries_by_language:
+            return []
+        return [(code, self.queries_by_language.get(code, self.query)) for code in self.languages]
+
+    def for_language(self, code: str, text: str) -> "SearchProfile":
+        """A copy that searches one language with that language's text."""
+        return self.model_copy(
+            update={"languages": [code], "query": text, "queries_by_language": {}})
 
     def model_post_init(self, __context: object) -> None:
         if self.year_from > self.year_to:

@@ -26,7 +26,7 @@ dev = ["pytest>=8", "ruff>=0.6"]
 include = ["bayan*"]
 
 [tool.setuptools.package-data]
-bayan = ["static/*"]
+bayan = ["static/*", "locales/*.json"]
 
 [tool.ruff]
 line-length = 100

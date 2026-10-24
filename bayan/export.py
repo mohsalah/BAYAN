@@ -9,13 +9,15 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from .models import language_name
 from .regions import REGION_NAMES
 
 COLUMNS: list[tuple[str, str, int]] = [
     ("title", "Title", 60), ("year", "Year", 7), ("first_author", "First author", 24),
     ("venue", "Venue", 30), ("doi", "DOI", 30), ("category_label", "Reference type", 20),
     ("native_type", "Source type", 16), ("document_kind", "Document kind", 12),
-    ("origin", "Origin", 16), ("language", "Language", 9),
+    ("origin", "Origin", 16), ("language", "Language code", 9),
+    ("language_name", "Language", 16),
     ("countries", "Affiliation countries", 18), ("region_names", "Region", 26),
     ("geo_label", "Geography match", 18), ("source", "Library", 12),
     ("citations", "Citations", 10), ("access", "Open copy", 18), ("oa_url", "Open-copy link", 36),
@@ -40,6 +42,7 @@ def flatten(paper: dict, category_labels: dict[str, str]) -> dict:
     row = dict(paper)
     category = paper.get("category", "")
     row["category_label"] = category_labels.get(category, category)
+    row["language_name"] = paper.get("language_name") or language_name(paper.get("language"))
     row["countries"] = "; ".join(paper.get("countries") or []) or UNKNOWN
     row["region_names"] = "; ".join(REGION_NAMES[r] for r in paper.get("regions") or []) or UNKNOWN
     row["geo_label"] = GEO_LABELS.get(paper.get("geo_status", ""), "not filtered")
@@ -102,6 +105,8 @@ def to_xlsx(papers: list[dict], category_labels: dict[str, str], run: dict) -> b
         ("Years", f"{profile.get('year_from', '')}-{profile.get('year_to', '')}"),
         ("Reference types", ", ".join(profile.get("document_types", []))),
         ("Languages", ", ".join(profile.get("languages", []))),
+        ("Query per language", json.dumps(
+            (summary.get("language_queries") or {}).get("queries", {}), ensure_ascii=False)),
         ("Affiliation countries", ", ".join(profile.get("countries", []))),
         ("Regions", ", ".join(profile.get("regions", []))),
         ("Geography", _geography_text(summary.get("geography"))),
