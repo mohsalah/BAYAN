@@ -128,6 +128,7 @@ def test_proposal_request_needs_gap_text_and_valid_count(env):
     prompt = r.json()["prompt"]
     assert "draft 3 distinct research proposals" in prompt and "No benchmark for X" in prompt
     assert "Do not invent novelty claims" in prompt
+    assert "exactly 3 suggested research questions per proposal" in prompt
 
 
 def test_gap_count_limits_and_empty_selection(env):
