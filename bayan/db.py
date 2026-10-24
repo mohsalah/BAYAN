@@ -72,6 +72,25 @@ CREATE TABLE IF NOT EXISTS membership_proxy(
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   template TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS glossary(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source_language TEXT NOT NULL, target_language TEXT NOT NULL,
+  term_key TEXT NOT NULL, source_term TEXT NOT NULL, target_term TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, source_language, target_language, term_key)
+);
+CREATE TABLE IF NOT EXISTS translation_cache(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  text_hash TEXT NOT NULL, source_language TEXT NOT NULL, target_language TEXT NOT NULL,
+  engine TEXT NOT NULL, glossary_version TEXT NOT NULL, origin TEXT NOT NULL,
+  result TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, text_hash, source_language, target_language, engine, glossary_version,
+              origin)
+);
+CREATE TABLE IF NOT EXISTS translate_usage(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  chars INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS usage(
   id INTEGER PRIMARY KEY, user_id TEXT, month TEXT, model TEXT,
   input_tokens INTEGER, output_tokens INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP

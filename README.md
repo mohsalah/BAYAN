@@ -209,6 +209,44 @@ user's files cannot be listed, fetched or deleted (404).
 | `POST /api/membership/proxy-link` | `{"doi": "10.1/x"}` or `{"url": "https://..."}`, optional `template` to preview an unsaved one. Returns `link`. |
 | `GET /api/uploads`, `DELETE /api/uploads` | Your uploaded PDFs. |
 
+## Translator (M24)
+
+Translates text, a paper's title and abstract, or pages of a PDF you uploaded into **English or
+Arabic only** (source: en, ar, fr, zh, de, es, or auto-detect). It is a service in
+`bayan/translate.py` behind a small `Engine` interface (`name`, `translate(text, source, target)`),
+so the engine can be swapped.
+
+- **Engine:** the default is a LibreTranslate-compatible server, which is free when self-hosted and
+  needs no paid key. Set `BAYAN_TRANSLATE_URL` (and optionally `BAYAN_TRANSLATE_API_KEY`). With no
+  URL the translator reports **not configured** (HTTP 503, and `status: not_configured` on
+  `/api/translate/status`); nothing is ever faked. Keys are never logged or returned.
+- **Protected items:** numbers with units, equations (`$...$`, `\(...\)`, `a = b`), math symbols,
+  nuclide and chemical names (U-235, 235U, UO2, H2O), DOIs, URLs and citations (`[4]`,
+  `(Dupont et al., 2019)`) are replaced by placeholders before translation and restored after. If an
+  engine loses a placeholder the result carries a "Low confidence" warning and is not cached.
+- **Labelling:** every result says `machine translated` with source language, target language and
+  engine, and has `evidence_quote: false`. Translations are not stored on papers and never enter
+  evidence packets or prompts; evidence quotes stay in the original language.
+- **Glossary:** per-account term pairs (source term -> target term, per language pair), stored in
+  SQLite and private to the account. Terms are matched case-insensitively and always rendered the
+  same way; changing the glossary invalidates cached translations.
+- **PDFs:** only your own validated PDFs, page by page (`pages`, e.g. `1-3,5`, at most 50 pages).
+  Scanned pages need OCR, which is an optional extra (`pip install -e ".[ocr]"` plus the Tesseract
+  program). Without it you get a clear message instead of a translation. OCR text is marked `ocr`.
+- **Limits:** login required; at most `BAYAN_TRANSLATE_MAX_CHARS` (default 20000) characters per
+  request and `BAYAN_TRANSLATIONS_PER_HOUR` (default 30) requests per user. Results are cached per
+  user by text hash.
+- **Web page:** a Translator card shows the original on the left and the translation on the right
+  (`dir="auto"`, so Arabic runs right-to-left), plus the glossary editor.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/translate/status` | Engine, `ready` / `not_configured`, targets, limits and OCR availability. |
+| `POST /api/translate` | `{"text", "source_language": "auto", "target_language": "en"}`. |
+| `POST /api/translate/paper` | `{"source", "id", "target_language"}`: title and abstract of a paper in your runs or your manuals. |
+| `POST /api/translate/pdf` | `{"source", "id", "target_language", "pages"}`: pages of your validated PDF, aligned by page. |
+| `GET` / `PUT` / `DELETE /api/translate/glossary` | List, save (`source_language`, `target_language`, `source_term`, `target_term`) or remove your terms. |
+
 ## Run locally
 
 ```bash

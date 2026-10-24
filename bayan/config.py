@@ -25,6 +25,10 @@ class Settings:
     download_host_delay: float = 1.0  # minimum seconds between requests to the same host
     download_retries: int = 2
     pdf_max_bytes: int = 100 * 1024 * 1024
+    translate_url: str | None = None  # LibreTranslate-compatible server; None = not configured
+    translate_api_key: str | None = field(default=None, repr=False)  # optional
+    translate_max_chars: int = 20000  # per request
+    translations_per_hour: int = 30  # requests per user
 
 
 def load_settings() -> Settings:
@@ -40,5 +44,9 @@ def load_settings() -> Settings:
         pdf_root=Path(os.environ.get("BAYAN_PDF_ROOT", "pdfs")),
         downloads_per_hour=int(os.environ.get("BAYAN_DOWNLOADS_PER_HOUR", "100")),
         download_host_delay=float(os.environ.get("BAYAN_DOWNLOAD_HOST_DELAY", "1.0")),
+        translate_url=os.environ.get("BAYAN_TRANSLATE_URL") or None,
+        translate_api_key=os.environ.get("BAYAN_TRANSLATE_API_KEY") or None,
+        translate_max_chars=int(os.environ.get("BAYAN_TRANSLATE_MAX_CHARS", "20000")),
+        translations_per_hour=int(os.environ.get("BAYAN_TRANSLATIONS_PER_HOUR", "30")),
         cookie_secure=os.environ.get("BAYAN_COOKIE_SECURE", "").lower() in ("1", "true", "yes"),
     )
