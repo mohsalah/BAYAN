@@ -15,6 +15,8 @@ GAP_RULES = """Rules:
 - For each gap give: (1) the gap in one or two sentences; (2) supporting papers; (3) what those papers do not address; (4) counterevidence that would disprove it and where to look; (5) broader literature searches to run (queries, databases, years); (6) a validation plan; (7) confidence (low/medium/high) with the reason.
 - If the evidence supports fewer gaps than requested, return fewer and explain why."""
 
+PROPOSAL_QUESTIONS = 3
+
 PROPOSAL_SECTIONS = ("source-linked gap", "research question or hypothesis", "objectives",
                      "system, material or regime studied", "methods, tools and data",
                      "comparators and baselines", "validation", "units and uncertainty handling",
@@ -95,6 +97,8 @@ def proposal_prompt(packet: dict, papers: list[dict], count: int, gap_text: str,
         "- Ground each proposal in the gap(s) above and in the papers listed below; cite them as [P1], [P2]...\n"
         "- Do not invent novelty claims, results, citations, costs or facility access. Mark anything unknown as an assumption.\n"
         "- The proposals must differ in question or method, not only in wording.\n"
+        f"- Give exactly {PROPOSAL_QUESTIONS} suggested research questions per proposal. Each must be answerable "
+        "with the stated methods and data, tied to the gap and to cited papers, and different from the others.\n"
         f"- Each proposal must cover: {sections}.\n"
         "- State what must still be verified (counterevidence, wider literature) before the work starts.\n\n"
         f"{_coverage(packet)}\n\nPapers:\n\n{blocks}\n"
