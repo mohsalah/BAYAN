@@ -53,6 +53,15 @@ CREATE TABLE IF NOT EXISTS downloads(
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(user_id, source, paper_id)
 );
+CREATE TABLE IF NOT EXISTS pages(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, paper_id TEXT NOT NULL, page INTEGER NOT NULL, label TEXT,
+  text TEXT NOT NULL, chars INTEGER NOT NULL, sha256 TEXT NOT NULL,
+  PRIMARY KEY(user_id, source, paper_id, page)
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS page_search USING fts5(
+  user_id UNINDEXED, source UNINDEXED, paper_id UNINDEXED, page UNINDEXED, body
+);
 CREATE TABLE IF NOT EXISTS download_attempts(
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -89,13 +98,19 @@ def connect(path: Path) -> sqlite3.Connection:
 
 
 # Columns added after the first release; init_db adds them to an existing file in place.
-PAPER_COLUMNS_ADDED = ("category", "native_type", "category_basis", "document_kind")
+COLUMNS_ADDED = {
+    "papers": (("category", "TEXT"), ("native_type", "TEXT"), ("category_basis", "TEXT"),
+               ("document_kind", "TEXT")),
+    "downloads": (("page_count", "INTEGER"), ("pages_with_text", "INTEGER"),
+                  ("index_status", "TEXT")),
+}
 
 
 def init_db(path: Path) -> None:
     with connect(path) as conn:
         conn.executescript(SCHEMA)
-        have = {row["name"] for row in conn.execute("PRAGMA table_info(papers)")}
-        for column in PAPER_COLUMNS_ADDED:
-            if column not in have:
-                conn.execute(f"ALTER TABLE papers ADD COLUMN {column} TEXT")
+        for table, columns in COLUMNS_ADDED.items():
+            have = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            for column, kind in columns:
+                if column not in have:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
