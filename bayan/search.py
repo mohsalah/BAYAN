@@ -52,7 +52,8 @@ def _interleave(streams: list[Iterator[Paper]]) -> Iterator[Paper]:
 
 def requested_filters(profile: SearchProfile) -> list[str]:
     asked = {"years": True, "document_types": bool(profile.document_types),
-             "languages": bool(profile.languages), "countries": bool(profile.geo_countries)}
+             "languages": bool(profile.languages), "countries": bool(profile.geo_countries),
+             "topics": bool(profile.topics)}
     return [f for f in FILTERS if asked[f]]
 
 

@@ -9,6 +9,8 @@ from ..models import Paper, SearchProfile
 from .base import ConnectorError
 
 BASE_URL = "https://api.openalex.org/works"
+TOPICS_URL = "https://api.openalex.org/topics"
+TOPIC_SELECT = "id,display_name,description,subfield,field,domain,works_count"
 SELECT = (
     "id,doi,title,publication_year,type,language,primary_location,open_access,"
     "cited_by_count,authorships,abstract_inverted_index,keywords,primary_topic"
@@ -102,13 +104,28 @@ def build_filter(profile: SearchProfile) -> str:
         # record reports, so a different reading of "!" cannot let excluded records in.
         negate = "!" if profile.geo_mode == "exclude" else ""
         parts.append("authorships.institutions.country_code:" + negate + "|".join(codes))
+    if profile.topics:
+        # Any of a work's (up to three) topics may match, not only its primary topic.
+        parts.append("topics.id:" + "|".join(profile.topics))
     return ",".join(parts)
+
+
+def parse_topic(item: dict) -> dict:
+    """An OpenAlex topic record -> the fields shown when a topic is suggested."""
+    return {
+        "id": (item.get("id") or "").rsplit("/", 1)[-1],
+        "name": item.get("display_name") or "",
+        "description": item.get("description") or "",
+        "field": ((item.get("field") or {}).get("display_name")) or "",
+        "subfield": ((item.get("subfield") or {}).get("display_name")) or "",
+        "works_count": item.get("works_count") or 0,
+    }
 
 
 class OpenAlexConnector:
     name = "openalex"
     tier = "open"
-    supported_filters = frozenset({"years", "document_types", "languages", "countries"})
+    supported_filters = frozenset({"years", "document_types", "languages", "countries", "topics"})
     # Reference types classify_work can return (see OPENALEX_TYPES and the `other` fallback).
     supported_categories = frozenset(
         {"peer_reviewed", "proceedings", "thesis", "report", "other"})
@@ -162,11 +179,21 @@ class OpenAlexConnector:
                 yield parse_work(work)
             cursor = (data.get("meta") or {}).get("next_cursor")
 
-    def _get(self, params: dict) -> dict:
+    def search_topics(self, text: str, limit: int = 5) -> list[dict]:
+        """Topics whose name or description matches `text`, as OpenAlex ranks them."""
+        params: dict = {"search": text, "per-page": limit, "select": TOPIC_SELECT}
+        if self._email:
+            params["mailto"] = self._email
+        if self._api_key:
+            params["api_key"] = self._api_key
+        data = self._get(params, TOPICS_URL)
+        return [parse_topic(item) for item in data.get("results", []) if item.get("id")]
+
+    def _get(self, params: dict, url: str = BASE_URL) -> dict:
         status = 0
         for attempt in range(1, self._max_attempts + 1):
             try:
-                response = self._client.get(BASE_URL, params=params)
+                response = self._client.get(url, params=params)
             except httpx.TransportError as exc:
                 status = 0
                 error = type(exc).__name__

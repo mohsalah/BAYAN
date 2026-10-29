@@ -9,7 +9,7 @@ import httpx
 from ..models import Paper, SearchProfile
 
 # Filters a SearchProfile can ask for (the period is always requested).
-FILTERS = ("years", "document_types", "languages", "countries")
+FILTERS = ("years", "document_types", "languages", "countries", "topics")
 RETRY_STATUSES = (429, 500, 502, 503, 504)
 
 

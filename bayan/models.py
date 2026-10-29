@@ -1,5 +1,6 @@
 """Core data models shared by connectors, retrieval and the API."""
 
+import re
 from datetime import date
 from typing import Literal
 
@@ -20,6 +21,9 @@ LANGUAGES: dict[str, dict[str, object]] = {
 
 # Longest research-area text, for the main query and for each per-language query.
 QUERY_MAX_LENGTH = 1000
+# OpenAlex topic filter: at most this many topic IDs per profile.
+MAX_TOPICS = 12
+TOPIC_ID = re.compile(r"T[1-9][0-9]{0,8}")
 # Names for language codes that libraries report on records. Only the six in LANGUAGES can be
 # searched; the extra names exist so a paper is never shown as a bare code.
 OTHER_LANGUAGE_NAMES: dict[str, str] = {
@@ -85,8 +89,12 @@ class SearchProfile(BaseModel):
     document_types: list[DocumentType] = Field(default_factory=lambda: ["peer_reviewed"])
     languages: list[str] = Field(default_factory=lambda: ["en"])
     # Optional keyword text per search language (keys are language codes). A chosen language
-    # without an entry uses `query`. Typed or edited by the user; no model writes it here.
+    # without an entry uses `query`. Typed by the user, or a planner suggestion the user
+    # reviewed and applied (M3); a model never writes it into a profile directly.
     queries_by_language: dict[str, str] = Field(default_factory=dict)
+    # OpenAlex topic IDs ("T10001"). A work matches when any of them is among its topics.
+    # Only libraries that support the "topics" filter apply it; the others report it unapplied.
+    topics: list[str] = Field(default_factory=list, max_length=MAX_TOPICS)
     # ISO 3166-1 alpha-2 codes; matched against author-affiliation countries.
     countries: list[str] = Field(default_factory=list)
     # Region ids from bayan.regions; they expand to country codes together with `countries`.
@@ -123,6 +131,17 @@ class SearchProfile(BaseModel):
             if text.strip():
                 out[code] = text.strip()
         return out
+
+    @field_validator("topics")
+    @classmethod
+    def _topic_ids(cls, v: list[str]) -> list[str]:
+        out = []
+        for raw in v:
+            topic = raw.strip().rsplit("/", 1)[-1].upper()  # accepts a full OpenAlex URL too
+            if not TOPIC_ID.fullmatch(topic):
+                raise ValueError(f"topic must be an OpenAlex topic ID such as T10001: {raw!r}")
+            out.append(topic)
+        return list(dict.fromkeys(out))
 
     @field_validator("countries")
     @classmethod

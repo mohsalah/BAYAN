@@ -103,6 +103,35 @@ score and basis, and the page-index fields; `by_status` gives the counts. File p
 | `GET /api/pages/search?q=..[&run_id=1][&limit=20]` | Your pages matching every word, best first, with an excerpt of the original text. |
 | `GET /api/downloads/manifest?run_id=1[&format=csv]` | The download manifest of a run. |
 
+## Planner agent and editable search profile (M3)
+
+"Suggest a search plan" (under the search form) sends the research-area text, the chosen search
+languages and the period to Claude, and shows a draft plan **before anything is searched**:
+
+- **Understood as**: the area restated, so you can check it was understood.
+- **Please check**: ambiguities or assumptions (for example an acronym with two meanings).
+- **Main query**: a keyword query with `OR`/`AND` and "phrases"; per-language queries for each
+  chosen search language other than the main one.
+- **Sub-tracks**: 2-6 strands of the area, each with its own query; pick one to search it instead.
+- **OpenAlex topics**: the model suggests topic *names* only. Each name is looked up in OpenAlex
+  by plain code; only topics OpenAlex returns are shown, marked "exact name match" or "closest
+  OpenAlex match for ...". Names with no match are listed as not used. The model never supplies
+  an ID.
+
+Every part is editable. "Use this plan" saves your edits and fills the search form (query,
+per-language queries, topic filter); you still press Search yourself. The topic filter is
+applied by OpenAlex only (`topics.id`); other libraries list it under "Filters a library could
+not apply". arXiv now understands `AND`/`OR`/`NOT`, parentheses and quoted phrases.
+
+API: `GET /api/planner` (available?), `POST /api/plans` {area, languages, year_from, year_to,
+fresh}, `GET /api/plans`, `GET`/`PUT /api/plans/{id}` (the original suggestion is kept beside
+your edits), `GET /api/plans/{id}/profile?track=N` (a profile for `POST /api/search`).
+
+Cost control: the same request reuses the cached answer at no cost ("Suggest again" asks
+afresh); token use is recorded in `usage`; `BAYAN_PLANS_PER_HOUR` (default 10) limits new calls.
+Settings: `BAYAN_MODEL_PLANNER` (default `claude-sonnet-5-5`), `BAYAN_PLANNER_EFFORT` (default
+`medium`). Without `ANTHROPIC_API_KEY` the button is disabled and the API answers 503.
+
 ## Reader agent and evidence table (M8)
 
 Tick papers and send them to the reader (`POST /api/reader`, 1 to 20 papers of your run). For each
