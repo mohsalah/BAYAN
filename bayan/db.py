@@ -100,6 +100,31 @@ CREATE TABLE IF NOT EXISTS translate_usage(
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   chars INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS reader_cache(
+  cache_key TEXT PRIMARY KEY, model TEXT NOT NULL, prompt_version TEXT NOT NULL,
+  output TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS reader_results(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, paper_id TEXT NOT NULL, job_id INTEGER, status TEXT NOT NULL,
+  level TEXT, detail TEXT, dimensions TEXT, verified INTEGER, rejected INTEGER, parts INTEGER,
+  cached_parts INTEGER, model TEXT, prompt_version TEXT,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, source, paper_id)
+);
+CREATE TABLE IF NOT EXISTS evidence(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, paper_id TEXT NOT NULL, dimension TEXT NOT NULL, statement TEXT NOT NULL,
+  quote TEXT NOT NULL, page INTEGER, page_label TEXT, level TEXT NOT NULL,
+  verified INTEGER NOT NULL, reject_reason TEXT, model TEXT, prompt_version TEXT,
+  file_sha256 TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS evidence_paper ON evidence(user_id, source, paper_id);
+CREATE TABLE IF NOT EXISTS reader_attempts(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS usage(
   id INTEGER PRIMARY KEY, user_id TEXT, month TEXT, model TEXT,
   input_tokens INTEGER, output_tokens INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP

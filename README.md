@@ -4,7 +4,8 @@ Agentic research assistant for general researchers. See `docs/BUILD_PLAN.md` for
 rules and the 24 milestones. This repository currently contains the skeleton (milestone M1, minus
 auth), the OpenAlex connector (M2), the quota logic (M4) and the open connectors arXiv and
 Europe PMC with cross-library de-duplication (M5), resumable downloads with a per-page full-text
-index and a download manifest (M6). Crossref is not a search source: it is used
+index and a download manifest (M6), and the reader agent with a page-cited, verified evidence
+table (M8). Crossref is not a search source: it is used
 automatically to find the DOI of papers found elsewhere that have none (title, year and first
 author must all match confidently; at most 50 lookups per run, cached; the run summary reports
 `doi_lookup` counts). Semantic Scholar, CORE and Unpaywall are still planned.
@@ -101,6 +102,38 @@ score and basis, and the page-index fields; `by_status` gives the counts. File p
 | `GET /api/pages/text?source=..&paper_id=..&page=3` | The text of one page, its label and the file's SHA-256. |
 | `GET /api/pages/search?q=..[&run_id=1][&limit=20]` | Your pages matching every word, best first, with an excerpt of the original text. |
 | `GET /api/downloads/manifest?run_id=1[&format=csv]` | The download manifest of a run. |
+
+## Reader agent and evidence table (M8)
+
+Tick papers and send them to the reader (`POST /api/reader`, 1 to 20 papers of your run). For each
+paper the reader uses, in order: your validated PDF's indexed pages (M6, level `full_text`), else
+the library abstract (level `abstract`), else nothing (`not_reviewed`, with the reason, and no
+model call). The text goes to Claude (`BAYAN_MODEL_READER`, default `claude-sonnet-5-5`; adaptive
+thinking, effort `BAYAN_READER_EFFORT`, structured JSON output, server-side refusal fallback),
+which returns items for four dimensions, **methods, data, validation, limitations**: a short
+statement, a verbatim quote in the paper's own language, and the page.
+
+**Verifier.** Deterministic code, not a model, checks every item: the quote (20–600 characters, no
+ellipsis) must occur on the cited physical page, ignoring only layout (whitespace, line-end
+hyphenation, ligatures, typographic quotes and dashes; case and digits must match), and the page
+must exist. Items that fail are stored as rejected with a reason and are never shown as evidence.
+Per paper each dimension is `reported` (verified items), `not_reported` (the model found nothing)
+or `no_verified_evidence` (items proposed, none verified). Reading again replaces the evidence.
+
+**Cost control.** Answers are cached by (prompt version, model, exact text), so the same file is
+never sent twice; token use is written to `usage`. At most `BAYAN_READINGS_PER_HOUR` papers per
+user per hour (default 20). A document needing more than 5 requests of 400,000 characters is not
+read (`not_reviewed`, "too long"). The paper text is treated as data: instructions inside it are
+ignored. Without a real `ANTHROPIC_API_KEY` the endpoint answers 503 ("not configured").
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/reader` | Body `{"run_id": 1, "papers": [{"source": "openalex", "id": "W1"}]}`. Returns 202 with `job_id`, `model` and a privacy note. |
+| `GET /api/reader/jobs/{job_id}` | Job status and per-paper results: `status` (`done`, `not_reviewed`, `failed`, `refused`), `level`, `dimensions`, `verified`/`rejected` counts. |
+| `GET /api/evidence?run_id=1[&include_rejected=true]` | Evidence of every paper of the run that was read: dimension, statement, quote, physical page and printed label, level. |
+
+Limit: reader jobs are not resumed after a restart (download jobs are); papers left unread can be
+sent again. Usage caps per month are M11.
 
 ## Document-type filter and manuals (M21)
 
