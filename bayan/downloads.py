@@ -17,6 +17,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
@@ -28,6 +29,7 @@ from pypdf import PdfReader
 
 from .config import Settings
 from .db import connect
+from .pages import clear_pages, index_pdf
 
 log = logging.getLogger("bayan.downloads")
 
@@ -449,7 +451,7 @@ def now_iso() -> str:
 
 FIELDS = ("status", "reason", "detail", "origin", "path", "size", "sha256", "source_url",
           "final_url", "http_status", "retrieved_at", "license", "version", "identity_score",
-          "identity_basis")
+          "identity_basis", "page_count", "pages_with_text", "index_status")
 PUBLIC_FIELDS = tuple(f for f in FIELDS if f != "path")
 
 
@@ -474,6 +476,18 @@ def record_verdict(conn: sqlite3.Connection, user_id: int, source: str, paper_id
         detail=verdict.detail or None, path=str(verdict.path) if verdict.path else None,
         size=verdict.size or None, sha256=verdict.sha256 or None,
         identity_score=verdict.score, identity_basis=verdict.basis or None, **meta)
+    if verdict.status in DOWNLOADED and verdict.path:
+        try:
+            index_pdf(conn, user_id, source, paper_id, verdict.path, verdict.sha256)
+        except Exception as exc:  # the file stays valid; only its page index is missing
+            log.warning("page index failed for %s/%s: %s", source, paper_id, type(exc).__name__)
+            conn.rollback()
+            conn.execute("UPDATE downloads SET index_status = 'failed' WHERE user_id = ?"
+                         " AND source = ? AND paper_id = ?", (user_id, source, paper_id))
+            conn.commit()
+    else:
+        clear_pages(conn, user_id, source, paper_id)
+        conn.commit()
 
 
 def public_record(row: sqlite3.Row) -> dict:
@@ -575,20 +589,48 @@ def process_paper(conn: sqlite3.Connection, fetcher: Fetcher, settings: Settings
                 http_status=last.status if last else None, retrieved_at=now_iso())
 
 
-def run_download_job(db_path: Path, job_id: int, fetcher: Fetcher, settings: Settings) -> None:
-    """Background job body: works through the queued papers one by one."""
+def claim_job(conn: sqlite3.Connection, job_id: int, stale_seconds: int | None = None) -> bool:
+    """Atomically mark a job running. Without `stale_seconds` only a pending job is taken;
+    with it, a pending or running job whose last heartbeat is older than that (interrupted)."""
+    if stale_seconds is None:
+        where, args = "status = 'pending'", ()
+    else:
+        where = ("status IN ('pending', 'running')"
+                 " AND COALESCE(updated_at, created_at) <= datetime('now', ?)")
+        args = (f"-{int(stale_seconds)} seconds",)
+    cur = conn.execute("UPDATE jobs SET status = 'running', error = NULL,"
+                       " updated_at = CURRENT_TIMESTAMP WHERE id = ? AND kind = 'pdf_download'"
+                       f" AND {where}", (job_id, *args))
+    conn.commit()
+    return cur.rowcount == 1
+
+
+def run_download_job(db_path: Path, job_id: int, fetcher: Fetcher, settings: Settings,
+                     claimed: bool = False) -> None:
+    """Background job body: works through the queued papers one by one.
+
+    Resumable: only papers still `pending` are processed (a paper finished before an
+    interruption keeps its result), and the job's heartbeat is renewed after every paper.
+    """
     conn = connect(db_path)
     try:
+        if not claimed and not claim_job(conn, job_id):
+            return  # finished, or another worker has it
         job = conn.execute("SELECT payload FROM jobs WHERE id = ?", (job_id,)).fetchone()
         payload = json.loads(job["payload"])
-        set_job(conn, job_id, "running")
+        user_id = payload["user_id"]
         for source, paper_id in payload["papers"]:
+            row = conn.execute("SELECT status FROM downloads WHERE user_id = ? AND source = ?"
+                               " AND paper_id = ?", (user_id, source, paper_id)).fetchone()
+            if row is not None and row["status"] != PENDING:
+                continue
             try:
-                process_paper(conn, fetcher, settings, payload["user_id"], source, paper_id)
+                process_paper(conn, fetcher, settings, user_id, source, paper_id)
             except Exception as exc:
                 log.warning("download failed for %s/%s: %s", source, paper_id, type(exc).__name__)
-                save_record(conn, payload["user_id"], source, paper_id, status=NEEDS_ACCESS,
+                save_record(conn, user_id, source, paper_id, status=NEEDS_ACCESS,
                             reason="internal_error", detail=REASONS["internal_error"])
+            set_job(conn, job_id, "running")  # heartbeat
         set_job(conn, job_id, "done")
     except Exception as exc:
         log.warning("download job %s failed: %s", job_id, type(exc).__name__)
@@ -601,3 +643,37 @@ def set_job(conn: sqlite3.Connection, job_id: int, status: str, error: str | Non
     conn.execute("UPDATE jobs SET status = ?, error = ?, updated_at = CURRENT_TIMESTAMP"
                  " WHERE id = ?", (status, error, job_id))
     conn.commit()
+
+
+def resume_stale_jobs(db_path: Path, fetcher: Fetcher, settings: Settings) -> list[int]:
+    """Continue download jobs interrupted by a restart or crash. Returns the resumed job ids."""
+    with closing(connect(db_path)) as conn:
+        ids = [r["id"] for r in conn.execute(
+            "SELECT id FROM jobs WHERE kind = 'pdf_download' AND status IN ('pending', 'running')"
+            " AND COALESCE(updated_at, created_at) <= datetime('now', ?) ORDER BY id",
+            (f"-{int(settings.job_stale_seconds)} seconds",))]
+    resumed = []
+    for job_id in ids:
+        with closing(connect(db_path)) as conn:
+            if not claim_job(conn, job_id, settings.job_stale_seconds):
+                continue
+        log.info("resuming download job %s", job_id)
+        run_download_job(db_path, job_id, fetcher, settings, claimed=True)
+        resumed.append(job_id)
+    return resumed
+
+
+def remove_stale_parts(root: Path, older_than: float = 3600.0,
+                       clock: Callable[[], float] = time.time) -> int:
+    """Delete `.part` files left behind by an interrupted download or upload."""
+    removed = 0
+    if not root.is_dir():
+        return 0
+    for part in root.rglob("*.part"):
+        try:
+            if clock() - part.stat().st_mtime >= older_than:
+                part.unlink()
+                removed += 1
+        except FileNotFoundError:
+            continue
+    return removed

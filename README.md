@@ -3,7 +3,8 @@
 Agentic research assistant for general researchers. See `docs/BUILD_PLAN.md` for the full design,
 rules and the 24 milestones. This repository currently contains the skeleton (milestone M1, minus
 auth), the OpenAlex connector (M2), the quota logic (M4) and the open connectors arXiv and
-Europe PMC with cross-library de-duplication (M5). Crossref is not a search source: it is used
+Europe PMC with cross-library de-duplication (M5), resumable downloads with a per-page full-text
+index and a download manifest (M6). Crossref is not a search source: it is used
 automatically to find the DOI of papers found elsewhere that have none (title, year and first
 author must all match confidently; at most 50 lookups per run, cached; the run summary reports
 `doi_lookup` counts). Semantic Scholar, CORE and Unpaywall are still planned.
@@ -60,8 +61,46 @@ escaped to be filesystem safe) and are served only to the owning signed-in user.
 | `POST /api/downloads/upload?source=..&paper_id=..` | Upload your own PDF as the raw body with `Content-Type: application/pdf` (max 100 MB, same validation; 415/413/422 on rejection). |
 | `GET /api/downloads/file?source=..&paper_id=..` | The validated PDF; 404 unless it is yours and validated. |
 
-The download job runs in the API process through FastAPI background tasks and the `jobs` table; a
-restart while it runs leaves its papers `pending`, and selecting them again re-queues them.
+The download job runs in the API process through FastAPI background tasks and the `jobs` table.
+It is resumable (M6, below).
+
+## Resumable downloads, page index and manifest (M6)
+
+**Resumable.** A job renews a heartbeat after every paper. A background check in the API process
+(every `BAYAN_JOB_RESUME_INTERVAL` seconds, default 60; `0` turns it off) takes over any `pending`
+or `running` job whose heartbeat is older than `BAYAN_JOB_STALE_SECONDS` (default 900) and
+continues it. Only papers still `pending` are processed: a paper finished before the interruption
+keeps its result and is not fetched again. Taking a job is an atomic update, so two workers never
+run the same job. Leftover `.part` files older than one hour are deleted by the same check. After
+a restart, an interrupted job therefore continues within about 15 minutes.
+
+**Page index.** Every validated PDF (download, upload or manual; not an `identity_mismatch`) is
+split into pages with `pypdf` and stored in `pages` (physical page number from 1, the PDF's own page
+label when it has one, the extracted text unchanged, the file's SHA-256), with a per-user FTS5 table
+`page_search` using the same normalisation as paper search (accents, Arabic marks, Chinese bigrams).
+A page with no extractable text is kept with empty text, never dropped. The download record gains
+`page_count`, `pages_with_text` and `index_status`:
+
+| `index_status` | Meaning |
+| --- | --- |
+| `indexed` | At least one page has text. |
+| `no_text` | No page has text (scanned or image-only PDF); OCR is needed before it can be read. |
+| `failed` | The PDF is valid but its text could not be extracted. |
+
+Re-indexing happens only when the file changes (different SHA-256). Deleting an upload deletes its
+pages. At most 2,000 pages per file and 200,000 characters per page are stored.
+
+**Manifest.** `GET /api/downloads/manifest?run_id=1` (or `&format=csv`) lists every paper of the
+run, including the ones never requested (`not_requested`), with status, reason and its sentence,
+origin, size, SHA-256, source and final URL, HTTP status, retrieval time, license, version, identity
+score and basis, and the page-index fields; `by_status` gives the counts. File paths are not shown.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/pages?source=..&paper_id=..` | Index status, a note, and the list of pages (`page`, `label`, `chars`). 404 unless you have a validated PDF of it. |
+| `GET /api/pages/text?source=..&paper_id=..&page=3` | The text of one page, its label and the file's SHA-256. |
+| `GET /api/pages/search?q=..[&run_id=1][&limit=20]` | Your pages matching every word, best first, with an excerpt of the original text. |
+| `GET /api/downloads/manifest?run_id=1[&format=csv]` | The download manifest of a run. |
 
 ## Document-type filter and manuals (M21)
 

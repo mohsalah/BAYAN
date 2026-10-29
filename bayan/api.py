@@ -1,7 +1,11 @@
 """FastAPI app: accounts, library/language reference data, search runs and a small web UI."""
 
+import csv
+import io
 import json
+import logging
 import sqlite3
+import threading
 from collections.abc import Callable
 from contextlib import asynccontextmanager, closing
 from pathlib import Path
@@ -50,9 +54,11 @@ from .downloads import (
     public_record,
     quarantine_path,
     record_verdict,
+    remove_stale_parts,
+    resume_stale_jobs,
     run_download_job,
 )
-from .export import to_csv, to_xlsx
+from .export import safe_cell, to_csv, to_xlsx
 from .libraries import LIBRARIES, key_publishers
 from .manuals import (
     add_to_run,
@@ -87,6 +93,7 @@ from .models import (
     language_name,
     normalize_document_types,
 )
+from .pages import INDEX_NOTES, clear_pages, page_list, page_text, search_pages
 from .regions import regions_of, regions_payload
 from .search import SearchRequest, geo_status, paper_row_to_dict, run_search
 from .translate import (
@@ -119,6 +126,8 @@ STATIC = Path(__file__).parent / "static"
 LOCALES = Path(__file__).parent / "locales"
 
 ConnectorFactory = Callable[[str], Connector]
+
+log = logging.getLogger("bayan.api")
 
 
 class Credentials(BaseModel):
@@ -245,10 +254,30 @@ def create_app(
                                  contact_email=settings.contact_email)
     make_connector = connector_factory or default_connector_factory(settings)
 
+    def resume_loop(stop: threading.Event) -> None:
+        """Continue interrupted download jobs and clear their leftover `.part` files."""
+        while True:
+            try:
+                remove_stale_parts(settings.pdf_root)
+                resume_stale_jobs(settings.database_path, fetcher, settings)
+            except Exception as exc:  # keep checking; a failed pass is retried next time
+                log.warning("job resume pass failed: %s", type(exc).__name__)
+            if stop.wait(settings.job_resume_interval):
+                return
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         init_db(settings.database_path)
+        stop = threading.Event()
+        worker = None
+        if settings.job_resume_interval > 0:
+            worker = threading.Thread(target=resume_loop, args=(stop,), daemon=True,
+                                      name="bayan-job-resume")
+            worker.start()
         yield
+        stop.set()
+        if worker is not None:
+            worker.join(timeout=5)
 
     app = FastAPI(title="BAYAN", version=__version__, lifespan=lifespan)
 
@@ -619,6 +648,83 @@ def create_app(
                 "total": len(papers),
                 "finished": sum(p["status"] != PENDING for p in papers), "papers": papers}
 
+    MANIFEST_COLUMNS = (
+        "source", "id", "title", "doi", "year", "status", "reason", "reason_text", "detail",
+        "origin", "size", "sha256", "source_url", "final_url", "http_status", "retrieved_at",
+        "license", "version", "identity_score", "identity_basis", "page_count",
+        "pages_with_text", "index_status")
+
+    @app.get("/api/downloads/manifest")
+    def download_manifest(run_id: int, user: User, conn: Conn,
+                          format: Literal["json", "csv"] = "json") -> Response:
+        """Every paper of the run with its download outcome. Papers never requested are listed
+        as `not_requested`, so the manifest always accounts for the whole run."""
+        run = owned_run(conn, run_id, user["id"])
+        papers = run_papers(conn, run["id"], {})
+        records = download_rows(conn, user["id"], [(p["source"], p["id"]) for p in papers])
+        rows = []
+        for paper, record in zip(papers, records, strict=True):
+            row = {c: record.get(c) for c in MANIFEST_COLUMNS}
+            row.update(source=paper["source"], id=paper["id"], title=paper.get("title"),
+                       doi=paper.get("doi"), year=paper.get("year"))
+            row["reason_text"] = record.get("reason_text") or None
+            rows.append(row)
+        counts: dict[str, int] = {}
+        for row in rows:
+            counts[row["status"]] = counts.get(row["status"], 0) + 1
+        if format == "csv":
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(MANIFEST_COLUMNS)
+            for row in rows:
+                writer.writerow(["" if row[c] is None else safe_cell(row[c])
+                                 for c in MANIFEST_COLUMNS])
+            return Response(buf.getvalue(), media_type="text/csv; charset=utf-8", headers={
+                "Content-Disposition": f'attachment; filename="bayan-run-{run_id}-manifest.csv"'})
+        body = {"run_id": run["id"], "generated_at": now_iso(), "total": len(rows),
+                "by_status": counts, "papers": rows}
+        return Response(json.dumps(body, ensure_ascii=False), media_type="application/json")
+
+    # ---- Page index of the user's validated PDFs (private to the owner) ----
+
+    def indexed_download(conn: sqlite3.Connection, user_id: int, source: str,
+                         paper_id: str) -> sqlite3.Row:
+        row = conn.execute(
+            "SELECT status, page_count, pages_with_text, index_status FROM downloads"
+            " WHERE user_id = ? AND source = ? AND paper_id = ?",
+            (user_id, source, paper_id)).fetchone()
+        if row is None or row["status"] not in DOWNLOADED:
+            raise HTTPException(404, "No validated PDF for this paper")
+        return row
+
+    @app.get("/api/pages")
+    def list_pages(source: str, paper_id: str, user: User, conn: Conn) -> dict:
+        row = indexed_download(conn, user["id"], source, paper_id)
+        status = row["index_status"]
+        return {"source": source, "id": paper_id, "index_status": status,
+                "note": INDEX_NOTES.get(status or "", "The page index has not been built."),
+                "page_count": row["page_count"], "pages_with_text": row["pages_with_text"],
+                "pages": page_list(conn, user["id"], source, paper_id)}
+
+    @app.get("/api/pages/text")
+    def get_page_text(source: str, paper_id: str, page: int, user: User, conn: Conn) -> dict:
+        indexed_download(conn, user["id"], source, paper_id)
+        row = page_text(conn, user["id"], source, paper_id, page)
+        if row is None:
+            raise HTTPException(404, "Page not found")
+        return {"source": source, "id": paper_id, "page": row["page"], "label": row["label"],
+                "text": row["text"], "chars": row["chars"], "sha256": row["sha256"],
+                "has_text": bool(row["text"].strip())}
+
+    @app.get("/api/pages/search")
+    def page_search(q: str, user: User, conn: Conn, run_id: int | None = None,
+                    limit: int = 20) -> list[dict]:
+        papers = None
+        if run_id is not None:
+            run = owned_run(conn, run_id, user["id"])
+            papers = [(p["source"], p["id"]) for p in run_papers(conn, run["id"], {})]
+        return search_pages(conn, user["id"], q, papers, max(1, min(limit, 100)))
+
     @app.get("/api/downloads")
     def download_status(run_id: int, user: User, conn: Conn) -> list[dict]:
         run = owned_run(conn, run_id, user["id"])
@@ -891,6 +997,7 @@ def create_app(
         for path in (pdf_path(settings.pdf_root, user["id"], source, paper_id),
                      quarantine_path(settings.pdf_root, user["id"], source, paper_id)):
             path.unlink(missing_ok=True)
+        clear_pages(conn, user["id"], source, paper_id)
         conn.execute("DELETE FROM downloads WHERE user_id = ? AND source = ? AND paper_id = ?",
                      (user["id"], source, paper_id))
         if source == USER_SOURCE and owns_manual(conn, user["id"], paper_id):

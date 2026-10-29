@@ -25,6 +25,8 @@ class Settings:
     download_host_delay: float = 1.0  # minimum seconds between requests to the same host
     download_retries: int = 2
     pdf_max_bytes: int = 100 * 1024 * 1024
+    job_stale_seconds: int = 900  # a job with no heartbeat for this long was interrupted
+    job_resume_interval: float = 60.0  # seconds between checks for interrupted jobs; 0 = off
     translate_url: str | None = None  # LibreTranslate-compatible server; None = not configured
     translate_api_key: str | None = field(default=None, repr=False)  # optional
     translate_max_chars: int = 20000  # per request
@@ -44,6 +46,8 @@ def load_settings() -> Settings:
         pdf_root=Path(os.environ.get("BAYAN_PDF_ROOT", "pdfs")),
         downloads_per_hour=int(os.environ.get("BAYAN_DOWNLOADS_PER_HOUR", "100")),
         download_host_delay=float(os.environ.get("BAYAN_DOWNLOAD_HOST_DELAY", "1.0")),
+        job_stale_seconds=int(os.environ.get("BAYAN_JOB_STALE_SECONDS", "900")),
+        job_resume_interval=float(os.environ.get("BAYAN_JOB_RESUME_INTERVAL", "60")),
         translate_url=os.environ.get("BAYAN_TRANSLATE_URL") or None,
         translate_api_key=os.environ.get("BAYAN_TRANSLATE_API_KEY") or None,
         translate_max_chars=int(os.environ.get("BAYAN_TRANSLATE_MAX_CHARS", "20000")),
