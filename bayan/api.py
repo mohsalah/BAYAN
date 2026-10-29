@@ -15,6 +15,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, R
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from pypdf import PdfReader
 
 from . import __version__
 from .analysis import MAX_GAP_TEXT, build_packet, gap_prompt, proposal_prompt
@@ -95,6 +96,30 @@ from .models import (
 from .pages import INDEX_NOTES, clear_pages, page_list, page_text, search_pages
 from .regions import regions_of, regions_payload
 from .search import SearchRequest, geo_status, paper_row_to_dict, run_search
+from .translate import (
+    MACHINE_LABEL,
+    NOT_CONFIGURED_MESSAGE,
+    OCR_MISSING_MESSAGE,
+    SCANNED_MIN_CHARS,
+    TARGETS,
+    Engine,
+    EngineError,
+    NotConfigured,
+    RateLimited,
+    TranslateError,
+    cached_or_translate,
+    charge,
+    check_pair,
+    delete_glossary_term,
+    detect_language,
+    engine_from_settings,
+    glossary_for,
+    list_glossary,
+    ocr_available,
+    ocr_page,
+    parse_pages,
+    save_glossary_term,
+)
 
 COOKIE = "bayan_session"
 STATIC = Path(__file__).parent / "static"
@@ -170,6 +195,33 @@ class ProxyLinkRequest(BaseModel):
     template: Any = None  # preview with an unsaved template; default is the saved one
 
 
+MAX_PDF_PAGES = 50  # pages per translate request
+
+
+class TranslateText(BaseModel):
+    text: str = Field(max_length=200000)  # the configured per-request limit is applied later
+    source_language: str = Field(default="auto", max_length=10)
+    target_language: str = Field(max_length=10)
+
+
+class TranslatePaper(BaseModel):
+    source: str
+    id: str
+    source_language: str = Field(default="auto", max_length=10)
+    target_language: str = Field(max_length=10)
+
+
+class TranslatePdf(TranslatePaper):
+    pages: str | None = Field(default=None, max_length=100)  # e.g. "1-3,5"; None = all
+
+
+class GlossaryTerm(BaseModel):
+    source_language: str = Field(max_length=10)
+    target_language: str = Field(max_length=10)
+    source_term: str = Field(max_length=300)
+    target_term: str = Field(max_length=300)
+
+
 CATEGORY_LABELS = {c["id"]: c["label"] for c in CATEGORY_INFO}
 
 
@@ -192,9 +244,11 @@ def default_connector_factory(settings: Settings) -> ConnectorFactory:
 
 def create_app(
     settings: Settings | None = None, connector_factory: ConnectorFactory | None = None,
-    fetcher: Fetcher | None = None,
+    fetcher: Fetcher | None = None, translator: Engine | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
+    translator = translator or engine_from_settings(settings.translate_url,
+                                                    settings.translate_api_key)
     fetcher = fetcher or Fetcher(host_delay=settings.download_host_delay,
                                  max_retries=settings.download_retries,
                                  contact_email=settings.contact_email)
@@ -958,6 +1012,178 @@ def create_app(
                          (USER_SOURCE, paper_id))
         conn.commit()
         return {"deleted": {"source": source, "id": paper_id}}
+
+    # ---- Translator (M24): machine translation to en/ar; never evidence ----
+
+    def translator_error(exc: TranslateError) -> HTTPException:
+        code = 503 if isinstance(exc, NotConfigured) else 429 if isinstance(exc, RateLimited) \
+            else 502 if isinstance(exc, EngineError) else 422
+        return HTTPException(code, str(exc))
+
+    def resolve_source(source: str, text: str, fallback: str | None = None) -> str:
+        if source != "auto":
+            return source
+        guess = detect_language(text) or (fallback if fallback in LANGUAGES else None)
+        if guess is None:
+            raise HTTPException(
+                422, "Could not detect the source language; choose it from the list.")
+        return guess
+
+    def run_translation(conn: sqlite3.Connection, user_id: int, text: str, source: str,
+                        target: str, origin: str = "text") -> dict:
+        try:
+            check_pair(source, target)
+            result, cached = cached_or_translate(
+                conn, user_id, translator, text, source, target,
+                glossary_for(conn, user_id, source, target), origin)
+        except TranslateError as exc:
+            raise translator_error(exc) from exc
+        return {**result.to_dict(), "cached": cached}
+
+    def spend(conn: sqlite3.Connection, user_id: int, chars: int) -> None:
+        if translator is None:
+            raise translator_error(NotConfigured(NOT_CONFIGURED_MESSAGE))
+        try:
+            charge(conn, user_id, chars, settings.translations_per_hour,
+                   settings.translate_max_chars)
+        except TranslateError as exc:
+            raise translator_error(exc) from exc
+
+    @app.get("/api/translate/status")
+    def translate_status(user: User) -> dict:
+        return {
+            "status": "ready" if translator else "not_configured",
+            "message": "" if translator else NOT_CONFIGURED_MESSAGE,
+            "engine": translator.name if translator else None,
+            "targets": list(TARGETS), "sources": list(LANGUAGES),
+            "max_chars": settings.translate_max_chars,
+            "per_hour": settings.translations_per_hour,
+            "ocr": {"available": ocr_available(),
+                    "message": "" if ocr_available() else OCR_MISSING_MESSAGE},
+        }
+
+    @app.post("/api/translate")
+    def translate_pasted(body: TranslateText, user: User, conn: Conn) -> dict:
+        if not body.text.strip():
+            raise HTTPException(422, "There is no text to translate.")
+        spend(conn, user["id"], len(body.text))
+        source = resolve_source(body.source_language, body.text)
+        return run_translation(conn, user["id"], body.text, source, body.target_language)
+
+    def own_paper(conn: sqlite3.Connection, user_id: int, source: str, paper_id: str) -> dict:
+        if source == USER_SOURCE:
+            if not owns_manual(conn, user_id, paper_id):
+                raise HTTPException(404, "Paper not found")
+            row = conn.execute("SELECT * FROM papers WHERE source = ? AND id = ?",
+                               (source, paper_id)).fetchone()
+            if row is None:
+                raise HTTPException(404, "Paper not found")
+            return decorate([row], {})[0]
+        return user_papers(conn, user_id, [PaperRef(source=source, id=paper_id)])[0]
+
+    @app.post("/api/translate/paper")
+    def translate_paper(body: TranslatePaper, user: User, conn: Conn) -> dict:
+        paper = own_paper(conn, user["id"], body.source, body.id)
+        title, abstract = paper.get("title") or "", paper.get("abstract") or ""
+        if not (title or abstract):
+            raise HTTPException(422, "This paper has no title or abstract to translate.")
+        spend(conn, user["id"], len(title) + len(abstract))
+        sample = f"{title}\n{abstract}"
+        source = resolve_source(
+            body.source_language if body.source_language != "auto" else
+            (paper.get("language") if paper.get("language") in LANGUAGES else "auto"),
+            sample)
+        out = {"paper": {"source": body.source, "id": body.id},
+               "title": None, "abstract": None}
+        if title:
+            out["title"] = run_translation(conn, user["id"], title, source, body.target_language)
+        if abstract:
+            out["abstract"] = run_translation(conn, user["id"], abstract, source,
+                                              body.target_language)
+        return out
+
+    @app.post("/api/translate/pdf")
+    def translate_pdf(body: TranslatePdf, user: User, conn: Conn) -> dict:
+        row = conn.execute(
+            "SELECT status FROM downloads WHERE user_id = ? AND source = ? AND paper_id = ?",
+            (user["id"], body.source, body.id)).fetchone()
+        path = pdf_path(settings.pdf_root, user["id"], body.source, body.id)
+        if row is None or row["status"] not in DOWNLOADED or not path.is_file():
+            raise HTTPException(404, "No validated PDF of yours for this paper")
+        if translator is None:
+            raise translator_error(NotConfigured(NOT_CONFIGURED_MESSAGE))
+        try:
+            check_pair(body.source_language if body.source_language != "auto" else "en",
+                       body.target_language)
+            reader = PdfReader(str(path))
+            pages = parse_pages(body.pages, len(reader.pages))
+        except TranslateError as exc:
+            raise translator_error(exc) from exc
+        except Exception as exc:  # pypdf raises many types on damaged files
+            raise HTTPException(422, "The PDF could not be read.") from exc
+        if len(pages) > MAX_PDF_PAGES:
+            raise HTTPException(422, f"Choose at most {MAX_PDF_PAGES} pages per request.")
+        texts: dict[int, tuple[str, str]] = {}  # page -> (text, origin)
+        scanned: list[int] = []
+        for number in pages:
+            try:
+                text = (reader.pages[number - 1].extract_text() or "").strip()
+            except Exception:
+                text = ""
+            if len(text) >= SCANNED_MIN_CHARS:
+                texts[number] = (text, "pdf_text")
+            else:
+                scanned.append(number)
+        notes: list[str] = []
+        if scanned:
+            if not ocr_available():
+                if not texts:
+                    raise HTTPException(422, OCR_MISSING_MESSAGE)
+                notes.append(f"Pages {scanned} have no selectable text and OCR is not installed; "
+                             "they were skipped.")
+            else:
+                lang_hint = body.source_language if body.source_language != "auto" else "en"
+                for number in scanned:
+                    text = ocr_page(path, number, lang_hint).strip()
+                    if text:
+                        texts[number] = (text, "ocr")
+                    else:
+                        notes.append(f"Page {number}: OCR found no text.")
+        if not texts:
+            raise HTTPException(422, "No text could be read from the chosen pages.")
+        spend(conn, user["id"], sum(len(t) for t, _ in texts.values()))
+        first = texts[min(texts)][0]
+        source = resolve_source(body.source_language, first)
+        out_pages = []
+        for number in sorted(texts):
+            text, origin = texts[number]
+            res = run_translation(conn, user["id"], text, source, body.target_language, origin)
+            out_pages.append({"page": number, **res})
+        return {"paper": {"source": body.source, "id": body.id}, "source_language": source,
+                "target_language": body.target_language, "engine": translator.name,
+                "label": MACHINE_LABEL, "machine_translated": True, "evidence_quote": False,
+                "pages": out_pages, "notes": notes}
+
+    @app.get("/api/translate/glossary")
+    def get_glossary(user: User, conn: Conn) -> list[dict]:
+        return list_glossary(conn, user["id"])
+
+    @app.put("/api/translate/glossary")
+    def put_glossary(body: GlossaryTerm, user: User, conn: Conn) -> list[dict]:
+        try:
+            save_glossary_term(conn, user["id"], body.source_language, body.target_language,
+                               body.source_term, body.target_term)
+        except TranslateError as exc:
+            raise translator_error(exc) from exc
+        return list_glossary(conn, user["id"])
+
+    @app.delete("/api/translate/glossary")
+    def remove_glossary(source_language: str, target_language: str, source_term: str,
+                        user: User, conn: Conn) -> list[dict]:
+        if not delete_glossary_term(conn, user["id"], source_language, target_language,
+                                    source_term):
+            raise HTTPException(404, "Glossary term not found")
+        return list_glossary(conn, user["id"])
 
     return app
 
