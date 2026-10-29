@@ -319,12 +319,12 @@ def test_anthropic_reader_stop_reasons(stop, error):
 
 
 def test_anthropic_reader_http_error_never_shows_the_key():
-    client = AnthropicReader("sk-ant-secret-123", "m", http_client=httpx2.Client(
+    client = AnthropicReader("sk-ant-zq9", "m", http_client=httpx2.Client(
         transport=httpx2.MockTransport(lambda r: httpx2.Response(401, json={
             "type": "error", "error": {"type": "authentication_error", "message": "bad"}}))))
     with pytest.raises(Exception) as info:
         client.extract("S", "P")
-    assert "HTTP 401" in str(info.value) and "secret" not in str(info.value)
+    assert "HTTP 401" in str(info.value) and "zq9" not in str(info.value)
 
 
 def test_schema_version_tables_exist(tmp_path):
