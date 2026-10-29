@@ -17,6 +17,7 @@ dependencies = [
     "openpyxl>=3.1",
     "pypdf>=5.0",
     "cryptography>=42",
+    "anthropic>=2.3",
 ]
 
 [project.optional-dependencies]

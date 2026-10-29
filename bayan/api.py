@@ -94,6 +94,14 @@ from .models import (
     normalize_document_types,
 )
 from .pages import INDEX_NOTES, clear_pages, page_list, page_text, search_pages
+from .reader import (
+    DIMENSION_LABELS,
+    AnthropicReader,
+    ReaderClient,
+    evidence_rows,
+    result_record,
+    run_reader_job,
+)
 from .regions import regions_of, regions_payload
 from .search import SearchRequest, geo_status, paper_row_to_dict, run_search
 from .translate import (
@@ -143,6 +151,11 @@ class PaperRef(BaseModel):
 class DownloadRequest(BaseModel):
     run_id: int
     papers: list[PaperRef] = Field(min_length=1, max_length=50)
+
+
+class ReadRequest(BaseModel):
+    run_id: int
+    papers: list[PaperRef] = Field(min_length=1, max_length=20)
 
 
 class ExportRequest(BaseModel):
@@ -242,11 +255,20 @@ def default_connector_factory(settings: Settings) -> ConnectorFactory:
     return make
 
 
+def reader_key_ok(key: str | None) -> bool:
+    """A real-looking key, not empty and not the .env.example placeholder."""
+    return bool(key) and not key.lower().startswith(("your-", "change-me"))
+
+
 def create_app(
     settings: Settings | None = None, connector_factory: ConnectorFactory | None = None,
     fetcher: Fetcher | None = None, translator: Engine | None = None,
+    reader: ReaderClient | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
+    if reader is None and reader_key_ok(settings.anthropic_api_key):
+        reader = AnthropicReader(settings.anthropic_api_key, settings.model_reader,
+                                 settings.reader_effort)
     translator = translator or engine_from_settings(settings.translate_url,
                                                     settings.translate_api_key)
     fetcher = fetcher or Fetcher(host_delay=settings.download_host_delay,
@@ -1184,6 +1206,76 @@ def create_app(
                                     source_term):
             raise HTTPException(404, "Glossary term not found")
         return list_glossary(conn, user["id"])
+
+    # ---- Reader agent (M8): page-cited evidence, verified quotes only ----
+
+    READER_NOTE = ("The paper text is sent to the Anthropic API for analysis. Only quotes found "
+                   "on the cited page are shown as evidence; statements are machine summaries.")
+
+    @app.post("/api/reader", status_code=202)
+    def start_reading(body: ReadRequest, background: BackgroundTasks, user: User,
+                      conn: Conn) -> dict:
+        if reader is None:
+            raise HTTPException(503, "The reader is not configured: ANTHROPIC_API_KEY is not set "
+                                     "on the server.")
+        run = owned_run(conn, body.run_id, user["id"])
+        in_run = {(p["source"], p["id"]) for p in run_papers(conn, run["id"], {})}
+        wanted = list(dict.fromkeys((r.source, r.id) for r in body.papers))
+        if any(k not in in_run for k in wanted):
+            raise HTTPException(404, "One or more papers are not in this run")
+        recent = conn.execute(
+            "SELECT COUNT(*) FROM reader_attempts WHERE user_id = ?"
+            " AND created_at > datetime('now', '-1 hour')", (user["id"],)).fetchone()[0]
+        if recent + len(wanted) > settings.readings_per_hour:
+            raise HTTPException(
+                429, f"Reading limit reached: {settings.readings_per_hour} papers per hour "
+                f"({max(0, settings.readings_per_hour - recent)} left). Try again later.")
+        conn.executemany("INSERT INTO reader_attempts(user_id) VALUES(?)",
+                         [(user["id"],)] * len(wanted))
+        cur = conn.execute(
+            "INSERT INTO jobs(kind, payload, status) VALUES('reader', ?, 'pending')",
+            (json.dumps({"user_id": user["id"], "run_id": run["id"], "papers": wanted}),))
+        conn.commit()
+        background.add_task(run_reader_job, settings.database_path, cur.lastrowid, reader)
+        return {"job_id": cur.lastrowid, "queued": [{"source": s, "id": i} for s, i in wanted],
+                "model": reader.model, "note": READER_NOTE}
+
+    def reading_rows(conn: sqlite3.Connection, user_id: int,
+                     keys: list[tuple[str, str]]) -> list[dict]:
+        out = []
+        for source, paper_id in keys:
+            row = conn.execute("SELECT * FROM reader_results WHERE user_id = ? AND source = ?"
+                               " AND paper_id = ?", (user_id, source, paper_id)).fetchone()
+            out.append(result_record(row, source, paper_id))
+        return out
+
+    @app.get("/api/reader/jobs/{job_id}")
+    def reader_job(job_id: int, user: User, conn: Conn) -> dict:
+        job = conn.execute("SELECT id, kind, payload, status, error FROM jobs WHERE id = ?",
+                           (job_id,)).fetchone()
+        payload = json.loads(job["payload"]) if job and job["kind"] == "reader" else {}
+        if not payload or payload.get("user_id") != user["id"]:
+            raise HTTPException(404, "Job not found")
+        papers = reading_rows(conn, user["id"], [tuple(p) for p in payload["papers"]])
+        return {"id": job["id"], "status": job["status"], "error": job["error"],
+                "total": len(papers), "papers": papers}
+
+    @app.get("/api/evidence")
+    def get_evidence(run_id: int, user: User, conn: Conn,
+                     include_rejected: bool = False) -> dict:
+        """Verified evidence for the papers of a run that have been read, with the outcome of
+        every dimension. Rejected items appear only with include_rejected=true."""
+        run = owned_run(conn, run_id, user["id"])
+        keys = [(p["source"], p["id"]) for p in run_papers(conn, run["id"], {})]
+        papers = []
+        for record in reading_rows(conn, user["id"], keys):
+            if record["status"] == "not_requested":
+                continue
+            record["evidence"] = evidence_rows(conn, user["id"], record["source"],
+                                               record["id"], include_rejected)
+            papers.append(record)
+        return {"run_id": run["id"], "dimensions": DIMENSION_LABELS, "note": READER_NOTE,
+                "papers": papers}
 
     return app
 

@@ -13,6 +13,7 @@ class Settings:
     openalex_api_key: str | None = field(default=None, repr=False)
     contact_email: str | None = None
     app_secret_key: str | None = field(default=None, repr=False)
+    anthropic_api_key: str | None = field(default=None, repr=False)  # reader agent (M8)
     model_reader: str = "claude-sonnet-5-5"
     model_screener: str = "claude-haiku-5-5"
     cookie_secure: bool = False
@@ -31,6 +32,8 @@ class Settings:
     translate_api_key: str | None = field(default=None, repr=False)  # optional
     translate_max_chars: int = 20000  # per request
     translations_per_hour: int = 30  # requests per user
+    reader_effort: str = "high"  # output_config.effort for the reader
+    readings_per_hour: int = 20  # papers a user may queue for reading per hour
 
 
 def load_settings() -> Settings:
@@ -40,6 +43,9 @@ def load_settings() -> Settings:
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
         contact_email=os.environ.get("CONTACT_EMAIL") or None,
         app_secret_key=os.environ.get("APP_SECRET_KEY") or None,
+        anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
+        reader_effort=os.environ.get("BAYAN_READER_EFFORT", "high"),
+        readings_per_hour=int(os.environ.get("BAYAN_READINGS_PER_HOUR", "20")),
         model_reader=os.environ.get("BAYAN_MODEL_READER", "claude-sonnet-5-5"),
         model_screener=os.environ.get("BAYAN_MODEL_SCREENER", "claude-haiku-5-5"),
         doi_lookup_budget=int(os.environ.get("BAYAN_DOI_LOOKUP_BUDGET", "50")),
