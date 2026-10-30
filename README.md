@@ -164,6 +164,33 @@ ignored. Without a real `ANTHROPIC_API_KEY` the endpoint answers 503 ("not confi
 Limit: reader jobs are not resumed after a restart (download jobs are); papers left unread can be
 sent again. Usage caps per month are M11.
 
+## Concept extraction and cross-language merging (M17)
+
+The concept mapper builds the data for the mind map (M18). It reads each chosen paper (its
+indexed PDF pages, or the abstract when there is no PDF, labelled) and lists the concepts the
+paper works with: methods, materials or systems, quantities, data sets, codes, assumptions and
+results.
+
+- **Every mention is evidence.** Each concept comes with the label as the paper writes it and
+  1–3 verbatim quotes with their page. A mention is kept only when the quote is on the cited
+  page *and* contains the label. A concept with no verified mention is not shown.
+- **One concept, one node, in any language.** The model also gives a short English name, and
+  concepts merge by that name (case, hyphens and plurals ignored), so "molten salt reactor",
+  "réacteur à sels fondus" and "مفاعل الملح المنصهر" become one node that keeps all three labels
+  and their languages.
+- **Synonym pass (optional).** `POST /api/concepts/normalize` asks the model to group synonyms
+  and abbreviations ("MSR"). It answers with list numbers only, which are checked. Each node
+  says whether it was merged by the model or by you.
+- **You decide last.** `POST /api/concepts/merge` joins nodes; `POST /api/concepts/split` takes
+  a concept out of a node. The model pass never changes a node you merged or split.
+
+API: `POST /api/concepts` (run and papers, runs in the background), `GET /api/concepts/jobs/{id}`,
+`GET /api/concepts?run_id=` (nodes with papers, pages, quotes and labels). Limits per user per
+hour: `BAYAN_CONCEPT_READINGS_PER_HOUR` (20 papers) and `BAYAN_CONCEPT_MERGES_PER_HOUR` (10
+synonym passes); model `BAYAN_MODEL_CONCEPTS`. Uses the same `ANTHROPIC_API_KEY`; without it the
+endpoints answer 503. Answers are cached, so re-running on the same text costs nothing. There is
+no screen for this yet: the mind map (M18) will show it.
+
 ## Document-type filter and manuals (M21)
 
 **Counts per type.** `GET /api/runs/{id}` returns `type_report`: one row for every reference

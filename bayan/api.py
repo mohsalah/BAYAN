@@ -28,6 +28,16 @@ from .auth import (
     user_for_token,
     verify_password,
 )
+from .concepts import (
+    CONCEPT_TYPES,
+    TYPE_LABELS,
+    build_nodes,
+    merge_nodes,
+    normalize,
+    run_concept_job,
+    split_member,
+)
+from .concepts import result_record as concept_record
 from .config import Settings, load_settings
 from .connectors import (
     ArxivConnector,
@@ -168,6 +178,21 @@ class ReadRequest(BaseModel):
     papers: list[PaperRef] = Field(min_length=1, max_length=20)
 
 
+class ConceptMergeRequest(BaseModel):
+    run_id: int
+    keys: list[str] = Field(min_length=2, max_length=50)
+
+
+class ConceptSplitRequest(BaseModel):
+    run_id: int
+    key: str = Field(min_length=1, max_length=200)
+
+
+class NormalizeRequest(BaseModel):
+    run_id: int
+    fresh: bool = False
+
+
 class ExportRequest(BaseModel):
     format: Literal["csv", "xlsx"] = "csv"
     # None exports every paper of the run; otherwise only these (they must belong to the run).
@@ -274,7 +299,7 @@ def create_app(
     settings: Settings | None = None, connector_factory: ConnectorFactory | None = None,
     fetcher: Fetcher | None = None, translator: Engine | None = None,
     reader: ReaderClient | None = None, planner: ReaderClient | None = None,
-    topic_lookup: TopicLookup | None = None,
+    topic_lookup: TopicLookup | None = None, concept_client: ReaderClient | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     if reader is None and reader_key_ok(settings.anthropic_api_key):
@@ -283,6 +308,9 @@ def create_app(
     if planner is None and reader_key_ok(settings.anthropic_api_key):
         planner = AnthropicReader(settings.anthropic_api_key, settings.model_planner,
                                   settings.planner_effort, max_tokens=16000)
+    if concept_client is None and reader_key_ok(settings.anthropic_api_key):
+        concept_client = AnthropicReader(settings.anthropic_api_key, settings.model_concepts,
+                                         settings.concepts_effort)
     topic_lookup = topic_lookup or OpenAlexConnector(
         api_key=settings.openalex_api_key, contact_email=settings.contact_email)
     translator = translator or engine_from_settings(settings.translate_url,
@@ -1356,6 +1384,124 @@ def create_app(
             papers.append(record)
         return {"run_id": run["id"], "dimensions": DIMENSION_LABELS, "note": READER_NOTE,
                 "papers": papers}
+
+    # ---- Concept mapper (M17): verified concept mentions, merged across papers and languages ----
+
+    CONCEPT_NOTE = ("The paper text is sent to the Anthropic API. A concept is shown only with "
+                    "quotes found on the cited page that contain its label. Merges by English "
+                    "name, by the model or by you are listed on each node; the original labels "
+                    "are kept.")
+
+    def concept_service() -> ReaderClient:
+        if concept_client is None:
+            raise HTTPException(503, "The concept mapper is not configured: ANTHROPIC_API_KEY is "
+                                     "not set on the server.")
+        return concept_client
+
+    def concept_attempts(conn: sqlite3.Connection, user_id: int, kind: str) -> int:
+        return conn.execute(
+            "SELECT COUNT(*) FROM concept_attempts WHERE user_id = ? AND kind = ?"
+            " AND created_at > datetime('now', '-1 hour')", (user_id, kind)).fetchone()[0]
+
+    def run_keys(conn: sqlite3.Connection, run_id: int) -> list[tuple[str, str]]:
+        return [(p["source"], p["id"]) for p in run_papers(conn, run_id, {})]
+
+    def concept_rows(conn: sqlite3.Connection, user_id: int,
+                     keys: list[tuple[str, str]]) -> list[dict]:
+        out = []
+        for source, paper_id in keys:
+            row = conn.execute("SELECT * FROM concept_results WHERE user_id = ? AND source = ?"
+                               " AND paper_id = ?", (user_id, source, paper_id)).fetchone()
+            out.append(concept_record(row, source, paper_id))
+        return out
+
+    def done_keys(conn: sqlite3.Connection, user_id: int, run_id: int) -> list[tuple[str, str]]:
+        return [(r["source"], r["id"]) for r in concept_rows(conn, user_id, run_keys(conn, run_id))
+                if r["status"] == "done"]
+
+    @app.post("/api/concepts", status_code=202)
+    def start_concepts(body: ReadRequest, background: BackgroundTasks, user: User,
+                       conn: Conn) -> dict:
+        client = concept_service()
+        run = owned_run(conn, body.run_id, user["id"])
+        in_run = set(run_keys(conn, run["id"]))
+        wanted = list(dict.fromkeys((r.source, r.id) for r in body.papers))
+        if any(k not in in_run for k in wanted):
+            raise HTTPException(404, "One or more papers are not in this run")
+        recent = concept_attempts(conn, user["id"], "extract")
+        limit = settings.concept_readings_per_hour
+        if recent + len(wanted) > limit:
+            raise HTTPException(429, f"Concept extraction limit reached: {limit} papers per hour "
+                                     f"({max(0, limit - recent)} left). Try again later.")
+        conn.executemany("INSERT INTO concept_attempts(user_id, kind) VALUES(?, 'extract')",
+                         [(user["id"],)] * len(wanted))
+        cur = conn.execute(
+            "INSERT INTO jobs(kind, payload, status) VALUES('concepts', ?, 'pending')",
+            (json.dumps({"user_id": user["id"], "run_id": run["id"], "papers": wanted}),))
+        conn.commit()
+        background.add_task(run_concept_job, settings.database_path, cur.lastrowid, client)
+        return {"job_id": cur.lastrowid, "queued": [{"source": s, "id": i} for s, i in wanted],
+                "model": client.model, "note": CONCEPT_NOTE}
+
+    @app.get("/api/concepts/jobs/{job_id}")
+    def concept_job(job_id: int, user: User, conn: Conn) -> dict:
+        job = conn.execute("SELECT id, kind, payload, status, error FROM jobs WHERE id = ?",
+                           (job_id,)).fetchone()
+        payload = json.loads(job["payload"]) if job and job["kind"] == "concepts" else {}
+        if not payload or payload.get("user_id") != user["id"]:
+            raise HTTPException(404, "Job not found")
+        papers = concept_rows(conn, user["id"], [tuple(p) for p in payload["papers"]])
+        return {"id": job["id"], "status": job["status"], "error": job["error"],
+                "total": len(papers), "papers": papers}
+
+    @app.get("/api/concepts")
+    def get_concepts(run_id: int, user: User, conn: Conn) -> dict:
+        """The run's concept nodes from the papers whose extraction is done. Only verified
+        mentions are included; every node lists its papers, pages, quotes and labels."""
+        run = owned_run(conn, run_id, user["id"])
+        papers = [r for r in concept_rows(conn, user["id"], run_keys(conn, run["id"]))
+                  if r["status"] != "not_requested"]
+        done = [(r["source"], r["id"]) for r in papers if r["status"] == "done"]
+        nodes = build_nodes(conn, user["id"], run["id"], done)
+        return {"run_id": run["id"], "types": {t: TYPE_LABELS[t] for t in CONCEPT_TYPES},
+                "note": CONCEPT_NOTE, "papers": papers, "nodes": nodes}
+
+    @app.post("/api/concepts/normalize")
+    def normalize_concepts(body: NormalizeRequest, user: User, conn: Conn) -> dict:
+        client = concept_service()
+        run = owned_run(conn, body.run_id, user["id"])
+        if concept_attempts(conn, user["id"], "normalize") >= settings.concept_merges_per_hour:
+            raise HTTPException(429, f"Merge limit reached: {settings.concept_merges_per_hour} "
+                                     "synonym passes per hour. Try again later.")
+        conn.execute("INSERT INTO concept_attempts(user_id, kind) VALUES(?, 'normalize')",
+                     (user["id"],))
+        conn.commit()
+        try:
+            result = normalize(conn, client, user["id"], run["id"],
+                               done_keys(conn, user["id"], run["id"]), body.fresh)
+        except ReaderError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        return {**result, "model": client.model}
+
+    @app.post("/api/concepts/merge")
+    def merge_concepts(body: ConceptMergeRequest, user: User, conn: Conn) -> dict:
+        run = owned_run(conn, body.run_id, user["id"])
+        nodes = build_nodes(conn, user["id"], run["id"], done_keys(conn, user["id"], run["id"]))
+        try:
+            key = merge_nodes(conn, user["id"], run["id"], nodes, body.keys)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return {"key": key}
+
+    @app.post("/api/concepts/split")
+    def split_concept(body: ConceptSplitRequest, user: User, conn: Conn) -> dict:
+        run = owned_run(conn, body.run_id, user["id"])
+        nodes = build_nodes(conn, user["id"], run["id"], done_keys(conn, user["id"], run["id"]))
+        try:
+            split_member(conn, user["id"], run["id"], nodes, body.key)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return {"key": body.key}
 
     return app
 
