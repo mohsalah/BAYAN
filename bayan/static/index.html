@@ -124,6 +124,14 @@ button.chip{background:var(--card);cursor:pointer;font:inherit;font-size:12px;co
 button.chip[aria-pressed=true]{border-color:var(--accent);color:var(--accent);font-weight:600}
 button.chip.zero{color:var(--mute);border-style:dashed}
 .typereport{margin:6px 0;padding-inline-start:18px;font-size:14px}.typereport li.zero{color:var(--mute)}
+.topicmark{font-size:11px;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:0 5px;margin-inline-start:6px}
+.topicsbox{margin:14px 0;padding-top:10px;border-top:1px solid var(--field-line)}
+.topicsbox textarea{min-height:64px}
+.topictree{list-style:none;padding-inline-start:0;margin:8px 0}
+.topictree>li{margin:6px 0}
+.topictree ul{list-style:none;padding-inline-start:22px;margin:2px 0}
+.topictree li li{margin:2px 0}
+.topictree button.ghost{padding:1px 8px;font-size:12px;margin-inline-start:4px}
 .usermark{font-size:11px;border:1px solid var(--warn);color:var(--warn);border-radius:4px;padding:0 5px;margin-inline-start:6px;white-space:nowrap}
 .manualbox{margin:10px 0}.manualbox summary{cursor:pointer}.manualbox .bar{align-items:flex-end}
 .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 10px;font-size:12px;margin:2px 0;margin-inline-end:4px;color:var(--ink)}
@@ -247,6 +255,26 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
     <div class="chips" id="langFilter" role="group" aria-label="Filter loaded results by paper language" data-i18n-aria="filter.lang_aria"></div>
     <p class="note" id="langFilterNote"></p>
     <p class="note" id="langQueryNote"></p>
+    <div id="topicsBlock" class="topicsbox">
+      <h3 data-i18n="topics.h">Organise the papers by topic</h3>
+      <p class="note" data-i18n="topics.intro">Group the papers under main topics and subtopics of your research area. BAYAN suggests topics; keep the ones you want, add your own, then map the papers. The mapping uses titles and abstracts only, and every assignment is checked.</p>
+      <h4 data-i18n="topics.lib_h">Library topics</h4>
+      <div class="chips" id="libTopicFilter" role="group" aria-label="Filter loaded results by library topic" data-i18n-aria="topics.lib_aria"></div>
+      <p class="note" data-i18n="topics.lib_note">The topic each library reported for a paper, one per paper, in the library's own words. Click one to filter the table.</p>
+      <h4 data-i18n="topics.map_h">Main topics and subtopics</h4>
+      <div class="bar" style="align-items:flex-end">
+        <label for="topicScope"><span data-i18n="topics.scope">Papers to organise</span><select id="topicScope"></select></label>
+        <label for="ownTopics" style="flex:1;min-width:240px"><span data-i18n="topics.own">Your topics of interest (one per line, up to 10)</span><textarea id="ownTopics" dir="auto" placeholder="e.g. reactor shielding design" data-i18n-ph="topics.own.ph"></textarea></label>
+      </div>
+      <div class="bar">
+        <button type="button" id="topicSuggest" data-i18n="topics.suggest">Suggest topics</button>
+        <button type="button" id="topicMap" data-i18n="topics.map">Map the papers</button>
+      </div>
+      <p id="topicMsg" class="note" role="status" aria-live="polite"></p>
+      <div id="topicSuggestion"></div>
+      <div id="topicTree"></div>
+      <div id="topicHints"></div>
+    </div>
     <details class="manualbox" id="manualBox">
       <summary data-i18n="manual.add">Add a manual</summary>
       <p class="note" data-i18n="manual.help">Manuals are not searched for. Add one by a public PDF link or by uploading a PDF; it is labelled user-supplied and is visible only to you.</p>
@@ -595,8 +623,21 @@ function queriesForRequest(chosen, boxes) {
 const geoFilter = new Set();                // active keys: r:<region>, c:<code>, unknown; empty = all
 let regionData = null;                      // /api/regions
 let getGeo = () => ({ regions: [], countries: [], geo_mode: 'include' });
-const viewPapers = () => filterByLanguages(filterByGeo(filterByTypes(run.papers, [...typeFilter]), [...geoFilter]), [...langFilter]);
-const filtersOn = () => typeFilter.size + geoFilter.size + langFilter.size > 0;
+/* Topic filter: "lib:<library topic>" keys, mapped topic ids (T1, T1.2) and "unclassified". */
+const topicFilter = new Set();
+const topicAssign = new Map();              // "source\u0000id" -> assignment of the latest mapping
+let topicNames = {}, topicSuggestion = null, topicWatch = 0;
+function filterByTopics(papers, keys) {
+  if (!keys.length) return papers;
+  return papers.filter(p => keys.some(k => {
+    if (k.startsWith('lib:')) return (p.topic || '') === k.slice(4);
+    const a = topicAssign.get(keyOf(p));
+    if (k === 'unclassified') return !!a && a.status !== 'mapped';
+    return !!a && a.status === 'mapped' && [a.main, a.sub, ...a.related].includes(k);
+  }));
+}
+const viewPapers = () => filterByTopics(filterByLanguages(filterByGeo(filterByTypes(run.papers, [...typeFilter]), [...geoFilter]), [...langFilter]), [...topicFilter]);
+const filtersOn = () => typeFilter.size + geoFilter.size + langFilter.size + topicFilter.size > 0;
 const selected = new Map();                 // "source\u0000id" -> paper
 const keyOf = p => p.source + '\u0000' + p.id;
 const ref = p => ({ source: p.source, id: p.id });
@@ -1036,6 +1077,11 @@ function paperRow(p) {
     titleCell.append(' ', edit);
   }
   titleCell.append(meta, abs);
+  const ta = topicAssign.get(k);
+  if (ta && ta.status === 'mapped') {
+    const label = topicNames[ta.main] + (ta.sub ? ' › ' + topicNames[ta.sub] : '');
+    titleCell.append(el('span', { class: 'topicmark', dir: 'auto', title: t('topics.row_help', { phrase: ta.phrase }) }, label));
+  }
   // DOIs, URLs and years are left-to-right even inside right-to-left text.
   const doi = el('td', { class: 'ltr' });
   if (p.doi) {
@@ -1171,6 +1217,7 @@ function renderTypes() {
   }
   renderGeoFilter();
   renderLangFilter();
+  renderLibTopics();
 }
 function filterChanged() { shown = 0; renderRows(); $('all').checked = false; updateSelection(); }
 function geoChanged() { renderGeoFilter(); filterChanged(); }
@@ -1247,10 +1294,11 @@ async function refreshRun() {
    ticks, filters and prompt. */
 function renderRun(r, relabel) {
   run = r; shown = 0;
+  if (!relabel) { topicFilter.clear(); topicAssign.clear(); topicNames = {}; topicSuggestion = null; topicWatch++; ['topicMsg', 'topicSuggestion', 'topicTree', 'topicHints'].forEach(id => $(id).replaceChildren()); }
   if (!relabel) { selected.clear(); typeFilter.clear(); geoFilter.clear(); langFilter.clear(); scopeTouched = false; lastAnalysis = null; $('promptBox').classList.add('hidden'); $('gapMsg').textContent = ''; $('exportMsg').textContent = ''; $('ideasOut').replaceChildren(); $('ideasMsg').textContent = ''; }
   const s = r.summary;
   $('resultCard').classList.remove('hidden'); $('gapCard').classList.remove('hidden');
-  if (!relabel) loadIdeaRuns();
+  if (!relabel) { loadIdeaRuns(); loadTopics(); }
   const chips = [[t('sum.scanned'), s.scanned], [t('sum.duplicates'), s.duplicates]];
   for (const [k, v] of Object.entries(s.by_library || {})) chips.push([k, v]);
   for (const [k, v] of Object.entries(s.by_category || {})) chips.push([typeLabel(k, categoryLabels[k] || k), v]);
@@ -1286,6 +1334,12 @@ function updateSelection() {
     sc.value = scopeTouched && prev ? prev : (n ? 'selected' : (filtersOn() ? 'view' : 'all'));
   }
   $('gapScope').textContent = n ? t('gap.selected', { n, abs: withAbs }) : t('gap.none');
+  if (run) {
+    const ts = $('topicScope'), prevScope = ts.value || 'all';
+    ts.replaceChildren(el('option', { value: 'all' }, t('topics.scope.all', { n: run.papers.length })),
+      el('option', { value: 'selected' }, t('topics.scope.selected', { n })));
+    ts.value = prevScope;
+  }
   $('exportXlsx').title = t('export.xlsx.help');
   $('exportCsv').title = t('export.csv.help');
 }
@@ -1499,6 +1553,149 @@ async function loadIdeaRuns() {
   } catch (e) { /* not signed in or no run */ }
 }
 
+/* ---------- topic mapping (M26) ---------- */
+function topicChip(key, label, n, title) {
+  const b = el('button', { type: 'button', class: 'chip' + (n ? '' : ' zero'), 'aria-pressed': topicFilter.has(key) ? 'true' : 'false', title, dir: 'auto' }, label + ': ' + n);
+  b.onclick = () => { if (topicFilter.has(key)) topicFilter.delete(key); else topicFilter.add(key); topicFilterChanged(); };
+  return b;
+}
+function topicFilterChanged() { filterChanged(); renderLibTopics(); renderTopicTree(); }
+function renderLibTopics() {
+  if (!run) return;
+  const counts = {};
+  for (const p of run.papers) counts[p.topic || ''] = (counts[p.topic || ''] || 0) + 1;
+  const names = Object.keys(counts).filter(k => k).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b)).slice(0, 30);
+  const chips = names.map(k => topicChip('lib:' + k, k, counts[k], t('topics.filter_help')));
+  chips.push(topicChip('lib:', t('topics.lib_none'), counts[''] || 0, t('topics.filter_help')));
+  if (topicFilter.size) {
+    const clear = el('button', { type: 'button', class: 'chip' }, t('topics.clear_filter'));
+    clear.onclick = () => { topicFilter.clear(); topicFilterChanged(); };
+    chips.push(clear);
+  }
+  $('libTopicFilter').replaceChildren(...chips);
+}
+function topicBody(withTaxonomy) {
+  const own = $('ownTopics').value.split('\n').map(x => x.trim()).filter(Boolean);
+  if (own.length > 10 || own.some(x => x.length > 80)) throw new Error(t('topics.err_own'));
+  const scope = $('topicScope').value || 'all';
+  if (scope === 'selected' && !selected.size) throw new Error(t('topics.err_tick'));
+  const body = { run_id: run.id, scope, own_topics: own, papers: scope === 'selected' ? [...selected.values()].map(ref).slice(0, 500) : [] };
+  if (withTaxonomy && topicSuggestion) {
+    body.taxonomy = topicSuggestion.map(g => ({ title: g.title, checked: g.box.checked, subtopics: g.subtopics.filter(x => x.box.checked).map(x => x.name) }))
+      .filter(g => g.checked).map(({ title, subtopics }) => ({ title, subtopics }));
+  }
+  return body;
+}
+async function suggestTopics() {
+  if (!run) return;
+  $('topicSuggest').disabled = true;
+  try {
+    const body = topicBody(false);
+    $('topicMsg').textContent = t('topics.suggesting');
+    const r = await post('/api/topics/suggest', body);
+    topicSuggestion = r.taxonomy.map(g => ({ ...g, box: el('input', { type: 'checkbox', checked: '' }),
+      subtopics: g.subtopics.map(x => ({ ...x, box: el('input', { type: 'checkbox', checked: '' }) })) }));
+    const mark = item => [item.own ? el('span', { class: 'usermark' }, t('topics.yours')) : '', item.placed_by ? el('span', { class: 'small' }, ' ' + t('topics.by_code')) : ''];
+    $('topicSuggestion').replaceChildren(el('ul', { class: 'topictree' }, ...topicSuggestion.map(g => el('li', {},
+      el('label', { style: 'flex-direction:row;align-items:center', dir: 'auto' }, g.box, ' ', el('strong', {}, g.title), ...mark(g)),
+      el('ul', {}, ...g.subtopics.map(x => el('li', {}, el('label', { style: 'flex-direction:row;align-items:center', dir: 'auto' }, x.box, ' ', x.name, ...mark(x)))))))));
+    $('topicMsg').textContent = t('topics.suggested', { n: r.taxonomy.length, papers: r.papers }) + (r.cached ? ' ' + t('topics.cached') : '');
+  } catch (e) { $('topicMsg').textContent = e.message; }
+  finally { $('topicSuggest').disabled = false; }
+}
+async function mapTopics() {
+  if (!run) return;
+  $('topicMap').disabled = true;
+  try {
+    const body = topicBody(true);
+    $('topicMsg').textContent = t('topics.starting');
+    const r = await post('/api/topics', body);
+    await watchTopics(r.id);
+  } catch (e) { $('topicMsg').textContent = e.message; }
+  finally { $('topicMap').disabled = false; }
+}
+async function watchTopics(id) {
+  const ticket = ++topicWatch;
+  for (;;) {
+    const rec = await json('/api/topics/' + id);
+    if (ticket !== topicWatch) return;           // another run or mapping took over
+    showTopicMap(rec);
+    if (rec.status !== 'pending' && rec.status !== 'running') break;
+    await new Promise(res => setTimeout(res, 2000));
+  }
+}
+async function loadTopics() {
+  if (!run) return;
+  try {
+    const r = await json('/api/topics?run_id=' + run.id);
+    if (!r.latest) return;
+    if (r.latest.status === 'pending' || r.latest.status === 'running') watchTopics(r.latest.id);
+    else showTopicMap(r.latest);
+  } catch (e) { /* not signed in or no run */ }
+}
+let topicRec = null;
+function showTopicMap(rec) {
+  topicRec = rec;
+  $('topicMsg').textContent = t('topics.status.' + rec.status, { calls: rec.calls, cached: rec.cached_calls }) + (rec.detail ? ' ' + rec.detail : '');
+  topicAssign.clear(); topicNames = {};
+  const res = rec.result;
+  if (res) {
+    for (const g of res.taxonomy) { topicNames[g.id] = g.title; for (const x of g.subtopics) topicNames[x.id] = x.name; }
+    for (const p of res.papers) topicAssign.set(p.source + '\u0000' + p.id, p);
+    if (topicSuggestion) { topicSuggestion = null; $('topicSuggestion').replaceChildren(); }
+  }
+  renderTopicTree();
+  renderTopicHints(rec);
+  filterChanged();
+}
+function renderTopicTree() {
+  const rec = topicRec, res = rec && rec.result;
+  if (!res) { $('topicTree').replaceChildren(rec ? el('ul', { class: 'steps' }, ...rec.steps.map(s => el('li', {}, s.step + ': ' + t('ideas.step.' + s.status) + (s.detail ? ' (' + s.detail + ')' : '')))) : ''); return; }
+  const c = res.counts;
+  const own = item => item.own ? el('span', { class: 'usermark' }, t('topics.yours')) : '';
+  const devMain = g => {
+    if (g.subtopics.length) return '';
+    const b = el('button', { type: 'button', class: 'ghost', title: t('topics.develop_help') }, t('topics.develop'));
+    b.onclick = () => developTopic(g, null);
+    return b;
+  };
+  const tree = el('ul', { class: 'topictree' }, ...res.taxonomy.map(g => el('li', {},
+    topicChip(g.id, g.title, c.main[g.id], t('topics.filter_help')), own(g), devMain(g),
+    el('ul', {}, ...g.subtopics.map(x => {
+      const dev = el('button', { type: 'button', class: 'ghost', title: t('topics.develop_help') }, t('topics.develop'));
+      dev.onclick = () => developTopic(g, x);
+      return el('li', {}, topicChip(x.id, x.name, c.sub[x.id], t('topics.filter_help')), own(x),
+        c.related[x.id] ? el('span', { class: 'small' }, ' ' + t('topics.related', { n: c.related[x.id] })) : '', ' ', dev);
+    })))));
+  const unc = res.papers.filter(p => p.status !== 'mapped');
+  const uncBox = el('details', { class: 'expand' }, el('summary', {}, t('topics.unclassified_help', { n: unc.length })),
+    el('ul', {}, ...unc.map(p => { const paper = run && run.papers.find(q => q.source === p.source && q.id === p.id); return el('li', { dir: 'auto' }, (paper ? paper.title : p.id) + ' · ' + p.reason); })));
+  $('topicTree').replaceChildren(
+    el('p', { class: 'note' }, t('topics.summary', { mapped: c.papers - c.unclassified, total: c.papers, unclassified: c.unclassified, scope: t('topics.scope_name.' + res.scope) })),
+    tree, el('div', {}, topicChip('unclassified', t('topics.unclassified'), c.unclassified, t('topics.filter_help'))), uncBox,
+    el('p', { class: 'small' }, res.note));
+}
+function renderTopicHints(rec) {
+  const h = rec.hints;
+  if (!h) { $('topicHints').replaceChildren(); return; }
+  $('topicHints').replaceChildren(el('h4', {}, t('topics.hints_h')), el('p', { class: 'small' }, h.caveat),
+    h.hints.length ? el('ul', {}, ...h.hints.map(x => el('li', { dir: 'auto' }, x.claim, ' ', el('span', { class: 'small' }, t('topics.follow_up', { query: x.follow_up.query })))))
+      : el('p', { class: 'note' }, t('topics.no_hints')));
+}
+/* x is a subtopic, or null for a main topic that has none. */
+function developTopic(g, x) {
+  if (!run) return;
+  const id = x ? x.id : g.id, name = x ? x.name : g.title;
+  const papers = run.papers.filter(p => { const a = topicAssign.get(keyOf(p)); return a && a.status === 'mapped' && [a.main, a.sub, ...a.related].includes(id); });
+  selected.clear();
+  papers.forEach(p => selected.set(keyOf(p), p));
+  topicFilter.clear(); topicFilter.add(id);
+  topicFilterChanged();
+  $('gapText').value = x ? t('topics.develop_text', { sub: x.name, main: g.title }) : t('topics.develop_text_main', { main: g.title });
+  $('gapMsg').textContent = t('topics.developed', { n: papers.length, sub: name });
+  $('gapCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 /* ---------- wiring ---------- */
 $('authForm').onsubmit = ev => { ev.preventDefault(); auth('login'); };
 $('register').onclick = () => auth('register');
@@ -1522,6 +1719,8 @@ $('exportCsv').onclick = () => exportRun('csv');
 $('gapForm').onsubmit = ev => { ev.preventDefault(); analysis('gaps'); };
 $('createProps').onclick = () => analysis('proposals');
 $('ideasGo').onclick = suggestIdeas;
+$('topicSuggest').onclick = suggestTopics;
+$('topicMap').onclick = mapTopics;
 $('copyPrompt').onclick = async () => {
   try { await navigator.clipboard.writeText($('promptText').value); $('gapMsg').textContent = t('prompt.copied'); }
   catch (e) { $('promptText').focus(); $('promptText').select(); $('gapMsg').textContent = t('prompt.copy_manual'); }
@@ -1539,6 +1738,7 @@ const HELP = {
   weighting: 'help.weighting', gapCount: 'help.gapCount', propCount: 'help.propCount', question: 'help.question',
   gapText: 'help.gapText', themeSummary: 'theme.help', uiLang: 'ui.language.help', dlPdfs: 'help.dlPdfs',
   ideasGo: 'help.ideasGo', ideaCount: 'help.ideaCount', ideasBrainstorm: 'help.ideasBrainstorm',
+  topicSuggest: 'help.topicSuggest', topicMap: 'help.topicMap', ownTopics: 'help.ownTopics', topicScope: 'help.topicScope',
 };
 $('query').oninput = renderLangQueries;
 $('uiLang').onchange = () => setUiLanguage($('uiLang').value, true);

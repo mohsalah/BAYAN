@@ -23,6 +23,8 @@ COLUMNS: list[tuple[str, str, int]] = [
     ("citations", "Citations", 10), ("access", "Open copy", 18), ("oa_url", "Open-copy link", 36),
     ("landing_url", "Source page", 36), ("keywords", "Keywords", 30),
     ("abstract_status", "Abstract", 14), ("abstract", "Abstract text", 90),
+    ("topic_main", "Main topic", 28), ("topic_sub", "Subtopic", 28),
+    ("topic_related", "Related subtopics", 32),
 ]
 UNKNOWN = "unknown"
 GEO_LABELS = {"matched": "matched", "unknown": "country unknown", "outside": "outside area"}

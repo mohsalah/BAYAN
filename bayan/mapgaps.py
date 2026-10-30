@@ -13,6 +13,10 @@ the graph:
   `never_together` (two well-supported concepts that no chosen paper studies together),
   `method_single_system` (a method used with only one system in the chosen set).
 
+Two more kinds come from the topic mapping (M26) instead of the concept graph, see
+`topic_hints`: `thin_topic` (a subtopic with at most one mapped paper) and
+`topics_never_together` (two subtopics that no mapped paper concerns together).
+
 Every hint carries the same caveat: the map covers only the chosen papers whose extraction is
 done, so "never together" means "not together in this set" until the broader search was run and
 a counterevidence pass was recorded. Counts and pairs come from the database, never from a model.
@@ -35,6 +39,11 @@ KINDS = {
     "weakly_linked_clusters": "Two clusters of concepts joined by at most one chosen paper.",
     "never_together": "Two well-supported concepts that no chosen paper studies together.",
     "method_single_system": "A method used with only one system in the chosen set.",
+}
+TOPIC_KINDS = {
+    "thin_topic": "A subtopic with at most one paper mapped to it in the chosen set.",
+    "topics_never_together": "Two subtopics that no mapped paper in the chosen set concerns "
+                             "together.",
 }
 
 Ref = tuple[str, str]
@@ -303,3 +312,78 @@ def analyse(nodes: list[dict], papers_done: list[Ref], min_papers: int = MIN_PAP
 
 __all__ = ["CAVEAT_RELATION", "KINDS", "MAX_MIN_PAPERS", "MIN_PAPERS", "STATUS", "analyse",
            "build_graph", "caveat_for"]
+
+
+# --------------------------------------------------------------------------- topic mapping
+
+def _topic_caveat(counts: dict, scope: str) -> str:
+    where = "the ticked papers" if scope == "selected" else "the collected papers"
+    return (f"These hints come from the topic mapping of {where}: {counts['papers']} papers, "
+            f"{counts['unclassified']} unclassified, assigned from titles and abstracts. A "
+            f"thin or unlinked topic means within this set only: each hint stays an unverified "
+            f"candidate until a broader search and a counterevidence pass were recorded.")
+
+
+def topic_hints(result: dict, min_papers: int = MIN_PAPERS) -> dict:
+    """Gap hints from a finished topic mapping (`topics._map` result). No model call.
+
+    - thin_topic: a subtopic with at most one paper (main, sub or related) in the set;
+    - topics_never_together: two subtopics under different main topics, each with at least
+      `min_papers` papers, that no paper concerns together. When the researcher named topics of
+      interest, only pairs that include one of them are reported.
+    """
+    taxonomy, papers, counts = result["taxonomy"], result["papers"], result["counts"]
+    caveat = _topic_caveat(counts, result.get("scope", "all"))
+    name = {g["id"]: g["title"] for g in taxonomy}
+    subs = [(g, s) for g in taxonomy for s in g["subtopics"]]
+    name.update({s["id"]: s["name"] for _, s in subs})
+    members: dict[str, set[Ref]] = {s["id"]: set() for _, s in subs}
+    for p in papers:
+        if p.get("status") != "mapped":
+            continue
+        for tid in [p["sub"], *p["related"]]:
+            if tid in members:
+                members[tid].add((p["source"], p["id"]))
+    own = {s["id"] for _, s in subs if s["own"]}
+    own |= {s["id"] for g, s in subs if g["own"]}
+
+    def topic(tid: str, group: dict) -> dict:
+        return {"id": tid, "name": name[tid], "main": group["title"],
+                "own": tid in own, "paper_count": len(members[tid])}
+
+    hints = []
+    for g, s in subs:
+        if len(members[s["id"]]) <= 1 and len(hints) < MAX_PER_KIND:
+            n = len(members[s["id"]])
+            hints.append({
+                "kind": "thin_topic", "status": STATUS,
+                "claim": (f'The subtopic "{s["name"]}" (under "{g["title"]}") has {n} paper'
+                          f'{"" if n == 1 else "s"} in the mapped set.'),
+                "topics": [topic(s["id"], g)], "papers": _papers(members[s["id"]]),
+                "follow_up": {"query": _quoted(s["name"]),
+                              "note": "Search the libraries for this subtopic before treating "
+                                      "it as understudied."},
+                "caveat": caveat})
+    pairs = []
+    for (ga, a), (gb, b) in combinations(subs, 2):
+        if ga["id"] == gb["id"]:
+            continue
+        if own and a["id"] not in own and b["id"] not in own:
+            continue
+        ma, mb = members[a["id"]], members[b["id"]]
+        if len(ma) >= min_papers and len(mb) >= min_papers and not ma & mb:
+            pairs.append((-(len(ma) + len(mb)), ga, a, gb, b))
+    pairs.sort(key=lambda x: (x[0], x[2]["id"], x[4]["id"]))
+    for _, ga, a, gb, b in pairs[:MAX_PER_KIND]:
+        hints.append({
+            "kind": "topics_never_together", "status": STATUS,
+            "claim": (f'No mapped paper concerns both "{a["name"]}" and "{b["name"]}" '
+                      f'({len(members[a["id"]])} and {len(members[b["id"]])} papers).'),
+            "topics": [topic(a["id"], ga), topic(b["id"], gb)],
+            "papers": _papers(members[a["id"]] | members[b["id"]]),
+            "follow_up": {"query": _quoted(a["name"], b["name"]),
+                          "note": "Search for work combining both subtopics, and check the "
+                                  "unclassified papers, before treating the pair as a gap."},
+            "caveat": caveat})
+    return {"status": STATUS, "caveat": caveat, "min_papers": min_papers,
+            "kinds": TOPIC_KINDS, "hints": hints}
