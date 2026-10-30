@@ -207,8 +207,40 @@ Additional tables for this version: `paper_selections` (user, paper, requested_a
 | M22 | Report and thesis connectors (OSTI, INIS, NTRS, OATD, NDLTD, DART-Europe, EThOS where terms allow) | Each documents its terms; unconfirmed ones show "not available yet" |
 | M23 | Geographic filter (regions, countries, basis selector, unknown-location bucket) | Region lists tested; results reproducible; unknown location listed separately |
 | M24 | Translator (any language to English or Arabic) with glossary, OCR and side-by-side view | Numbers/units/equations preserved in tests; translations marked and never used as evidence quotes |
+| M25 | Publisher connectors on the user's own key: Elsevier first, then IEEE | Search runs on the user's key; each paper shows its real access (full text / abstract only / not entitled); content goes to the AI agents only where the publisher's terms allow it, and the terms check is recorded |
 
 Suggested order after M8: M14, M15, M17, M18, M9 (gap analyst can then use the map), M19, M20, M16, M10-M13.
+M25 starts only after its terms gate (below) is answered by the publishers.
+
+### M25 detail: publisher connectors on the user's own key
+
+Checked 2026-10-30 against the publishers' developer pages; re-check before building.
+
+- **Elsevier (first).** Search with Scopus/ScienceDirect Search APIs, full text with the Article
+  Retrieval API, key sent as `X-ELS-APIKey`. The key only identifies the caller and "does not
+  grant data or content access": entitlement comes from a request made from the subscribing
+  institution's IP range, or from an `insttoken` that Elsevier grants to a customer on request.
+  A server outside the campus network therefore usually gets metadata and abstracts only. The
+  connector must report the access each article really returned, never assume full text.
+  An optional insttoken field is stored like the keys (encrypted, server-side only, header
+  `X-ELS-Insttoken`, never in a URL or the browser). Elsevier's TDM service is for
+  non-commercial academic research by researchers at subscribing institutions.
+- **IEEE (second).** Metadata Search API (metadata and abstracts) with the user's key; full text
+  only for Open Access articles. The chargeable Full-Text Access API is out of scope. IEEE's API
+  terms limit use to non-commercial work within the licensee's institution, allow display only
+  "in response to an individual query", forbid sharing the key or using the API "on behalf of
+  any third party", and forbid "using Content as a source, training set, or benchmark for any
+  AI system" without IEEE's written consent.
+- **Terms gate (before any code).** Ask Elsevier and IEEE in writing: (1) may a multi-user web
+  app call the API with each user's own key; (2) may article text or abstracts be sent to an AI
+  model (the reader, concept and gap agents) to extract quoted evidence for that user;
+  (3) what may be cached and for how long. Record the answers in the repo. Until IEEE consents
+  in writing, IEEE content is shown and searched but never sent to an AI agent, and the UI says
+  so ("not sent to AI: publisher terms"). The same rule applies to Elsevier if its answer is no
+  or unclear.
+- **Tests.** Recorded responses only (no live calls), including the "not entitled" and
+  "abstract only" answers, the key and insttoken never appearing in logs, errors or exports,
+  and the AI gate blocking IEEE content in the reader and concept jobs.
 
 ## 11. Testing
 
