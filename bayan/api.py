@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -79,6 +79,8 @@ from .manuals import (
     store_manual,
     title_from_url,
 )
+from .mapgaps import MAX_MIN_PAPERS, MIN_PAPERS
+from .mapgaps import analyse as map_gaps
 from .membership import (
     EXAMPLE_DOI,
     InvalidInput,
@@ -1502,6 +1504,20 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         return {"key": body.key}
+
+    # ---- Map-based gap hints (M19): computed from co-occurrence, no model call ----
+
+    @app.get("/api/concepts/gaps")
+    def concept_gaps(run_id: int, user: User, conn: Conn,
+                     min_papers: Annotated[int, Query(ge=1, le=MAX_MIN_PAPERS)] = MIN_PAPERS,
+                     ) -> dict:
+        """Clusters, bridges, co-occurrence edges and gap hints from the run's concept map.
+        Every hint is an unverified candidate limited to the chosen papers; `min_papers` is the
+        support a concept needs to take part in pair and method hints."""
+        run = owned_run(conn, run_id, user["id"])
+        done = done_keys(conn, user["id"], run["id"])
+        nodes = build_nodes(conn, user["id"], run["id"], done)
+        return {"run_id": run["id"], **map_gaps(nodes, done, min_papers)}
 
     return app
 
