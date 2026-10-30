@@ -304,6 +304,18 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
     </div>
     <small data-i18n="gap.small">Proposals use the ticked papers and the gaps you enter. Each draft should define a question, methods, validation, uncertainty, deliverables and a feasible timeline.</small>
     <p id="gapMsg" class="note" role="status"></p>
+    <div id="ideasBlock" style="margin-top:18px;border-top:1px solid var(--field-line);padding-top:12px">
+      <h3 data-i18n="ideas.title">Suggest ideas and draft proposals in BAYAN</h3>
+      <p class="note" data-i18n="ideas.intro">BAYAN runs a SciPIP-style pipeline on this run: key terms from your text, an optional brainstorm, papers retrieved from this run (ticked ones first), one inspiration per paper, ideas that cite papers, and a proposal draft per idea. Every citation is checked against the retrieved papers; drafts are unverified candidates.</p>
+      <div class="row">
+        <label for="ideaCount"><span data-i18n="ideas.count">Number of ideas</span><select id="ideaCount"></select></label>
+        <label for="ideasBrainstorm" style="flex-direction:row;align-items:center"><input type="checkbox" id="ideasBrainstorm" checked> <span data-i18n="ideas.brainstorm">Add a brainstorm (ungrounded)</span></label>
+        <button type="button" id="ideasGo" data-i18n="ideas.go">Suggest and draft</button>
+      </div>
+      <p id="ideasMsg" class="note" role="status" aria-live="polite"></p>
+      <div id="ideasOut"></div>
+      <div id="ideasRuns"></div>
+    </div>
     <div id="promptBox" class="hidden">
       <textarea id="promptText" class="prompt" dir="auto" aria-label="Evidence prompt" data-i18n-aria="prompt.aria" readonly></textarea>
       <div class="bar">
@@ -650,8 +662,8 @@ async function loadMeta() {
   $('yFrom').replaceChildren(...years.map(y => new Option(y, y)));
   $('yTo').replaceChildren(...years.map(y => new Option(y, y)));
   $('yFrom').value = String(now - 9); $('yTo').value = String(now);
-  for (const id of ['gapCount', 'propCount']) $(id).replaceChildren(...[1, 2, 3, 4, 5].map(n => new Option(n, n)));
-  $('gapCount').value = '3';
+  for (const id of ['gapCount', 'propCount', 'ideaCount']) $(id).replaceChildren(...[1, 2, 3, 4, 5].map(n => new Option(n, n)));
+  $('gapCount').value = '3'; $('ideaCount').value = '3';
   langMeta = langs;
   renderLangQueries();
 }
@@ -1235,9 +1247,10 @@ async function refreshRun() {
    ticks, filters and prompt. */
 function renderRun(r, relabel) {
   run = r; shown = 0;
-  if (!relabel) { selected.clear(); typeFilter.clear(); geoFilter.clear(); langFilter.clear(); scopeTouched = false; lastAnalysis = null; $('promptBox').classList.add('hidden'); $('gapMsg').textContent = ''; $('exportMsg').textContent = ''; }
+  if (!relabel) { selected.clear(); typeFilter.clear(); geoFilter.clear(); langFilter.clear(); scopeTouched = false; lastAnalysis = null; $('promptBox').classList.add('hidden'); $('gapMsg').textContent = ''; $('exportMsg').textContent = ''; $('ideasOut').replaceChildren(); $('ideasMsg').textContent = ''; }
   const s = r.summary;
   $('resultCard').classList.remove('hidden'); $('gapCard').classList.remove('hidden');
+  if (!relabel) loadIdeaRuns();
   const chips = [[t('sum.scanned'), s.scanned], [t('sum.duplicates'), s.duplicates]];
   for (const [k, v] of Object.entries(s.by_library || {})) chips.push([k, v]);
   for (const [k, v] of Object.entries(s.by_category || {})) chips.push([typeLabel(k, categoryLabels[k] || k), v]);
@@ -1411,6 +1424,81 @@ function download(name, text, type) {
   document.body.append(a); a.click(); a.remove();
 }
 
+/* ---------- idea proposer: SciPIP-style pipeline run by BAYAN's own agent ---------- */
+async function suggestIdeas() {
+  if (!run) return;
+  const background = $('gapText').value.trim() || $('question').value.trim();
+  if (!background) { $('ideasMsg').textContent = t('ideas.err_bg'); $('gapText').focus(); return; }
+  $('ideasGo').disabled = true; $('ideasMsg').textContent = t('ideas.starting');
+  try {
+    const r = await post('/api/ideas', {
+      run_id: run.id, background, papers: [...selected.values()].map(ref).slice(0, 40),
+      idea_count: parseInt($('ideaCount').value, 10), proposal_count: parseInt($('propCount').value, 10),
+      brainstorm: $('ideasBrainstorm').checked,
+    });
+    await watchIdeas(r.id);
+  } catch (e) { $('ideasMsg').textContent = e.message; }
+  finally { $('ideasGo').disabled = false; }
+}
+async function watchIdeas(id) {
+  for (;;) {
+    const rec = await json('/api/ideas/' + id);
+    renderIdeas(rec);
+    if (rec.status !== 'pending' && rec.status !== 'running') break;
+    await new Promise(res => setTimeout(res, 2000));
+  }
+  loadIdeaRuns();
+}
+const refList = refs => refs.map(r => '[' + r + ']').join(' ');
+function renderIdeas(rec) {
+  $('ideasMsg').textContent = t('ideas.status.' + rec.status, { calls: rec.calls, cached: rec.cached_calls }) + (rec.detail ? ' ' + rec.detail : '');
+  const kids = [el('ul', { class: 'steps' }, ...rec.steps.map(s => el('li', {}, s.step + ': ' + t('ideas.step.' + s.status) + (s.detail ? ' (' + s.detail + ')' : ''))))];
+  const res = rec.result;
+  if (res) {
+    kids.push(el('p', { class: 'note' }, res.note));
+    kids.push(el('p', { dir: 'auto' }, el('strong', {}, t('ideas.entities')), ' ', res.entities.join(', ')));
+    kids.push(el('h4', {}, t('ideas.retrieved', { n: res.retrieval.papers.length })));
+    kids.push(el('ul', {}, ...res.retrieval.papers.map(p => el('li', { dir: 'auto' },
+      '[' + p.ref + '] ' + p.title + (p.year ? ' (' + p.year + ')' : '') + ' · ' + p.signals.join(', ') + (p.entities.length ? ': ' + p.entities.join(', ') : '') + ' · ' + p.material))));
+    kids.push(el('p', { class: 'small' }, Object.values(res.retrieval.unavailable).join(' ')));
+    kids.push(el('h4', {}, t('ideas.inspirations')));
+    kids.push(el('ul', {}, ...res.inspirations.map(i => el('li', { dir: 'auto' }, '[' + i.ref + '] ' + (i.usable ? i.inspirations.join(' ') : t('ideas.not_usable'))))));
+    if (res.brainstorm) {
+      kids.push(el('h4', {}, t('ideas.brainstorm_title')));
+      kids.push(el('ul', {}, ...res.brainstorm.map(b => el('li', { dir: 'auto' }, el('strong', {}, b.title), ' ', b.summary, ' ', el('span', { class: 'usermark' }, t('ideas.ungrounded'))))));
+    }
+    kids.push(el('h4', {}, t('ideas.ideas')));
+    kids.push(res.ideas.length ? el('ul', {}, ...res.ideas.map(i => el('li', { dir: 'auto' }, el('strong', {}, i.title), ' ', i.summary, ' ',
+      el('span', { class: 'small' }, t('ideas.papers') + ' ' + refList(i.papers) + (i.unknown_refs.length ? ' · ' + t('ideas.unknown', { refs: i.unknown_refs.join(', ') }) : ''))))) : el('p', { class: 'note' }, t('ideas.none')));
+    if (res.dropped.length) kids.push(el('p', { class: 'note', dir: 'auto' }, t('ideas.dropped', { n: res.dropped.length }) + ' ' + res.dropped.map(d => d.title + ' (' + d.reason + ')').join('; ')));
+    kids.push(el('h4', {}, t('ideas.proposals')));
+    for (const p of res.proposals) {
+      const det = el('details', { class: 'expand' }, el('summary', { dir: 'auto' }, p.title + ' · ' + p.status));
+      det.append(el('p', { class: 'small' }, t('ideas.papers') + ' ' + refList(p.papers) + (p.unknown_refs.length ? ' · ' + t('ideas.unknown', { refs: p.unknown_refs.join(', ') }) : '')));
+      for (const [name, text] of Object.entries(p.sections)) det.append(el('p', { dir: 'auto' }, el('strong', {}, name + ': '), text));
+      det.append(el('p', {}, el('strong', {}, t('ideas.questions'))), el('ol', {}, ...p.questions.map(q => el('li', { dir: 'auto' }, q))));
+      if (p.assumptions.length) det.append(el('p', {}, el('strong', {}, t('ideas.assumptions'))), el('ul', {}, ...p.assumptions.map(a => el('li', { dir: 'auto' }, a))));
+      if (p.to_verify.length) det.append(el('p', {}, el('strong', {}, t('ideas.to_verify'))), el('ul', {}, ...p.to_verify.map(a => el('li', { dir: 'auto' }, a))));
+      kids.push(det);
+    }
+    const dl = el('button', { type: 'button', class: 'ghost' }, t('ideas.download'));
+    dl.onclick = () => download('bayan-ideas-' + rec.id + '.json', JSON.stringify(rec, null, 2), 'application/json');
+    kids.push(dl);
+  }
+  $('ideasOut').replaceChildren(...kids);
+}
+async function loadIdeaRuns() {
+  if (!run) return;
+  try {
+    const runs = await json('/api/ideas?run_id=' + run.id);
+    $('ideasRuns').replaceChildren(el('h4', {}, t('ideas.previous', { n: runs.length })), ...runs.map(r => {
+      const a = el('a', { href: '#' }, t('ideas.run_item', { id: r.id, date: r.created_at, status: t('ideas.status_short.' + r.status) }));
+      a.onclick = ev => { ev.preventDefault(); watchIdeas(r.id); };
+      return el('div', { dir: 'auto' }, a, ' ', el('span', { class: 'small' }, r.background));
+    }));
+  } catch (e) { /* not signed in or no run */ }
+}
+
 /* ---------- wiring ---------- */
 $('authForm').onsubmit = ev => { ev.preventDefault(); auth('login'); };
 $('register').onclick = () => auth('register');
@@ -1433,6 +1521,7 @@ $('exportXlsx').onclick = () => exportRun('xlsx');
 $('exportCsv').onclick = () => exportRun('csv');
 $('gapForm').onsubmit = ev => { ev.preventDefault(); analysis('gaps'); };
 $('createProps').onclick = () => analysis('proposals');
+$('ideasGo').onclick = suggestIdeas;
 $('copyPrompt').onclick = async () => {
   try { await navigator.clipboard.writeText($('promptText').value); $('gapMsg').textContent = t('prompt.copied'); }
   catch (e) { $('promptText').focus(); $('promptText').select(); $('gapMsg').textContent = t('prompt.copy_manual'); }
@@ -1449,6 +1538,7 @@ const HELP = {
   yFrom: 'help.yFrom', yTo: 'help.yTo', geoSummary: 'help.geoSummary', quota: 'help.quota',
   weighting: 'help.weighting', gapCount: 'help.gapCount', propCount: 'help.propCount', question: 'help.question',
   gapText: 'help.gapText', themeSummary: 'theme.help', uiLang: 'ui.language.help', dlPdfs: 'help.dlPdfs',
+  ideasGo: 'help.ideasGo', ideaCount: 'help.ideaCount', ideasBrainstorm: 'help.ideasBrainstorm',
 };
 $('query').oninput = renderLangQueries;
 $('uiLang').onchange = () => setUiLanguage($('uiLang').value, true);

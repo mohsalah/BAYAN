@@ -41,6 +41,10 @@ class Settings:
     concepts_effort: str = "high"
     concept_readings_per_hour: int = 20  # papers a user may queue for concept extraction
     concept_merges_per_hour: int = 10  # synonym passes per user per hour
+    model_ideas: str = "claude-sonnet-5-5"  # idea proposer and proposal drafts (M10)
+    ideas_effort: str = "high"
+    idea_runs_per_hour: int = 3  # pipeline runs per user per hour (cached calls are free)
+    idea_inspiration_papers: int = 12  # papers the model is asked for inspirations from
 
 
 def load_settings() -> Settings:
@@ -62,6 +66,10 @@ def load_settings() -> Settings:
         concepts_effort=os.environ.get("BAYAN_CONCEPTS_EFFORT", "high"),
         concept_readings_per_hour=int(os.environ.get("BAYAN_CONCEPT_READINGS_PER_HOUR", "20")),
         concept_merges_per_hour=int(os.environ.get("BAYAN_CONCEPT_MERGES_PER_HOUR", "10")),
+        model_ideas=os.environ.get("BAYAN_MODEL_IDEAS", "claude-sonnet-5-5"),
+        ideas_effort=os.environ.get("BAYAN_IDEAS_EFFORT", "high"),
+        idea_runs_per_hour=int(os.environ.get("BAYAN_IDEA_RUNS_PER_HOUR", "3")),
+        idea_inspiration_papers=int(os.environ.get("BAYAN_IDEA_INSPIRATION_PAPERS", "12")),
         doi_lookup_budget=int(os.environ.get("BAYAN_DOI_LOOKUP_BUDGET", "50")),
         pdf_root=Path(os.environ.get("BAYAN_PDF_ROOT", "pdfs")),
         downloads_per_hour=int(os.environ.get("BAYAN_DOWNLOADS_PER_HOUR", "100")),
