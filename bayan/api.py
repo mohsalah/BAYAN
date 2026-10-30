@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pypdf import PdfReader
 
 from . import __version__
@@ -81,7 +81,7 @@ from .manuals import (
     store_manual,
     title_from_url,
 )
-from .mapgaps import MAX_MIN_PAPERS, MIN_PAPERS
+from .mapgaps import MAX_MIN_PAPERS, MIN_PAPERS, topic_hints
 from .mapgaps import analyse as map_gaps
 from .membership import (
     EXAMPLE_DOI,
@@ -128,6 +128,22 @@ from .reader import (
 )
 from .regions import regions_of, regions_payload
 from .search import SearchRequest, geo_status, paper_row_to_dict, run_search
+from .topics import (
+    MAX_MAIN,
+    MAX_MAPPED,
+    MAX_OWN_TOPICS,
+    MAX_SUB,
+    MAX_TOPIC_CHARS,
+    clean_own_topics,
+    labels_for,
+    latest_map,
+    map_record,
+    run_area,
+    run_topic_job,
+    scope_papers,
+    suggest,
+)
+from .topics import NOTE as TOPIC_NOTE
 from .translate import (
     MACHINE_LABEL,
     NOT_CONFIGURED_MESSAGE,
@@ -204,6 +220,28 @@ class IdeaRequest(BaseModel):
     idea_count: int = Field(default=3, ge=1, le=5)
     proposal_count: int = Field(default=2, ge=1, le=5)
     brainstorm: bool = True
+
+
+class TopicTopic(BaseModel):
+    title: str = Field(min_length=1, max_length=MAX_TOPIC_CHARS)
+    subtopics: list[str] = Field(default_factory=list, max_length=MAX_SUB)
+
+
+class TopicRequest(BaseModel):
+    run_id: int
+    scope: Literal["all", "selected"] = "all"
+    papers: list[PaperRef] = Field(default_factory=list, max_length=MAX_MAPPED)
+    own_topics: list[str] = Field(default_factory=list, max_length=MAX_OWN_TOPICS)
+    # A structure the researcher chose from the suggestion (ticked and added topics). When
+    # given, the mapping skips the taxonomy step and uses it as it is.
+    taxonomy: list[TopicTopic] | None = Field(default=None, max_length=MAX_MAIN + MAX_OWN_TOPICS)
+
+    @field_validator("own_topics")
+    @classmethod
+    def _own(cls, values: list[str]) -> list[str]:
+        if any(len(v) > MAX_TOPIC_CHARS for v in values):
+            raise ValueError(f"each topic of interest has at most {MAX_TOPIC_CHARS} characters")
+        return values
 
 
 class ExportRequest(BaseModel):
@@ -313,7 +351,7 @@ def create_app(
     fetcher: Fetcher | None = None, translator: Engine | None = None,
     reader: ReaderClient | None = None, planner: ReaderClient | None = None,
     topic_lookup: TopicLookup | None = None, concept_client: ReaderClient | None = None,
-    ideas_client: ReaderClient | None = None,
+    ideas_client: ReaderClient | None = None, topics_client: ReaderClient | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     if reader is None and reader_key_ok(settings.anthropic_api_key):
@@ -328,6 +366,9 @@ def create_app(
     if ideas_client is None and reader_key_ok(settings.anthropic_api_key):
         ideas_client = AnthropicReader(settings.anthropic_api_key, settings.model_ideas,
                                        settings.ideas_effort)
+    if topics_client is None and reader_key_ok(settings.anthropic_api_key):
+        topics_client = AnthropicReader(settings.anthropic_api_key, settings.model_topics,
+                                        settings.topics_effort)
     topic_lookup = topic_lookup or OpenAlexConnector(
         api_key=settings.openalex_api_key, contact_email=settings.contact_email)
     translator = translator or engine_from_settings(settings.translate_url,
@@ -611,6 +652,12 @@ def create_app(
             if missing:
                 raise HTTPException(404, "One or more papers are not in this run")
             papers = [in_run[k] for k in chosen]
+        labels = labels_for(latest_map(conn, user["id"], run_id, done_only=True))
+        for p in papers:
+            label = labels.get((p["source"], p["id"]))
+            if label:
+                p["topic_main"], p["topic_sub"] = label["main"], label["sub"]
+                p["topic_related"] = "; ".join(label["related"])
         if body.format == "xlsx":
             content = to_xlsx(papers, CATEGORY_LABELS, {
                 "id": run_id, "request": json.loads(run["request"]), "summary": summary})
@@ -1532,7 +1579,10 @@ def create_app(
         run = owned_run(conn, run_id, user["id"])
         done = done_keys(conn, user["id"], run["id"])
         nodes = build_nodes(conn, user["id"], run["id"], done)
-        return {"run_id": run["id"], **map_gaps(nodes, done, min_papers)}
+        topic_row = latest_map(conn, user["id"], run["id"], done_only=True)
+        topic = (topic_hints(json.loads(topic_row["result"]), min_papers) if topic_row
+                 else None)
+        return {"run_id": run["id"], **map_gaps(nodes, done, min_papers), "topic_hints": topic}
 
     # ---- Idea proposer (M10): SciPIP-style pipeline over the run's own papers ----
 
@@ -1597,6 +1647,114 @@ def create_app(
     @app.get("/api/ideas/{idea_id}")
     def get_ideas(idea_id: int, user: User, conn: Conn) -> dict:
         return idea_record(owned_idea(conn, idea_id, user["id"]))
+
+    # ---- Topic mapping (M26): main topics and subtopics for the run's papers ----
+
+    def topics_service() -> ReaderClient:
+        if topics_client is None:
+            raise HTTPException(503, "Topic mapping is not configured: ANTHROPIC_API_KEY is not "
+                                     "set on the server.")
+        return topics_client
+
+    def topic_budget(conn: sqlite3.Connection, user_id: int, kind: str) -> None:
+        recent = conn.execute("SELECT COUNT(*) FROM topic_attempts WHERE user_id = ?"
+                              " AND created_at > datetime('now', '-1 hour')",
+                              (user_id,)).fetchone()[0]
+        if recent >= settings.topic_runs_per_hour:
+            raise HTTPException(429, f"Topic limit reached: {settings.topic_runs_per_hour} "
+                                     "suggestions or mappings per hour. Try again later.")
+        conn.execute("INSERT INTO topic_attempts(user_id, kind) VALUES(?, ?)", (user_id, kind))
+        conn.commit()
+
+    def topic_scope(conn: sqlite3.Connection, run: sqlite3.Row,
+                    body: TopicRequest) -> list[tuple[str, str]]:
+        """The ticked papers, checked against the run (only used for the 'selected' scope)."""
+        in_run = set(run_keys(conn, run["id"]))
+        wanted = list(dict.fromkeys((r.source, r.id) for r in body.papers))
+        if any(k not in in_run for k in wanted):
+            raise HTTPException(404, "One or more papers are not in this run")
+        if body.scope == "selected" and not wanted:
+            raise HTTPException(422, "Tick at least one paper, or map all collected papers.")
+        return wanted
+
+    @app.post("/api/topics/suggest")
+    def suggest_topics(body: TopicRequest, user: User, conn: Conn) -> dict:
+        """The model's proposed main topics and subtopics for the chosen papers, with the
+        researcher's topics of interest kept. Nothing is mapped yet."""
+        client = topics_service()
+        run = owned_run(conn, body.run_id, user["id"])
+        wanted = topic_scope(conn, run, body)
+        papers = scope_papers(conn, run["id"], body.scope, wanted)
+        if not papers:
+            raise HTTPException(422, "There are no papers to organise in this scope.")
+        topic_budget(conn, user["id"], "suggest")
+        own = clean_own_topics(body.own_topics)
+        try:
+            taxonomy, cached = suggest(conn, client, user["id"], run_area(conn, run["id"]),
+                                       papers, own)
+        except ReaderError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        if not taxonomy:
+            raise HTTPException(502, "The model proposed no topics for these papers.")
+        return {"run_id": run["id"], "scope": body.scope, "papers": len(papers),
+                "own_topics": own, "taxonomy": taxonomy, "cached": cached,
+                "model": client.model}
+
+    @app.post("/api/topics", status_code=202)
+    def start_topics(body: TopicRequest, background: BackgroundTasks, user: User,
+                     conn: Conn) -> dict:
+        """Queue one mapping: the topic structure (unless given) and the assignment of every
+        paper in the scope. Poll GET /api/topics/{id}."""
+        client = topics_service()
+        run = owned_run(conn, body.run_id, user["id"])
+        wanted = topic_scope(conn, run, body)
+        if not scope_papers(conn, run["id"], body.scope, wanted):
+            raise HTTPException(422, "There are no papers to organise in this scope.")
+        topic_budget(conn, user["id"], "map")
+        taxonomy = ([t.model_dump() for t in body.taxonomy] if body.taxonomy is not None
+                    else None)
+        if taxonomy is not None and not taxonomy:
+            raise HTTPException(422, "Keep at least one topic, or let BAYAN propose them.")
+        request = {"scope": body.scope, "papers": [{"source": s, "id": i} for s, i in wanted],
+                   "own_topics": clean_own_topics(body.own_topics), "taxonomy": taxonomy}
+        cur = conn.execute(
+            "INSERT INTO topic_maps(user_id, run_id, status, scope, request)"
+            " VALUES(?,?,'pending',?,?)", (user["id"], run["id"], body.scope,
+                                          json.dumps(request)))
+        map_id = cur.lastrowid
+        job = conn.execute(
+            "INSERT INTO jobs(kind, payload, status) VALUES('topics', ?, 'pending')",
+            (json.dumps({**request, "papers": wanted, "map_id": map_id, "user_id": user["id"],
+                         "run_id": run["id"]}),))
+        conn.execute("UPDATE topic_maps SET job_id = ? WHERE id = ?", (job.lastrowid, map_id))
+        conn.commit()
+        background.add_task(run_topic_job, settings.database_path, job.lastrowid, client)
+        return {"id": map_id, "job_id": job.lastrowid, "status": "pending",
+                "model": client.model, "note": TOPIC_NOTE}
+
+    def topic_detail(row: sqlite3.Row, min_papers: int = MIN_PAPERS) -> dict:
+        out = map_record(row)
+        if out["result"]:
+            out["hints"] = topic_hints(out["result"], min_papers)
+        return out
+
+    @app.get("/api/topics")
+    def list_topics(run_id: int, user: User, conn: Conn) -> dict:
+        """The latest mapping of the run in full (with its gap hints), and earlier ones."""
+        run = owned_run(conn, run_id, user["id"])
+        rows = conn.execute("SELECT * FROM topic_maps WHERE user_id = ? AND run_id = ?"
+                            " ORDER BY id DESC", (user["id"], run["id"])).fetchall()
+        return {"run_id": run["id"], "latest": topic_detail(rows[0]) if rows else None,
+                "earlier": [map_record(r, full=False) for r in rows[1:]],
+                "configured": topics_client is not None}
+
+    @app.get("/api/topics/{map_id}")
+    def get_topics(map_id: int, user: User, conn: Conn) -> dict:
+        row = conn.execute("SELECT * FROM topic_maps WHERE id = ? AND user_id = ?",
+                           (map_id, user["id"])).fetchone()
+        if row is None:
+            raise HTTPException(404, "Topic mapping not found")
+        return topic_detail(row)
 
     return app
 

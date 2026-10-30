@@ -156,6 +156,18 @@ The proposal writer follows the pipeline of SciPIP (Wang et al. 2024, arXiv:2410
 
 Limits: `BAYAN_IDEA_RUNS_PER_HOUR` runs per user (default 3); each run makes at most 1 + 1 + 12 + 1 + 1 + 5 model calls; cached calls are free.
 
+### 6d. Topic mapping of the papers (M26)
+
+After a search the researcher can organise the papers under main topics and subtopics of the research area (for a nuclear area, for example: reactor physics and neutronics, shielding design, materials, fuel management, thermal-hydraulics, fuel fabrication). The headings are built for the area, not taken from a fixed list.
+
+1. **Library topics (deterministic):** the topic each library reported (OpenAlex primary topic), counted and usable as a table filter. Always available.
+2. **Topics of interest:** the researcher may enter up to 10 topics or minor research areas (80 characters each). They are kept verbatim; if the model leaves one out, code adds it back as its own main topic, marked.
+3. **Suggestion (model, cached):** from the area text and the papers' titles, library topics and keywords, the model proposes 4-10 main topics with 2-6 subtopics each. The researcher unticks what is not wanted. Nothing is mapped yet.
+4. **Mapping (model, background job):** scope is all collected papers or the ticked ones. Papers go in batches of 25; each gets one main topic, one subtopic, up to two related subtopics and a phrase copied from its own title or abstract. Code checks the paper reference, the topic ids and that the phrase occurs in the text; a failure is `unclassified` with the reason, never guessed. The basis is `abstract` or `title_only` from the data. Counts list every topic, zeros included.
+5. **Use downstream:** the table filters by topic and rows show their topic; the export adds "Main topic", "Subtopic", "Related subtopics"; the map-based gap hints add `thin_topic` and `topics_never_together` (unverified candidates with the chosen-set caveat; pairs include a topic of interest when there are any); the idea proposer (6c) gains a `topic` retrieval signal and shows each paper's topic in its prompts; "Develop this" on a topic ticks its papers and fills the gap text.
+
+Limits: `BAYAN_TOPIC_RUNS_PER_HOUR` suggestions plus mappings per user (default 10); at most 500 papers per mapping; model `BAYAN_MODEL_TOPICS`, effort `BAYAN_TOPICS_EFFORT`. Without `ANTHROPIC_API_KEY` the model endpoints answer 503; the library topics still work.
+
 ### 6b. Trend research gaps for the area
 
 - **Method:** from the whole retrieved corpus for the area and period (not only the chosen papers), compute publication volume per year, emerging and declining concepts/keywords, citation velocity, new method-system pairings, and growth by language and country. Counts come from the database, not from the model.
@@ -221,6 +233,7 @@ Limits: `BAYAN_IDEA_RUNS_PER_HOUR` runs per user (default 3); each run makes at 
 | M22 | Report and thesis connectors (OSTI, INIS, NTRS, OATD, NDLTD, DART-Europe, EThOS where terms allow) | Each documents its terms; unconfirmed ones show "not available yet" |
 | M23 | Geographic filter (regions, countries, basis selector, unknown-location bucket) | Region lists tested; results reproducible; unknown location listed separately |
 | M24 | Translator (any language to English or Arabic) with glossary, OCR and side-by-side view | Numbers/units/equations preserved in tests; translations marked and never used as evidence quotes |
+| M26 | Topic mapping: suggested and own topics (up to 10), papers mapped to main topics and subtopics | Every assignment checked against the paper text; unclassified listed with reasons; topics of interest never dropped; mapping feeds filters, export, gap hints and the idea proposer |
 
 Suggested order after M8: M14, M15, M17, M18, M9 (gap analyst can then use the map), M19, M20, M16, M10-M13.
 

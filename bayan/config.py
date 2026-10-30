@@ -45,6 +45,9 @@ class Settings:
     ideas_effort: str = "high"
     idea_runs_per_hour: int = 3  # pipeline runs per user per hour (cached calls are free)
     idea_inspiration_papers: int = 12  # papers the model is asked for inspirations from
+    model_topics: str = "claude-sonnet-5-5"  # topic mapping (M26)
+    topics_effort: str = "medium"
+    topic_runs_per_hour: int = 10  # suggestions plus mappings per user per hour
 
 
 def load_settings() -> Settings:
@@ -70,6 +73,9 @@ def load_settings() -> Settings:
         ideas_effort=os.environ.get("BAYAN_IDEAS_EFFORT", "high"),
         idea_runs_per_hour=int(os.environ.get("BAYAN_IDEA_RUNS_PER_HOUR", "3")),
         idea_inspiration_papers=int(os.environ.get("BAYAN_IDEA_INSPIRATION_PAPERS", "12")),
+        model_topics=os.environ.get("BAYAN_MODEL_TOPICS", "claude-sonnet-5-5"),
+        topics_effort=os.environ.get("BAYAN_TOPICS_EFFORT", "medium"),
+        topic_runs_per_hour=int(os.environ.get("BAYAN_TOPIC_RUNS_PER_HOUR", "10")),
         doi_lookup_budget=int(os.environ.get("BAYAN_DOI_LOOKUP_BUDGET", "50")),
         pdf_root=Path(os.environ.get("BAYAN_PDF_ROOT", "pdfs")),
         downloads_per_hour=int(os.environ.get("BAYAN_DOWNLOADS_PER_HOUR", "100")),
