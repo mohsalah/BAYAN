@@ -125,6 +125,32 @@ CREATE TABLE IF NOT EXISTS reader_attempts(
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS concept_results(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, paper_id TEXT NOT NULL, job_id INTEGER, status TEXT NOT NULL,
+  level TEXT, detail TEXT, concepts INTEGER, verified INTEGER, rejected INTEGER, parts INTEGER,
+  cached_parts INTEGER, model TEXT, prompt_version TEXT,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, source, paper_id)
+);
+CREATE TABLE IF NOT EXISTS concept_mentions(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, paper_id TEXT NOT NULL, concept_key TEXT NOT NULL, type TEXT NOT NULL,
+  label TEXT NOT NULL, name_en TEXT NOT NULL, language TEXT, quote TEXT NOT NULL, page INTEGER,
+  page_label TEXT, level TEXT NOT NULL, verified INTEGER NOT NULL, reject_reason TEXT,
+  model TEXT, prompt_version TEXT, file_sha256 TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS concept_mentions_paper ON concept_mentions(user_id, source, paper_id);
+CREATE TABLE IF NOT EXISTS concept_merges(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  run_id INTEGER NOT NULL, concept_key TEXT NOT NULL, canonical_key TEXT NOT NULL,
+  origin TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, run_id, concept_key)
+);
+CREATE TABLE IF NOT EXISTS concept_attempts(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS plans(
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   area TEXT NOT NULL, request TEXT NOT NULL, suggested TEXT NOT NULL, plan TEXT NOT NULL,

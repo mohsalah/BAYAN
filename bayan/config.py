@@ -37,6 +37,10 @@ class Settings:
     model_planner: str = "claude-sonnet-5-5"  # planner agent (M3)
     planner_effort: str = "medium"
     plans_per_hour: int = 10  # planner calls per user per hour (cached answers are free)
+    model_concepts: str = "claude-sonnet-5-5"  # concept mapper (M17)
+    concepts_effort: str = "high"
+    concept_readings_per_hour: int = 20  # papers a user may queue for concept extraction
+    concept_merges_per_hour: int = 10  # synonym passes per user per hour
 
 
 def load_settings() -> Settings:
@@ -54,6 +58,10 @@ def load_settings() -> Settings:
         model_planner=os.environ.get("BAYAN_MODEL_PLANNER", "claude-sonnet-5-5"),
         planner_effort=os.environ.get("BAYAN_PLANNER_EFFORT", "medium"),
         plans_per_hour=int(os.environ.get("BAYAN_PLANS_PER_HOUR", "10")),
+        model_concepts=os.environ.get("BAYAN_MODEL_CONCEPTS", "claude-sonnet-5-5"),
+        concepts_effort=os.environ.get("BAYAN_CONCEPTS_EFFORT", "high"),
+        concept_readings_per_hour=int(os.environ.get("BAYAN_CONCEPT_READINGS_PER_HOUR", "20")),
+        concept_merges_per_hour=int(os.environ.get("BAYAN_CONCEPT_MERGES_PER_HOUR", "10")),
         doi_lookup_budget=int(os.environ.get("BAYAN_DOI_LOOKUP_BUDGET", "50")),
         pdf_root=Path(os.environ.get("BAYAN_PDF_ROOT", "pdfs")),
         downloads_per_hour=int(os.environ.get("BAYAN_DOWNLOADS_PER_HOUR", "100")),
