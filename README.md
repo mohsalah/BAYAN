@@ -218,6 +218,42 @@ about `contradicts` edges with no resolving paper wait for M18, which adds relat
 `min_papers` (default 2, at most 10) sets the support a concept needs for pair and method hints.
 The same input always gives the same output.
 
+## Idea proposer and proposal drafts (M10, after SciPIP)
+
+The gap card has a second way to get proposals: **Suggest and draft** runs BAYAN's own agent
+instead of preparing a prompt. The pipeline follows [SciPIP](https://github.com/cheerss/SciPIP)
+(Wang et al. 2024, arXiv:2410.23166, MIT licence), adapted to the rules of this project. The
+background is the gap text (or the research question); the corpus is the current run.
+
+1. **Entities.** The model lists up to 8 key terms of the background.
+2. **Brainstorm** (optional). 3-4 ideas from the background alone, labelled *ungrounded*. They
+   only feed the integration step and never become proposals by themselves.
+3. **Retrieval** (code, no model). The ticked papers first, then papers of the run whose indexed
+   title, abstract, keywords or topic match an entity, then papers whose verified concept
+   mentions (M17) match one. Each paper lists its signals. SciPIP's third signal, citation
+   co-occurrence, is reported as not available: reference lists are not stored. At most 40.
+4. **Inspirations.** For each of the top papers (12 by default) the model gets that paper's
+   verified reader evidence (M8 methods, data and validation quotes with pages) or, failing
+   that, its abstract, labelled, and says what could address the background, or *not usable*.
+5. **Ideas.** The inspirations are combined into ideas, each citing its papers as [P1], [P2]...
+6. **Integration.** Ideas and brainstorm are merged into at most the requested number of
+   distinct ideas. Citations are then checked in code: unknown references are removed and
+   listed, and an idea with no supporting paper is dropped with that reason.
+7. **Proposals.** Each kept idea (up to the number of proposals chosen) is expanded into a draft
+   with the sections of the proposal writer, three research questions, assumptions and a list
+   of what must be verified. Citations are checked again. Every draft is a
+   `draft (unverified candidate)`.
+
+API: `POST /api/ideas` (`run_id`, `background`, optional `papers`, `idea_count`,
+`proposal_count`, `brainstorm`; answers 202 with the run id), `GET /api/ideas/{id}` (status,
+the step log with calls per step, and the result: entities, retrieval with signals and material
+level per paper, inspirations, brainstorm, initial and integrated ideas, dropped items,
+proposals), `GET /api/ideas?run_id=` (previous runs). Limits: `BAYAN_IDEA_RUNS_PER_HOUR` (3),
+`BAYAN_IDEA_INSPIRATION_PAPERS` (12), model `BAYAN_MODEL_IDEAS`, effort
+`BAYAN_IDEAS_EFFORT`. A run makes at most 1 + 1 + 12 + 1 + 1 + 5 model calls; every call is
+cached per prompt, so running the same input again costs nothing. Without `ANTHROPIC_API_KEY`
+the endpoints answer 503.
+
 ## Document-type filter and manuals (M21)
 
 **Counts per type.** `GET /api/runs/{id}` returns `type_report`: one row for every reference

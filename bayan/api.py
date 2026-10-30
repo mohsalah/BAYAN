@@ -69,6 +69,8 @@ from .downloads import (
     run_download_job,
 )
 from .export import safe_cell, to_csv, to_xlsx
+from .ideas import NOTE as IDEA_NOTE
+from .ideas import idea_record, run_idea_job
 from .libraries import LIBRARIES, key_publishers
 from .manuals import (
     add_to_run,
@@ -195,6 +197,15 @@ class NormalizeRequest(BaseModel):
     fresh: bool = False
 
 
+class IdeaRequest(BaseModel):
+    run_id: int
+    background: str = Field(min_length=1, max_length=MAX_GAP_TEXT)
+    papers: list[PaperRef] = Field(default_factory=list, max_length=40)
+    idea_count: int = Field(default=3, ge=1, le=5)
+    proposal_count: int = Field(default=2, ge=1, le=5)
+    brainstorm: bool = True
+
+
 class ExportRequest(BaseModel):
     format: Literal["csv", "xlsx"] = "csv"
     # None exports every paper of the run; otherwise only these (they must belong to the run).
@@ -302,6 +313,7 @@ def create_app(
     fetcher: Fetcher | None = None, translator: Engine | None = None,
     reader: ReaderClient | None = None, planner: ReaderClient | None = None,
     topic_lookup: TopicLookup | None = None, concept_client: ReaderClient | None = None,
+    ideas_client: ReaderClient | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     if reader is None and reader_key_ok(settings.anthropic_api_key):
@@ -313,6 +325,9 @@ def create_app(
     if concept_client is None and reader_key_ok(settings.anthropic_api_key):
         concept_client = AnthropicReader(settings.anthropic_api_key, settings.model_concepts,
                                          settings.concepts_effort)
+    if ideas_client is None and reader_key_ok(settings.anthropic_api_key):
+        ideas_client = AnthropicReader(settings.anthropic_api_key, settings.model_ideas,
+                                       settings.ideas_effort)
     topic_lookup = topic_lookup or OpenAlexConnector(
         api_key=settings.openalex_api_key, contact_email=settings.contact_email)
     translator = translator or engine_from_settings(settings.translate_url,
@@ -1518,6 +1533,70 @@ def create_app(
         done = done_keys(conn, user["id"], run["id"])
         nodes = build_nodes(conn, user["id"], run["id"], done)
         return {"run_id": run["id"], **map_gaps(nodes, done, min_papers)}
+
+    # ---- Idea proposer (M10): SciPIP-style pipeline over the run's own papers ----
+
+    def ideas_service() -> ReaderClient:
+        if ideas_client is None:
+            raise HTTPException(503, "The idea proposer is not configured: ANTHROPIC_API_KEY is "
+                                     "not set on the server.")
+        return ideas_client
+
+    def owned_idea(conn: sqlite3.Connection, idea_id: int, user_id: int) -> sqlite3.Row:
+        row = conn.execute("SELECT * FROM idea_runs WHERE id = ? AND user_id = ?",
+                           (idea_id, user_id)).fetchone()
+        if row is None:
+            raise HTTPException(404, "Idea run not found")
+        return row
+
+    @app.post("/api/ideas", status_code=202)
+    def start_ideas(body: IdeaRequest, background: BackgroundTasks, user: User,
+                    conn: Conn) -> dict:
+        """Queue one pipeline run: entities, brainstorm, retrieval, inspirations, ideas,
+        integration and proposal drafts, each step recorded. Poll GET /api/ideas/{id}."""
+        client = ideas_service()
+        run = owned_run(conn, body.run_id, user["id"])
+        in_run = set(run_keys(conn, run["id"]))
+        wanted = list(dict.fromkeys((r.source, r.id) for r in body.papers))
+        if any(k not in in_run for k in wanted):
+            raise HTTPException(404, "One or more papers are not in this run")
+        recent = conn.execute("SELECT COUNT(*) FROM idea_attempts WHERE user_id = ?"
+                              " AND created_at > datetime('now', '-1 hour')",
+                              (user["id"],)).fetchone()[0]
+        if recent >= settings.idea_runs_per_hour:
+            raise HTTPException(429, f"Idea limit reached: {settings.idea_runs_per_hour} runs "
+                                     "per hour. Try again later.")
+        request = {"papers": [{"source": s, "id": i} for s, i in wanted],
+                   "idea_count": body.idea_count, "proposal_count": body.proposal_count,
+                   "brainstorm": body.brainstorm}
+        conn.execute("INSERT INTO idea_attempts(user_id) VALUES(?)", (user["id"],))
+        cur = conn.execute(
+            "INSERT INTO idea_runs(user_id, run_id, status, background, request)"
+            " VALUES(?,?,'pending',?,?)", (user["id"], run["id"], body.background,
+                                          json.dumps(request)))
+        idea_id = cur.lastrowid
+        job = conn.execute(
+            "INSERT INTO jobs(kind, payload, status) VALUES('ideas', ?, 'pending')",
+            (json.dumps({**request, "idea_id": idea_id, "user_id": user["id"],
+                         "run_id": run["id"], "papers": wanted,
+                         "background": body.background}),))
+        conn.execute("UPDATE idea_runs SET job_id = ? WHERE id = ?", (job.lastrowid, idea_id))
+        conn.commit()
+        background.add_task(run_idea_job, settings.database_path, job.lastrowid, client,
+                            settings.idea_inspiration_papers)
+        return {"id": idea_id, "job_id": job.lastrowid, "status": "pending",
+                "model": client.model, "note": IDEA_NOTE}
+
+    @app.get("/api/ideas")
+    def list_ideas(run_id: int, user: User, conn: Conn) -> list[dict]:
+        run = owned_run(conn, run_id, user["id"])
+        rows = conn.execute("SELECT * FROM idea_runs WHERE user_id = ? AND run_id = ?"
+                            " ORDER BY id DESC", (user["id"], run["id"])).fetchall()
+        return [idea_record(r, full=False) for r in rows]
+
+    @app.get("/api/ideas/{idea_id}")
+    def get_ideas(idea_id: int, user: User, conn: Conn) -> dict:
+        return idea_record(owned_idea(conn, idea_id, user["id"]))
 
     return app
 
