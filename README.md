@@ -191,6 +191,33 @@ synonym passes); model `BAYAN_MODEL_CONCEPTS`. Uses the same `ANTHROPIC_API_KEY`
 endpoints answer 503. Answers are cached, so re-running on the same text costs nothing. There is
 no screen for this yet: the mind map (M18) will show it.
 
+## Map-based gap hints (M19)
+
+`GET /api/concepts/gaps?run_id=` turns the run's concept nodes into a graph and reads gap hints
+off it. No model is called: every number comes from the database. Two concepts are linked when
+at least one chosen paper has verified mentions of both, so a link means co-occurrence within
+one paper, not a stated relation (evidence-backed relations come with the map edges of M18).
+
+The answer has the graph (`nodes` with cluster, degree and betweenness; `edges`, each labelled
+`co-occurs-with` with its papers; `clusters` from a seeded Louvain pass; `bridges`, the concepts
+that join clusters) and the `hints`:
+
+| Kind | Hint |
+| --- | --- |
+| `isolated` | Concepts found in one chosen paper only, sharing no concept with the others. |
+| `weakly_linked_clusters` | Two clusters joined by at most one chosen paper (the bridging paper is named). |
+| `never_together` | Two concepts, each in at least `min_papers` papers, that no chosen paper studies together. |
+| `method_single_system` | A method (in at least `min_papers` papers) used with only one system in the set. |
+
+Every hint is an `unverified candidate`. It lists its concepts with their papers and verified
+quotes, the papers it rests on, a `follow_up` search query to run beyond the chosen set, and the
+same `caveat`: the map covers only the chosen papers whose extraction is done (the `coverage`
+block counts full-text, abstract-only and concept-less papers), so "never together" means "not
+together in this set" until the broader search and a counterevidence pass were recorded. Hints
+about `contradicts` edges with no resolving paper wait for M18, which adds relation edges.
+`min_papers` (default 2, at most 10) sets the support a concept needs for pair and method hints.
+The same input always gives the same output.
+
 ## Document-type filter and manuals (M21)
 
 **Counts per type.** `GET /api/runs/{id}` returns `type_report`: one row for every reference
