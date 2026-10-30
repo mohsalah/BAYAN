@@ -299,7 +299,7 @@ def test_europepmc_cursor_paging_stops_on_repeat_or_empty():
 
 def test_supported_filters_declared_everywhere():
     assert OpenAlexConnector.supported_filters == {"years", "document_types", "languages",
-                                                   "countries"}
+                                                   "countries", "topics"}
     assert CrossrefConnector.supported_filters == {"years", "document_types"}
     assert ArxivConnector.supported_filters == {"years", "document_types"}
     assert EuropePMCConnector.supported_filters == {"years", "languages", "document_types"}

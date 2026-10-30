@@ -112,7 +112,7 @@ class ReaderReply:
 class ReaderClient(Protocol):
     model: str
 
-    def extract(self, system: str, prompt: str) -> ReaderReply: ...
+    def extract(self, system: str, prompt: str, schema: dict | None = None) -> ReaderReply: ...
 
 
 class AnthropicReader:
@@ -127,7 +127,8 @@ class AnthropicReader:
                                            max_retries=2)
         self.model, self._effort, self._max_tokens = model, effort, max_tokens
 
-    def extract(self, system: str, prompt: str) -> ReaderReply:
+    def extract(self, system: str, prompt: str, schema: dict | None = None) -> ReaderReply:
+        """One structured-output call. `schema` defaults to the reader's evidence schema."""
         anthropic = self._anthropic
         try:
             # Streaming: a whole paper is a long input, and streaming avoids request timeouts.
@@ -138,7 +139,8 @@ class AnthropicReader:
                 messages=[{"role": "user", "content": prompt}],
                 thinking={"type": "adaptive"},
                 output_config={"effort": self._effort,
-                               "format": {"type": "json_schema", "schema": OUTPUT_SCHEMA}},
+                               "format": {"type": "json_schema",
+                                          "schema": schema or OUTPUT_SCHEMA}},
                 betas=["server-side-fallback-2026-07-01"],
                 fallbacks="default",
             ) as stream:

@@ -94,10 +94,20 @@ from .models import (
     normalize_document_types,
 )
 from .pages import INDEX_NOTES, clear_pages, page_list, page_text, search_pages
+from .planner import (
+    PLANNER_NOTE,
+    Plan,
+    PlanRequest,
+    TopicLookup,
+    make_plan,
+    plan_record,
+    save_edit,
+)
 from .reader import (
     DIMENSION_LABELS,
     AnthropicReader,
     ReaderClient,
+    ReaderError,
     evidence_rows,
     result_record,
     run_reader_job,
@@ -263,12 +273,18 @@ def reader_key_ok(key: str | None) -> bool:
 def create_app(
     settings: Settings | None = None, connector_factory: ConnectorFactory | None = None,
     fetcher: Fetcher | None = None, translator: Engine | None = None,
-    reader: ReaderClient | None = None,
+    reader: ReaderClient | None = None, planner: ReaderClient | None = None,
+    topic_lookup: TopicLookup | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     if reader is None and reader_key_ok(settings.anthropic_api_key):
         reader = AnthropicReader(settings.anthropic_api_key, settings.model_reader,
                                  settings.reader_effort)
+    if planner is None and reader_key_ok(settings.anthropic_api_key):
+        planner = AnthropicReader(settings.anthropic_api_key, settings.model_planner,
+                                  settings.planner_effort, max_tokens=16000)
+    topic_lookup = topic_lookup or OpenAlexConnector(
+        api_key=settings.openalex_api_key, contact_email=settings.contact_email)
     translator = translator or engine_from_settings(settings.translate_url,
                                                     settings.translate_api_key)
     fetcher = fetcher or Fetcher(host_delay=settings.download_host_delay,
@@ -1206,6 +1222,70 @@ def create_app(
                                     source_term):
             raise HTTPException(404, "Glossary term not found")
         return list_glossary(conn, user["id"])
+
+    # ---- Planner agent (M3): area text -> a draft profile the user edits before searching ----
+
+    def owned_plan(conn: sqlite3.Connection, plan_id: int, user_id: int) -> sqlite3.Row:
+        row = conn.execute("SELECT * FROM plans WHERE id = ? AND user_id = ?",
+                           (plan_id, user_id)).fetchone()
+        if not row:
+            raise HTTPException(404, "Plan not found")
+        return row
+
+    @app.get("/api/planner")
+    def planner_status(user: User) -> dict:
+        return {"available": planner is not None,
+                "model": planner.model if planner else None, "note": PLANNER_NOTE,
+                "per_hour": settings.plans_per_hour}
+
+    @app.post("/api/plans", status_code=201)
+    def create_plan(body: PlanRequest, user: User, conn: Conn) -> dict:
+        if planner is None:
+            raise HTTPException(503, "The planner is not configured: ANTHROPIC_API_KEY is not "
+                                     "set on the server.")
+        recent = conn.execute(
+            "SELECT COUNT(*) FROM plans WHERE user_id = ? AND cached = 0"
+            " AND created_at > datetime('now', '-1 hour')", (user["id"],)).fetchone()[0]
+        if recent >= settings.plans_per_hour:
+            raise HTTPException(429, f"Planning limit reached: {settings.plans_per_hour} plans "
+                                     "per hour. Try again later.")
+        try:
+            plan_id = make_plan(conn, planner, topic_lookup, user["id"], body)
+        except ReaderError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return plan_record(owned_plan(conn, plan_id, user["id"]))
+
+    @app.get("/api/plans")
+    def list_plans(user: User, conn: Conn) -> list[dict]:
+        return [{"id": r["id"], "area": r["area"], "edited": bool(r["edited"]),
+                 "created_at": r["created_at"]}
+                for r in conn.execute("SELECT id, area, edited, created_at FROM plans"
+                                      " WHERE user_id = ? ORDER BY id DESC LIMIT 20",
+                                      (user["id"],))]
+
+    @app.get("/api/plans/{plan_id}")
+    def get_plan(plan_id: int, user: User, conn: Conn) -> dict:
+        return plan_record(owned_plan(conn, plan_id, user["id"]))
+
+    @app.put("/api/plans/{plan_id}")
+    def edit_plan(plan_id: int, body: Plan, user: User, conn: Conn) -> dict:
+        row = owned_plan(conn, plan_id, user["id"])
+        save_edit(conn, row, body)
+        return plan_record(owned_plan(conn, plan_id, user["id"]))
+
+    @app.get("/api/plans/{plan_id}/profile")
+    def plan_profile(plan_id: int, user: User, conn: Conn, track: int | None = None) -> dict:
+        """The plan as a search profile, ready for POST /api/search (main query or a track)."""
+        row = owned_plan(conn, plan_id, user["id"])
+        request = json.loads(row["request"])
+        years = {k: request[k] for k in ("year_from", "year_to") if request.get(k)}
+        try:
+            profile = Plan.model_validate_json(row["plan"]).to_profile(track, **years)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return profile.model_dump()
 
     # ---- Reader agent (M8): page-cited evidence, verified quotes only ----
 

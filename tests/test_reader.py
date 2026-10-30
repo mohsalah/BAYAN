@@ -37,7 +37,7 @@ class FakeReader:
         self.answer = answer or {"items": [], "not_reported": []}
         self.refuse, self.prompts = refuse, []
 
-    def extract(self, system, prompt):
+    def extract(self, system, prompt, schema=None):
         self.prompts.append(prompt)
         if self.refuse:
             raise ReaderRefused("The model declined to read this text.")

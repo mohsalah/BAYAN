@@ -56,6 +56,11 @@ label.uilang select{padding:8px 10px}
 fieldset.langqueries{border:1px solid var(--line);border-radius:8px;margin:14px 0 0;padding:10px 14px}
 fieldset.langqueries legend{padding-inline:6px;color:var(--ink);font-size:14px}
 fieldset.langqueries .row input{width:300px}
+.planbox{border:1px solid var(--line);border-radius:8px;margin:14px 0 0;padding:10px 14px;background:var(--tint)}
+.planbox h3{margin:4px 0 8px;font-size:16px}.planbox h4{margin:12px 0 4px;font-size:14px}
+.planbox .opt{display:flex;gap:8px;align-items:flex-start;margin:6px 0}
+.planbox .opt>div{flex:1;min-width:0}.planbox .opt input[type=text]{width:min(640px,100%)}
+.planbox ul{margin:4px 0;padding-inline-start:20px}
 body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5}
 .wrap{max-width:1450px;margin:0 auto;padding:0 24px 40px}
 header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:22px 0 4px}
@@ -211,6 +216,12 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
       <p class="note" data-i18n="langq.help">Each language is searched with its own words. They start as a copy of the research area; edit them to use the field's real terms in that language. A library that cannot filter by language searches the research area once.</p>
       <div class="row" id="langQueryBoxes"></div>
     </fieldset>
+    <div class="bar">
+      <button type="button" class="ghost" id="planGo" data-i18n="plan.go">Suggest a search plan</button>
+      <span class="note" id="planMsg" role="status"></span>
+    </div>
+    <div class="planbox hidden" id="planBox" aria-labelledby="planTitle"></div>
+    <p class="note hidden" id="topicNote"><span id="topicText"></span> <button type="button" class="ghost" id="topicClear" data-i18n="topics.clear">Clear topics</button></p>
     <p id="status" class="note" role="status"></p>
     <p class="err" id="searchErr" role="alert"></p>
     <small data-i18n="search.small">Manuals are not found by search; they come from uploads or links in a later version. A library that cannot apply one of your filters says so in the notes under the results.</small>
@@ -666,6 +677,98 @@ function renderLangQueries() {
   })));
 }
 
+/* ---------- planner (M3): a draft profile the user checks and edits before any search ---------- */
+let planRec = null, activeTopics = [];
+async function loadPlanner() {
+  try {
+    const s = await json('/api/planner');
+    $('planGo').disabled = !s.available;
+    $('planMsg').textContent = s.available ? '' : t('plan.unavailable');
+  } catch (e) { /* not signed in */ }
+}
+async function suggestPlan(fresh) {
+  const area = $('query').value.trim();
+  if (area.length < 3) { $('planMsg').textContent = t('plan.need_area'); return; }
+  $('planGo').disabled = true; $('planMsg').textContent = t('plan.working');
+  try {
+    planRec = await post('/api/plans', { area, languages: getLangs(), fresh,
+      year_from: parseInt($('yFrom').value, 10), year_to: parseInt($('yTo').value, 10) });
+    $('planMsg').textContent = planRec.cached ? t('plan.cached') : '';
+    renderPlan();
+  } catch (e) { $('planMsg').textContent = e.message; }
+  finally { $('planGo').disabled = false; }
+}
+function renderTopicNote() {
+  $('topicNote').classList.toggle('hidden', !activeTopics.length);
+  $('topicText').textContent = activeTopics.length ? t('topics.active', { list: activeTopics.map(x => x.name || x.id).join('; ') }) : '';
+}
+function renderPlan() {
+  const box = $('planBox'), p = planRec.plan;
+  const input = (value, attrs = {}) => el('input', { type: 'text', value, maxlength: 1000, dir: 'auto', ...attrs });
+  const main = input(p.main_query, { id: 'planMain' });
+  const langBoxes = Object.entries(p.queries_by_language).map(([c, q]) => {
+    const i = input(q, { 'data-lang': c, lang: c, id: 'planLq-' + c });
+    return el('label', { for: i.id }, el('span', {}, t('plan.langq', { language: langLabel(c, (langMeta[c] || {}).name) })), i);
+  });
+  const choice = (value, checked, ...kids) => {
+    const r = el('input', { type: 'radio', name: 'planTrack', value });
+    r.checked = checked;
+    return el('div', { class: 'opt' }, r, el('div', {}, ...kids));
+  };
+  const tracks = p.tracks.map((tr, i) => choice(String(i), false, el('strong', { dir: 'auto' }, tr.name), ' ',
+    input(tr.query, { 'data-track': i, 'aria-label': tr.name }), el('div', { class: 'note', dir: 'auto' }, tr.why)));
+  const topics = p.topics.map(tp => {
+    const c = el('input', { type: 'checkbox', 'data-topic': tp.id });
+    c.checked = true;
+    const how = tp.match === 'closest' ? t('plan.match.closest', { asked: tp.asked }) : t('plan.match.' + tp.match);
+    return el('div', { class: 'opt' }, c, el('div', {},
+      el('a', { href: 'https://openalex.org/' + tp.id, target: '_blank', rel: 'noopener noreferrer', dir: 'auto' }, tp.name || tp.id),
+      el('div', { class: 'note' }, t('plan.topic_meta', { field: tp.field || '-', subfield: tp.subfield || '-', n: tp.works_count }) + ' · ' + how)));
+  });
+  const apply = el('button', { type: 'button' }, t('plan.apply'));
+  const again = el('button', { type: 'button', class: 'ghost' }, t('plan.again'));
+  const close = el('button', { type: 'button', class: 'ghost' }, t('plan.close'));
+  apply.onclick = applyPlan; again.onclick = () => suggestPlan(true);
+  close.onclick = () => box.classList.add('hidden');
+  box.replaceChildren(
+    el('h3', { id: 'planTitle' }, t('plan.title')),
+    el('p', { class: 'note' }, t('plan.note')),
+    el('p', { dir: 'auto' }, el('strong', {}, t('plan.summary') + ': '), p.summary),
+    ...(p.notes.length ? [el('h4', {}, t('plan.notes')), el('ul', { class: 'warnmsg' }, ...p.notes.map(n => el('li', { dir: 'auto' }, n)))] : []),
+    el('h4', {}, t('plan.main')), choice('main', true, main),
+    ...(langBoxes.length ? [el('div', { class: 'row' }, ...langBoxes)] : []),
+    ...(tracks.length ? [el('h4', {}, t('plan.tracks')), ...tracks] : []),
+    ...(topics.length ? [el('h4', {}, t('plan.topics')), ...topics] : []),
+    ...(p.unresolved_topics.length ? [el('p', { class: 'note' }, t('plan.unresolved', { list: p.unresolved_topics.join('; ') }))] : []),
+    el('div', { class: 'bar' }, apply, again, close));
+  box.classList.remove('hidden');
+}
+async function applyPlan() {
+  const box = $('planBox'), p = planRec.plan;
+  const edited = { ...p, main_query: $('planMain').value.trim(), queries_by_language: {},
+    tracks: p.tracks.map((tr, i) => ({ ...tr, query: box.querySelector(`[data-track="${i}"]`).value.trim() })),
+    topics: p.topics.filter(tp => box.querySelector(`[data-topic="${tp.id}"]`).checked) };
+  box.querySelectorAll('input[data-lang]').forEach(i => { if (i.value.trim()) edited.queries_by_language[i.dataset.lang] = i.value.trim(); });
+  try {
+    planRec = await json('/api/plans/' + planRec.id, { method: 'PUT', body: JSON.stringify(edited) });
+  } catch (e) { $('planMsg').textContent = e.message; return; }
+  const pick = (box.querySelector('input[name="planTrack"]:checked') || {}).value || 'main';
+  const plan = planRec.plan, track = pick === 'main' ? null : plan.tracks[Number(pick)];
+  $('query').value = track ? track.query : plan.main_query;
+  for (const c of Object.keys(langQueryEdited)) delete langQueryEdited[c];
+  renderLangQueries();
+  if (!track) {
+    document.querySelectorAll('#langQueryBoxes input').forEach(i => {
+      const q = plan.queries_by_language[i.dataset.lang];
+      if (q) { i.value = q; langQueryEdited[i.dataset.lang] = true; }
+    });
+  }
+  activeTopics = plan.topics.map(tp => ({ id: tp.id, name: tp.name }));
+  renderTopicNote();
+  box.classList.add('hidden');
+  $('planMsg').textContent = t('plan.applied');
+}
+
 /* ---------- accounts ---------- */
 /* Re-draw everything that was built from text when the interface language changes. */
 async function rerenderForLanguage() {
@@ -674,6 +777,8 @@ async function rerenderForLanguage() {
   fillUiLangSelect();
   if (regionData && getGeo) getGeo = buildGeo(regionData, getGeo());
   renderLangQueries();
+  if (planRec && !$('planBox').classList.contains('hidden')) renderPlan();
+  renderTopicNote();
   if (membership) renderMembership(membership);
   if (run) { renderRun(run, true); }
   showProxyExample(proxyExampleLink);
@@ -692,6 +797,7 @@ function showSignedIn(email) {
   loadRuns();
   loadMembership();
   loadTranslator();
+  loadPlanner();
 }
 function showSignedOut() {
   proxyTemplate = '';
@@ -1182,6 +1288,7 @@ async function search() {
         year_from: parseInt($('yFrom').value, 10), year_to: parseInt($('yTo').value, 10),
         document_types: getTypes(), languages,
         queries_by_language: queriesForRequest(languages, readLangBoxes()),
+        topics: activeTopics.map(x => x.id),
         ...getGeo(),
       },
       libraries: getLibs(), weighting: $('weighting').value,
@@ -1309,6 +1416,8 @@ $('authForm').onsubmit = ev => { ev.preventDefault(); auth('login'); };
 $('register').onclick = () => auth('register');
 $('logout').onclick = async () => { await api('/api/auth/logout', { method: 'POST' }); selected.clear(); run = null; showSignedOut(); };
 $('search').onsubmit = ev => { ev.preventDefault(); search(); };
+$('planGo').onclick = () => suggestPlan(false);
+$('topicClear').onclick = () => { activeTopics = []; renderTopicNote(); };
 $('more').onclick = renderRows;
 $('all').onchange = () => {
   const on = $('all').checked;

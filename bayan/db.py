@@ -125,6 +125,13 @@ CREATE TABLE IF NOT EXISTS reader_attempts(
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS plans(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  area TEXT NOT NULL, request TEXT NOT NULL, suggested TEXT NOT NULL, plan TEXT NOT NULL,
+  edited INTEGER NOT NULL DEFAULT 0, cached INTEGER NOT NULL DEFAULT 0, model TEXT,
+  prompt_version TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS plans_user ON plans(user_id, created_at);
 CREATE TABLE IF NOT EXISTS usage(
   id INTEGER PRIMARY KEY, user_id TEXT, month TEXT, model TEXT,
   input_tokens INTEGER, output_tokens INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -134,7 +141,9 @@ CREATE TABLE IF NOT EXISTS usage(
 
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, timeout=30)
+    # FastAPI may open, use and close a request's connection on different worker threads (one
+    # after another, never at the same time), which SQLite refuses unless this check is off.
+    conn = sqlite3.connect(path, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA journal_mode=WAL")

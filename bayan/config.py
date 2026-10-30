@@ -34,6 +34,9 @@ class Settings:
     translations_per_hour: int = 30  # requests per user
     reader_effort: str = "high"  # output_config.effort for the reader
     readings_per_hour: int = 20  # papers a user may queue for reading per hour
+    model_planner: str = "claude-sonnet-5-5"  # planner agent (M3)
+    planner_effort: str = "medium"
+    plans_per_hour: int = 10  # planner calls per user per hour (cached answers are free)
 
 
 def load_settings() -> Settings:
@@ -48,6 +51,9 @@ def load_settings() -> Settings:
         readings_per_hour=int(os.environ.get("BAYAN_READINGS_PER_HOUR", "20")),
         model_reader=os.environ.get("BAYAN_MODEL_READER", "claude-sonnet-5-5"),
         model_screener=os.environ.get("BAYAN_MODEL_SCREENER", "claude-haiku-5-5"),
+        model_planner=os.environ.get("BAYAN_MODEL_PLANNER", "claude-sonnet-5-5"),
+        planner_effort=os.environ.get("BAYAN_PLANNER_EFFORT", "medium"),
+        plans_per_hour=int(os.environ.get("BAYAN_PLANS_PER_HOUR", "10")),
         doi_lookup_budget=int(os.environ.get("BAYAN_DOI_LOOKUP_BUDGET", "50")),
         pdf_root=Path(os.environ.get("BAYAN_PDF_ROOT", "pdfs")),
         downloads_per_hour=int(os.environ.get("BAYAN_DOWNLOADS_PER_HOUR", "100")),
