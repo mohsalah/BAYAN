@@ -87,7 +87,8 @@ def parse_result(record: dict) -> Paper:
         is_oa=record.get("isOpenAccess") == "Y",
         oa_url=open_urls[0]["url"] if open_urls else "",
         landing_url=f"https://europepmc.org/article/{source}/{rid}",
-        keywords=list((record.get("keywordList") or {}).get("keyword") or []),
+        keywords=[k for k in (record.get("keywordList") or {}).get("keyword") or []
+                  if isinstance(k, str) and k.strip()],
     )
 
 
