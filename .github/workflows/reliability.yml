@@ -1,7 +1,8 @@
 name: Reliability bench
 # Runs the M27 test agents against a fresh BAYAN on GitHub's runners: one job per OpenAlex
 # domain, then one job that joins the parts, trains the models and writes the report.
-# Start it from the Actions tab (Run workflow) or by pushing to the reliability-run branch.
+# Start it from the Actions tab (Run workflow) or by pushing to the reliability-run branch;
+# a push takes its settings from reliability/cloud_run.env when that file exists.
 # Needs the OPENALEX_API_KEY repository secret; without it OpenAlex allows only a small
 # shared daily budget per runner IP.
 on:
@@ -19,6 +20,9 @@ on:
       to_year:
         description: "Last year"
         default: "2025"
+      per_field:
+        description: "Pilot: only the N largest subfields of each field (empty = all 252)"
+        default: ""
   push:
     branches: [reliability-run]
 permissions:
@@ -33,6 +37,7 @@ env:
   KNOWN_ITEMS: ${{ inputs.known_items || '10' }}
   FROM_YEAR: ${{ inputs.from_year || '2006' }}
   TO_YEAR: ${{ inputs.to_year || '2025' }}
+  PER_FIELD: ${{ inputs.per_field || '' }}
 jobs:
   bench:
     runs-on: ubuntu-latest
@@ -48,6 +53,13 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[dev]"
+      - name: Settings for a push run
+        if: github.event_name == 'push'
+        run: |
+          if [ -f reliability/cloud_run.env ]; then
+            grep -E '^(PER_SEARCH|KNOWN_ITEMS|FROM_YEAR|TO_YEAR|PER_FIELD)=[0-9]*$' \
+              reliability/cloud_run.env | tee -a "$GITHUB_ENV"
+          fi
       - uses: actions/cache@v4
         with:
           path: reliability/cache
@@ -57,10 +69,14 @@ jobs:
         env:
           OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
           DOMAIN: ${{ matrix.domain }}
-        run: >
-          python -m reliability run --domain "$DOMAIN" --run-id "$RUN_ID-d$DOMAIN"
-          --per-search "$PER_SEARCH" --known-items "$KNOWN_ITEMS"
-          --from-year "$FROM_YEAR" --to-year "$TO_YEAR"
+        run: |
+          if [ -z "$OPENALEX_API_KEY" ]; then
+            echo "::error::Add the OPENALEX_API_KEY repository secret first"; exit 1
+          fi
+          python -m reliability run --domain "$DOMAIN" --run-id "$RUN_ID-d$DOMAIN" \
+            --per-search "$PER_SEARCH" --known-items "$KNOWN_ITEMS" \
+            --from-year "$FROM_YEAR" --to-year "$TO_YEAR" \
+            ${PER_FIELD:+--per-field "$PER_FIELD"}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

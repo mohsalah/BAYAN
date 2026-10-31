@@ -36,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run", help="test agents drive a live BAYAN; writes results/<run_id>/")
     r.add_argument("--only", nargs="*", help="subfield ids")
     r.add_argument("--domain", help="only the subfields of one OpenAlex domain id (1-4)")
+    r.add_argument("--per-field", type=int,
+                   help="only the N subfields with the most works in each field (a pilot)")
     r.add_argument("--run-id")
     r.add_argument("--base-url", help="use a running BAYAN instead of starting one")
     r.add_argument("--workers", type=int, default=6)
@@ -76,6 +78,8 @@ def main(argv: list[str] | None = None) -> int:
         if key:
             env["OPENALEX_API_KEY"] = key
         only = args.only
+        if args.per_field:
+            only = pilot_areas(tax, args.per_field, only)
         if args.domain:
             only = [a["id"] for a in tax["areas"]
                     if str(a["domain"]["id"]).rsplit("/", 1)[-1] == args.domain
@@ -111,6 +115,16 @@ def main(argv: list[str] | None = None) -> int:
         summary = report.publish(pick_run(args.run_id), target, gold_summary())
         print(f"published run {summary['run_id']} to {target}")
     return 0
+
+
+def pilot_areas(tax: dict, per_field: int, only: list[str] | None = None) -> list[str]:
+    """The `per_field` largest subfields (by works_count) of every field."""
+    by_field: dict[str, list[dict]] = {}
+    for a in tax["areas"]:
+        if not only or a["id"] in only:
+            by_field.setdefault(a["field"]["id"], []).append(a)
+    return [a["id"] for areas in by_field.values()
+            for a in sorted(areas, key=lambda a: -(a.get("works_count") or 0))[:per_field]]
 
 
 def gold_summary() -> dict | None:

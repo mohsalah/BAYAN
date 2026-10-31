@@ -486,3 +486,14 @@ def test_merge_joins_parts_and_refuses_overlap_or_mixed_settings(tmp_path):
     _part(tmp_path, "y-d3", "3101", cfg | {"per_search": 100})
     with pytest.raises(ValueError, match="different settings"):
         runner.merge(tmp_path, "y", ["r-d2", "y-d3"])
+
+
+def test_pilot_takes_the_largest_subfields_of_every_field():
+    from reliability.__main__ import pilot_areas
+    tax = {"areas": [
+        {"id": "1101", "field": {"id": "11"}, "works_count": 5},
+        {"id": "1102", "field": {"id": "11"}, "works_count": 9},
+        {"id": "1201", "field": {"id": "12"}, "works_count": 1}]}
+    assert sorted(pilot_areas(tax, 1)) == ["1102", "1201"]
+    assert sorted(pilot_areas(tax, 2)) == ["1101", "1102", "1201"]
+    assert pilot_areas(tax, 1, ["1101"]) == ["1101"]
