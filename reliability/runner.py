@@ -117,17 +117,21 @@ def run(taxonomy: dict, gold_dir: Path, results: Path, repo: Path, client: Clien
     t0 = time.time()
     rows: list[dict] = []
     cards: list[dict] = []
+    # written first, so a run that fails at the end can still be rescored from its episodes
+    meta = {"run_id": run_id, "started": datetime.fromtimestamp(t0, UTC).isoformat(),
+            "minutes": None, "bayan_commit": git_sha(repo),
+            "base_url": "own server" if proc else "external", "areas": len(areas),
+            "status": "running",
+            "config": {k: v for k, v in cfg.__dict__.items() if k != "base_url"},
+            "server_env": {k: v for k, v in (env_extra or {}).items() if "KEY" not in k}}
+    (run_dir / "run.json").write_text(json.dumps(meta, indent=1) + "\n")
     try:
         def one(area: dict) -> tuple[list[dict], dict]:
             gold = gold_mod.load(gold_dir, area["id"])
             ep = AreaAgent(cfg, area, gold).run().to_dict()
             (run_dir / "raw" / "episodes" / f"{area['id']}.json").write_text(
                 json.dumps(ep, ensure_ascii=False))
-            r = search_rows(ep, gold, topics)
-            lookup = {d.lower() for st in ep["steps"] for d in st.get("doi_matches") or []}
-            checks = {d: (doi_exists(client, d), d in lookup)
-                      for d in shown_dois(ep, f"{run_id}{area['id']}")}
-            return r, scorecard_row(ep, r, checks)
+            return score_episode(ep, gold, topics, client, f"{run_id}{area['id']}")
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(one, a): a for a in areas}
@@ -144,19 +148,56 @@ def run(taxonomy: dict, gold_dir: Path, results: Path, repo: Path, client: Clien
                     f"score {card['reliability_score']}")
     finally:
         if proc is not None:
-            proc.terminate()
-            proc.wait(timeout=20)
+            stop_server(proc)
+    meta["minutes"] = round((time.time() - t0) / 60, 1)
+    return finish(run_dir, meta, rows, cards)
+
+
+def stop_server(proc: subprocess.Popen, grace: float = 20) -> None:
+    """Stop BAYAN; a server still busy after `grace` seconds is killed (results are kept)."""
+    proc.terminate()
+    try:
+        proc.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=grace)
+
+
+def finish(run_dir: Path, meta: dict, rows: list[dict], cards: list[dict]) -> Path:
     cards.sort(key=lambda c: int(c["subfield_id"]))
     write_csv(run_dir / "searches.csv", rows)
     write_csv(run_dir / "scorecard.csv", cards)
-    meta = {"run_id": run_id, "started": datetime.fromtimestamp(t0, UTC).isoformat(),
-            "minutes": round((time.time() - t0) / 60, 1), "bayan_commit": git_sha(repo),
-            "base_url": "own server" if proc else "external", "areas": len(areas),
-            "scored": len(cards), "searches": len(rows),
-            "config": {k: v for k, v in cfg.__dict__.items() if k != "base_url"},
-            "server_env": {k: v for k, v in (env_extra or {}).items() if "KEY" not in k}}
+    meta.update({"status": "complete", "scored": len(cards), "searches": len(rows)})
     (run_dir / "run.json").write_text(json.dumps(meta, indent=1) + "\n")
     return run_dir
+
+
+def score_episode(ep: dict, gold: list[dict], topics: dict, client: Client,
+                  seed: str) -> tuple[list[dict], dict]:
+    r = search_rows(ep, gold, topics)
+    lookup = {d.lower() for st in ep["steps"] for d in st.get("doi_matches") or []}
+    checks = {d: (doi_exists(client, d), d in lookup) for d in shown_dois(ep, seed)}
+    return r, scorecard_row(ep, r, checks)
+
+
+def rescore(taxonomy: dict, gold_dir: Path, results: Path, client: Client, run_id: str,
+            log=print) -> Path:
+    """Rebuild searches.csv, scorecard.csv and run.json from a run's saved episodes
+    (for a run whose last step failed). The settings come from the run's own run.json."""
+    run_dir = results / run_id
+    meta = json.loads((run_dir / "run.json").read_text())
+    topics = topic_map(taxonomy)
+    rows: list[dict] = []
+    cards: list[dict] = []
+    for path in sorted((run_dir / "raw" / "episodes").glob("*.json")):
+        ep = json.loads(path.read_text())
+        r, card = score_episode(ep, gold_mod.load(gold_dir, path.stem), topics, client,
+                                f"{run_id}{path.stem}")
+        rows += r
+        cards.append(card)
+        log(f"{path.stem}: score {card['reliability_score']}")
+    meta["rescored"] = datetime.now(UTC).isoformat()
+    return finish(run_dir, meta, rows, cards)
 
 
 def merge(results: Path, run_id: str, parts: list[str]) -> Path:
@@ -185,7 +226,8 @@ def merge(results: Path, run_id: str, parts: list[str]) -> Path:
     write_csv(run_dir / "searches.csv", rows)
     write_csv(run_dir / "scorecard.csv", cards)
     meta = {"run_id": run_id, "started": min(m["started"] for m in metas),
-            "minutes": max(m["minutes"] for m in metas), "bayan_commit": metas[0]["bayan_commit"],
+            "minutes": max(m.get("minutes") or 0 for m in metas),
+            "bayan_commit": metas[0]["bayan_commit"],
             "base_url": metas[0]["base_url"], "areas": sum(m["areas"] for m in metas),
             "scored": len(cards), "searches": len(rows),
             "config": metas[0]["config"] | {"run_id": run_id},

@@ -110,6 +110,10 @@ jobs:
             [ -f "$d/run.json" ] && echo "$d"; done)
           echo "parts: $parts"
           [ -n "$parts" ] || { echo "no part finished"; exit 1; }
+          for d in $parts; do  # a part whose last step failed is rebuilt from its episodes
+            grep -q '"status": "complete"' "reliability/results/$d/run.json" ||
+              python -m reliability rescore --run-id "$d"
+          done
           python -m reliability merge --run-id "$RUN_ID" $parts
       - run: python -m reliability train --run-id "$RUN_ID"
       - run: python -m reliability report --run-id "$RUN_ID"

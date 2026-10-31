@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--from-year", type=int, default=2006)
     r.add_argument("--to-year", type=int, default=2025)
     r.add_argument("--doi-lookup-budget", type=int, default=20)
+    rs = sub.add_parser("rescore", help="rebuild a run's tables from its saved episodes")
+    rs.add_argument("--run-id", required=True)
     mg = sub.add_parser("merge", help="join runs of parts of the taxonomy into one run")
     mg.add_argument("--run-id", required=True, help="the joined run")
     mg.add_argument("parts", nargs="+", help="run ids of the parts")
@@ -94,6 +96,10 @@ def main(argv: list[str] | None = None) -> int:
                            "year_to": args.to_year},
             env_extra=env)
         print(f"run written to {run_dir}")
+    elif args.cmd == "rescore":
+        run_dir = runner.rescore(taxonomy.load(DATA / "taxonomy.json"), DATA / "gold", RESULTS,
+                                 client(args), args.run_id)
+        print(f"rescored {run_dir}")
     elif args.cmd == "merge":
         run_dir = runner.merge(RESULTS, args.run_id, args.parts)
         print(f"merged {len(args.parts)} parts into {run_dir}")

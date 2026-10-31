@@ -497,3 +497,38 @@ def test_pilot_takes_the_largest_subfields_of_every_field():
     assert sorted(pilot_areas(tax, 1)) == ["1102", "1201"]
     assert sorted(pilot_areas(tax, 2)) == ["1101", "1102", "1201"]
     assert pilot_areas(tax, 1, ["1101"]) == ["1101"]
+
+
+def test_stop_server_kills_a_server_that_ignores_terminate():
+    import subprocess
+    import sys
+    proc = subprocess.Popen([sys.executable, "-c",
+                             "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN);"
+                             "print('ready', flush=True); time.sleep(60)"],
+                            stdout=subprocess.PIPE, text=True)
+    assert proc.stdout.readline().strip() == "ready"
+    runner.stop_server(proc, grace=0.5)
+    assert proc.returncode is not None
+
+
+def test_rescore_rebuilds_tables_from_saved_episodes(tmp_path, monkeypatch):
+    run = tmp_path / "r1"
+    (run / "raw" / "episodes").mkdir(parents=True)
+    (run / "raw" / "episodes" / "2102.json").write_text("{}")
+    (run / "raw" / "episodes" / "1101.json").write_text("{}")
+    (run / "run.json").write_text(json.dumps({"run_id": "r1", "status": "running",
+                                              "config": {"per_search": 50}}))
+    seen = []
+
+    def fake_score(ep, gold, topics, client, seed):
+        seen.append(seed)
+        sid = seed[2:]
+        return [{"subfield_id": sid}], {"subfield_id": sid, "reliability_score": 70}
+
+    monkeypatch.setattr(runner, "score_episode", fake_score)
+    monkeypatch.setattr(runner.gold_mod, "load", lambda d, sid: [])
+    out = runner.rescore({"areas": []}, tmp_path, tmp_path, None, "r1", log=lambda *_: None)
+    meta = json.loads((out / "run.json").read_text())
+    assert meta["status"] == "complete" and meta["searches"] == 2 and "rescored" in meta
+    assert seen == ["r11101", "r12102"]  # same DOI sample seed as the original run
+    assert [c["subfield_id"] for c in ml.read_csv(out / "scorecard.csv")] == ["1101", "2102"]
