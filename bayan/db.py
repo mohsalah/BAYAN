@@ -179,7 +179,7 @@ def connect(path: Path) -> sqlite3.Connection:
 # Columns added after the first release; init_db adds them to an existing file in place.
 COLUMNS_ADDED = {
     "papers": (("category", "TEXT"), ("native_type", "TEXT"), ("category_basis", "TEXT"),
-               ("document_kind", "TEXT")),
+               ("document_kind", "TEXT"), ("authors", "TEXT")),
     "downloads": (("page_count", "INTEGER"), ("pages_with_text", "INTEGER"),
                   ("index_status", "TEXT")),
 }

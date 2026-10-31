@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from .connectors.base import FILTERS, Connector
 from .doi_lookup import DoiLooker, DoiLookup
-from .models import DOCUMENT_TYPES, USER_SOURCE, Paper, SearchProfile, language_key
+from .models import DOCUMENT_TYPES, MAX_AUTHORS, USER_SOURCE, Paper, SearchProfile, language_key
 from .quotas import allocate_quotas
 from .regions import REGIONS_VERSION
 from .retrieval import collect
@@ -253,12 +253,13 @@ def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
     conn.execute(
         "INSERT OR REPLACE INTO papers(source, id, doi, title, abstract, year, native_type,"
         " category, category_basis, document_kind, language, venue, first_author, countries,"
-        " citations, is_oa, oa_url, landing_url, keywords, topic)"
-        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " citations, is_oa, oa_url, landing_url, keywords, topic, authors)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (p.source, p.id, p.doi, p.title, p.abstract, p.year, p.native_type, p.category,
          p.category_basis, p.document_kind or None, p.language, p.venue, p.first_author,
          json.dumps(p.countries), p.citations, int(p.is_oa), p.oa_url, p.landing_url,
-         json.dumps(p.keywords), p.topic),
+         json.dumps(p.keywords), p.topic,
+         json.dumps(p.authors[:MAX_AUTHORS], ensure_ascii=False)),
     )
     conn.execute("DELETE FROM paper_search WHERE source=? AND id=?", (p.source, p.id))
     conn.execute(
@@ -273,6 +274,9 @@ def paper_row_to_dict(row: sqlite3.Row) -> dict:
     d = dict(row)
     d["countries"] = json.loads(d["countries"] or "[]")
     d["keywords"] = json.loads(d["keywords"] or "[]")
+    # Rows stored before the author list existed only have the first author.
+    d["authors"] = json.loads(d.get("authors") or "[]") or (
+        [d["first_author"]] if d.get("first_author") else [])
     d["is_oa"] = bool(d["is_oa"])
     # Rows stored before categories existed only have the old `document_type` column.
     legacy = d.pop("document_type", None) or ""

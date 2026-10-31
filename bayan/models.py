@@ -23,6 +23,7 @@ LANGUAGES: dict[str, dict[str, object]] = {
 QUERY_MAX_LENGTH = 1000
 # OpenAlex topic filter: at most this many topic IDs per profile.
 MAX_TOPICS = 12
+MAX_AUTHORS = 100
 TOPIC_ID = re.compile(r"T[1-9][0-9]{0,8}")
 # Names for language codes that libraries report on records. Only the six in LANGUAGES can be
 # searched; the extra names exist so a paper is never shown as a bare code.
@@ -223,6 +224,8 @@ class Paper(BaseModel):
     language: str = ""
     venue: str = ""
     first_author: str = ""
+    # Every author as the library lists them (display names), at most MAX_AUTHORS.
+    authors: list[str] = Field(default_factory=list)
     countries: list[str] = Field(default_factory=list)
     citations: int = 0
     is_oa: bool = False

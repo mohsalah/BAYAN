@@ -67,6 +67,8 @@ def parse_item(item: dict) -> Paper:
         language=item.get("language") or "",
         venue=((item.get("container-title") or [""])[0]) or "",
         first_author=first_author,
+        authors=[n for n in (" ".join(x for x in (a.get("given"), a.get("family")) if x)
+                             or a.get("name") or "" for a in authors) if n],
         citations=item.get("is-referenced-by-count") or 0,
         landing_url=item.get("URL") or "",
         keywords=list(item.get("subject") or []),

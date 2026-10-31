@@ -83,6 +83,8 @@ def parse_result(record: dict) -> Paper:
         language=LANG_BACK.get(record.get("language") or "", ""),
         venue=((record.get("journalInfo") or {}).get("journal") or {}).get("title") or "",
         first_author=(record.get("authorString") or "").split(",")[0].strip(),
+        authors=[a.strip() for a in (record.get("authorString") or "").rstrip(".").split(",")
+                 if a.strip()],
         citations=record.get("citedByCount") or 0,
         is_oa=record.get("isOpenAccess") == "Y",
         oa_url=open_urls[0]["url"] if open_urls else "",

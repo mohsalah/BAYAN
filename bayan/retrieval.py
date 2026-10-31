@@ -30,6 +30,8 @@ def merge_into(base: Paper, other: Paper) -> None:
         base.abstract = other.abstract
     if base.year is None:
         base.year = other.year
+    if len(other.authors) > len(base.authors):  # the fuller author list wins
+        base.authors = list(other.authors)
     base.citations = max(base.citations, other.citations)
     base.is_oa = base.is_oa or other.is_oa
     base.countries = list(dict.fromkeys([*base.countries, *other.countries]))
