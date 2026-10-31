@@ -207,6 +207,7 @@ Additional tables for this version: `paper_selections` (user, paper, requested_a
 | M22 | Report and thesis connectors (OSTI, INIS, NTRS, OATD, NDLTD, DART-Europe, EThOS where terms allow) | Each documents its terms; unconfirmed ones show "not available yet" |
 | M23 | Geographic filter (regions, countries, basis selector, unknown-location bucket) | Region lists tested; results reproducible; unknown location listed separately |
 | M24 | Translator (any language to English or Arabic) with glossary, OCR and side-by-side view | Numbers/units/equations preserved in tests; translations marked and never used as evidence quotes |
+| M27 | Reliability bench: one scripted test agent per OpenAlex subfield (252), a verified gold set (50 papers per area, 2006-2025, DOI or the field's own identifier: PMID, PMCID, arXiv, ISBN, handle, LCCN, NCID), ML on the results (failure predictor, query forms, re-ranker, regression check), REPORT.md and a public reliability page | Every gold record cites the database that confirmed it; areas with missing measures get no score; models are validated on fields they never saw; a second run with more papers and years is one command |
 
 Suggested order after M8: M14, M15, M17, M18, M9 (gap analyst can then use the map), M19, M20, M16, M10-M13.
 

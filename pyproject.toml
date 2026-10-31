@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "scikit-learn>=1.5"]  # scikit-learn: reliability/ml.py
 # Optional OCR for scanned PDFs; also needs the Tesseract program on the machine.
 ocr = ["pytesseract>=0.3", "pdf2image>=1.17"]
 
@@ -44,3 +44,4 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # the reliability/ bench at the repository root

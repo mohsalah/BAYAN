@@ -363,5 +363,20 @@
   "plan.applied": "Plan appliqué au formulaire de recherche. Vérifiez-le, puis cliquez sur Rechercher.",
   "topics.active": "Filtre de thèmes OpenAlex : {list}. Seul OpenAlex l’applique ; les autres bibliothèques l’indiquent comme non appliqué.",
   "topics.clear": "Effacer les thèmes",
-  "plan.note": "Le texte du domaine de recherche est envoyé à l’API d’Anthropic pour préparer ce plan. Les thèmes sont recherchés dans OpenAlex ; vérifiez chaque élément avant de lancer la recherche."
+  "plan.note": "Le texte du domaine de recherche est envoyé à l’API d’Anthropic pour préparer ce plan. Les thèmes sont recherchés dans OpenAlex ; vérifiez chaque élément avant de lancer la recherche.",
+  "rel.title": "BAYAN est-il fiable dans votre domaine ?",
+  "rel.lead": "Des agents de test ont utilisé BAYAN comme le feraient des chercheurs de {areas} sous-domaines, pour {from}–{to} : recherche dans leur domaine, recherche d'articles connus par leur titre ({gold} articles vérifiés au total) et export BibTeX. Test du {date}.",
+  "rel.none": "Aucun test de fiabilité n'a encore été publié.",
+  "rel.help": "Score = 30 articles connus trouvés par le titre + 20 résultats dans le domaine + 15 articles du domaine trouvés + 10 sans manque + 10 sans erreur + 10 métadonnées correctes + 5 intégrité (années, DOI, BibTeX).",
+  "rel.filter": "Trouver votre domaine",
+  "rel.groups": "Par grand domaine (groupes OCDE)",
+  "rel.fields": "Par domaine",
+  "rel.improve": "Ce que nous améliorons (en anglais)",
+  "rel.limits": "Limites de ce test (en anglais)",
+  "rel.col.group": "Domaine",
+  "rel.col.areas": "Sous-domaines testés",
+  "rel.col.score": "Score (0–100)",
+  "rel.col.known": "Articles connus trouvés",
+  "rel.col.precision": "Résultats dans le domaine",
+  "rel.col.shortfall": "Recherches avec manque d'articles"
 }

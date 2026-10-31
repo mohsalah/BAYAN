@@ -363,5 +363,20 @@
   "plan.applied": "Plan aplicado al formulario de búsqueda. Revíselo y pulse Buscar.",
   "topics.active": "Filtro de temas de OpenAlex: {list}. Solo OpenAlex lo aplica; las demás bibliotecas lo indican como no aplicado.",
   "topics.clear": "Quitar temas",
-  "plan.note": "El texto del área de investigación se envía a la API de Anthropic para preparar este plan. Los temas se buscan en OpenAlex; revise cada parte antes de buscar."
+  "plan.note": "El texto del área de investigación se envía a la API de Anthropic para preparar este plan. Los temas se buscan en OpenAlex; revise cada parte antes de buscar.",
+  "rel.title": "¿Qué tan fiable es BAYAN en su campo?",
+  "rel.lead": "Agentes de prueba usaron BAYAN como lo harían investigadores de {areas} subcampos, para {from}–{to}: buscaron en su campo, buscaron artículos conocidos por su título ({gold} artículos verificados en total) y exportaron BibTeX. Prueba del {date}.",
+  "rel.none": "Todavía no se ha publicado ninguna prueba de fiabilidad.",
+  "rel.help": "Puntuación = 30 artículos conocidos encontrados por título + 20 resultados dentro del campo + 15 artículos propios del campo encontrados + 10 sin faltantes + 10 sin errores + 10 metadatos correctos + 5 integridad (años, DOI, BibTeX).",
+  "rel.filter": "Buscar su campo",
+  "rel.groups": "Por área de investigación (grupos de la OCDE)",
+  "rel.fields": "Por campo",
+  "rel.improve": "Lo que estamos mejorando (en inglés)",
+  "rel.limits": "Límites de esta prueba (en inglés)",
+  "rel.col.group": "Campo",
+  "rel.col.areas": "Subcampos probados",
+  "rel.col.score": "Puntuación (0–100)",
+  "rel.col.known": "Artículos conocidos encontrados",
+  "rel.col.precision": "Resultados dentro del campo",
+  "rel.col.shortfall": "Búsquedas con faltantes"
 }

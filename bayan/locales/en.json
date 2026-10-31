@@ -363,5 +363,20 @@
   "plan.applied": "Plan applied to the search form. Review it, then press Search.",
   "topics.active": "OpenAlex topic filter: {list}. Only OpenAlex applies it; other libraries list it as not applied.",
   "topics.clear": "Clear topics",
-  "plan.note": "The research-area text is sent to the Anthropic API to draft this plan. Topics are looked up in OpenAlex; check every part before searching."
+  "plan.note": "The research-area text is sent to the Anthropic API to draft this plan. Topics are looked up in OpenAlex; check every part before searching.",
+  "rel.title": "How reliable is BAYAN for your field?",
+  "rel.lead": "Test agents used BAYAN the way researchers in {areas} subfields would, for {from}–{to}: they searched their field, looked up known papers by title ({gold} verified papers in all) and exported BibTeX. Test run of {date}.",
+  "rel.none": "No reliability test has been published yet.",
+  "rel.help": "Score = 30 known papers found by title + 20 results in the field + 15 the field's own papers found + 10 no shortfall + 10 no errors + 10 correct metadata + 5 integrity (years, DOIs, BibTeX).",
+  "rel.filter": "Find your field",
+  "rel.groups": "By research area (OECD groups)",
+  "rel.fields": "By field",
+  "rel.improve": "What we are improving (in English)",
+  "rel.limits": "Limits of this test (in English)",
+  "rel.col.group": "Field",
+  "rel.col.areas": "Subfields tested",
+  "rel.col.score": "Score (0–100)",
+  "rel.col.known": "Known papers found",
+  "rel.col.precision": "Results in the field",
+  "rel.col.shortfall": "Searches short of papers"
 }

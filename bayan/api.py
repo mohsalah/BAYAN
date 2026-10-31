@@ -390,6 +390,14 @@ def create_app(
     def libraries() -> list[dict]:
         return list(LIBRARIES)
 
+    @app.get("/api/reliability")
+    def reliability() -> dict:
+        """The latest published reliability-bench summary (python -m reliability publish)."""
+        path = settings.reliability_file or Path(__file__).parent / "static" / "reliability.json"
+        if not path.exists():
+            raise HTTPException(404, "No reliability run has been published yet.")
+        return json.loads(path.read_text(encoding="utf-8"))
+
     @app.get("/api/languages")
     def languages() -> dict:
         return LANGUAGES

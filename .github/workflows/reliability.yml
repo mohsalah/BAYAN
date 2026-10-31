@@ -1,0 +1,109 @@
+name: Reliability bench
+# Runs the M27 test agents against a fresh BAYAN on GitHub's runners: one job per OpenAlex
+# domain, then one job that joins the parts, trains the models and writes the report.
+# Start it from the Actions tab (Run workflow) or by pushing to the reliability-run branch.
+# Needs the OPENALEX_API_KEY repository secret; without it OpenAlex allows only a small
+# shared daily budget per runner IP.
+on:
+  workflow_dispatch:
+    inputs:
+      per_search:
+        description: "Papers asked for per search"
+        default: "50"
+      known_items:
+        description: "Known-item searches per area"
+        default: "10"
+      from_year:
+        description: "First year"
+        default: "2006"
+      to_year:
+        description: "Last year"
+        default: "2025"
+  push:
+    branches: [reliability-run]
+permissions:
+  contents: read
+concurrency:
+  group: reliability-bench
+  cancel-in-progress: false
+env:
+  PYTHONPATH: .
+  RUN_ID: gh-${{ github.run_id }}
+  PER_SEARCH: ${{ inputs.per_search || '50' }}
+  KNOWN_ITEMS: ${{ inputs.known_items || '10' }}
+  FROM_YEAR: ${{ inputs.from_year || '2006' }}
+  TO_YEAR: ${{ inputs.to_year || '2025' }}
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        domain: ["1", "2", "3", "4"]  # Life, Social, Physical, Health Sciences
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - uses: actions/cache@v4
+        with:
+          path: reliability/cache
+          key: reliability-cache-d${{ matrix.domain }}-${{ github.run_id }}
+          restore-keys: reliability-cache-d${{ matrix.domain }}-
+      - name: Run the area agents
+        env:
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+          DOMAIN: ${{ matrix.domain }}
+        run: >
+          python -m reliability run --domain "$DOMAIN" --run-id "$RUN_ID-d$DOMAIN"
+          --per-search "$PER_SEARCH" --known-items "$KNOWN_ITEMS"
+          --from-year "$FROM_YEAR" --to-year "$TO_YEAR"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: part-${{ matrix.domain }}
+          path: |
+            reliability/results/
+            !reliability/results/**/raw/app.sqlite*
+            !reliability/results/**/raw/pdfs/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  analyse:
+    needs: bench
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: part-*
+          path: reliability/results
+          merge-multiple: true
+      - name: Join the parts that finished
+        run: |
+          parts=$(cd reliability/results && for d in "$RUN_ID"-d*; do
+            [ -f "$d/run.json" ] && echo "$d"; done)
+          echo "parts: $parts"
+          [ -n "$parts" ] || { echo "no part finished"; exit 1; }
+          python -m reliability merge --run-id "$RUN_ID" $parts
+      - run: python -m reliability train --run-id "$RUN_ID"
+      - run: python -m reliability report --run-id "$RUN_ID"
+      - run: python -m reliability publish --run-id "$RUN_ID"
+      - name: Show the report on the run page
+        run: cat reliability/results/"$RUN_ID"/REPORT.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reliability-${{ github.run_id }}
+          path: |
+            reliability/results/${{ env.RUN_ID }}/
+            bayan/static/reliability.json
+          retention-days: 90

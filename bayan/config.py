@@ -37,6 +37,8 @@ class Settings:
     model_planner: str = "claude-sonnet-5-5"  # planner agent (M3)
     planner_effort: str = "medium"
     plans_per_hour: int = 10  # planner calls per user per hour (cached answers are free)
+    # Published reliability-bench summary; None = bayan/static/reliability.json
+    reliability_file: Path | None = None
     model_concepts: str = "claude-sonnet-5-5"  # concept mapper (M17)
     concepts_effort: str = "high"
     concept_readings_per_hour: int = 20  # papers a user may queue for concept extraction
