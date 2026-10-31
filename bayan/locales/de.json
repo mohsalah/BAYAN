@@ -363,5 +363,20 @@
   "plan.applied": "Plan in das Suchformular übernommen. Prüfen Sie es und klicken Sie dann auf Suchen.",
   "topics.active": "OpenAlex-Themenfilter: {list}. Nur OpenAlex wendet ihn an; andere Bibliotheken führen ihn als nicht angewendet.",
   "topics.clear": "Themen entfernen",
-  "plan.note": "Der Text zum Forschungsgebiet wird an die Anthropic-API gesendet, um diesen Plan zu erstellen. Themen werden in OpenAlex nachgeschlagen; prüfen Sie vor der Suche jeden Teil."
+  "plan.note": "Der Text zum Forschungsgebiet wird an die Anthropic-API gesendet, um diesen Plan zu erstellen. Themen werden in OpenAlex nachgeschlagen; prüfen Sie vor der Suche jeden Teil.",
+  "rel.title": "Wie zuverlässig ist BAYAN in Ihrem Fach?",
+  "rel.lead": "Testagenten haben BAYAN so genutzt wie Forschende aus {areas} Teilgebieten, für {from}–{to}: Suche im eigenen Fach, Suche bekannter Arbeiten nach Titel ({gold} geprüfte Arbeiten insgesamt) und BibTeX-Export. Testlauf vom {date}.",
+  "rel.none": "Es wurde noch kein Zuverlässigkeitstest veröffentlicht.",
+  "rel.help": "Punktzahl = 30 bekannte Arbeiten per Titel gefunden + 20 Treffer im Fach + 15 eigene Arbeiten des Fachs gefunden + 10 keine Lücke + 10 keine Fehler + 10 korrekte Metadaten + 5 Integrität (Jahre, DOIs, BibTeX).",
+  "rel.filter": "Ihr Fach suchen",
+  "rel.groups": "Nach Wissenschaftsbereich (OECD-Gruppen)",
+  "rel.fields": "Nach Fach",
+  "rel.improve": "Was wir verbessern (auf Englisch)",
+  "rel.limits": "Grenzen dieses Tests (auf Englisch)",
+  "rel.col.group": "Fach",
+  "rel.col.areas": "Getestete Teilgebiete",
+  "rel.col.score": "Punktzahl (0–100)",
+  "rel.col.known": "Bekannte Arbeiten gefunden",
+  "rel.col.precision": "Treffer im Fach",
+  "rel.col.shortfall": "Suchen mit zu wenigen Arbeiten"
 }

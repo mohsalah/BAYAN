@@ -363,5 +363,20 @@
   "plan.applied": "方案已填入检索表单。请检查后点击检索。",
   "topics.active": "OpenAlex 主题筛选：{list}。仅 OpenAlex 应用此筛选；其他文献库会注明未应用。",
   "topics.clear": "清除主题",
-  "plan.note": "研究领域文本会发送到 Anthropic API 以起草此方案。主题在 OpenAlex 中查找；检索前请核查每一部分。"
+  "plan.note": "研究领域文本会发送到 Anthropic API 以起草此方案。主题在 OpenAlex 中查找；检索前请核查每一部分。",
+  "rel.title": "BAYAN 在您的领域可靠吗？",
+  "rel.lead": "测试代理以 {areas} 个子领域研究人员的方式使用 BAYAN（{from}–{to}）：检索本领域、按标题查找已知论文（共 {gold} 篇已核实论文）并导出 BibTeX。测试日期：{date}。",
+  "rel.none": "尚未发布可靠性测试。",
+  "rel.help": "得分 = 30 按标题找到已知论文 + 20 结果属于本领域 + 15 找到本领域自己的论文 + 10 无数量不足 + 10 无错误 + 10 元数据正确 + 5 完整性（年份、DOI、BibTeX）。",
+  "rel.filter": "查找您的领域",
+  "rel.groups": "按研究大类（OECD 分组）",
+  "rel.fields": "按领域",
+  "rel.improve": "我们正在改进的内容（英文）",
+  "rel.limits": "本测试的局限（英文）",
+  "rel.col.group": "领域",
+  "rel.col.areas": "已测试子领域",
+  "rel.col.score": "得分（0–100）",
+  "rel.col.known": "找到的已知论文",
+  "rel.col.precision": "属于本领域的结果",
+  "rel.col.shortfall": "论文数量不足的检索"
 }

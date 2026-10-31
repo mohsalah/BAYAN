@@ -370,6 +370,14 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
   <section class="card hidden" id="runsCard">
     <h2 data-i18n="runs.title">Earlier searches</h2><div id="runs" class="note"></div>
   </section>
+  <section class="card" id="relCard" aria-labelledby="relTitle">
+    <details id="relBox">
+      <summary><h2 id="relTitle" data-i18n="rel.title" style="display:inline">How reliable is BAYAN for your field?</h2></summary>
+      <p id="relLead" class="note"></p>
+      <p class="note" data-i18n="rel.help">Score = 30 known papers found by title + 20 results in the field + 15 the field's own papers found + 10 no shortfall + 10 no errors + 10 correct metadata + 5 integrity (years, DOIs, BibTeX).</p>
+      <div id="relBody"></div>
+    </details>
+  </section>
 </div>
 
 <script>
@@ -773,6 +781,7 @@ async function applyPlan() {
 /* Re-draw everything that was built from text when the interface language changes. */
 async function rerenderForLanguage() {
   dropdowns.forEach(build => build());
+  renderReliability();
   renderSwatches();
   fillUiLangSelect();
   if (regionData && getGeo) getGeo = buildGeo(regionData, getGeo());
@@ -790,6 +799,37 @@ function fillUiLangSelect() {
   $('uiLang').replaceChildren(...UI_LANGS.map(c => { const o = new Option(names[c], c); o.lang = c; return o; }));
   $('uiLang').value = uiLang;
 }
+/* ---------- reliability page (published bench results; public) ---------- */
+let reliability = null;
+async function loadReliability() {
+  try { reliability = await (await api('/api/reliability')).json(); } catch (_) { reliability = null; }
+  renderReliability();
+}
+function relPct(x) { return x === null || x === undefined ? '–' : Math.round(100 * x) + '%'; }
+function relTable(rows, filter) {
+  const head = el('tr', {}, ...['rel.col.group', 'rel.col.areas', 'rel.col.score', 'rel.col.known', 'rel.col.precision', 'rel.col.shortfall'].map(k => el('th', {}, t(k))));
+  const body = rows.filter(r => !filter || r.name.toLowerCase().includes(filter)).map(r => el('tr', {},
+    el('td', {}, r.name), el('td', {}, String(r.areas)),
+    el('td', {}, r.score === null ? '–' : r.score.toFixed(1)), el('td', {}, relPct(r.known)),
+    el('td', {}, relPct(r.precision)), el('td', {}, relPct(r.shortfall))));
+  return el('div', { class: 'tablewrap' }, el('table', {}, el('thead', {}, head), el('tbody', {}, ...body)));
+}
+function renderReliability() {
+  const box = $('relBody'), r = reliability;
+  if (!r) { $('relLead').textContent = t('rel.none'); box.replaceChildren(); return; }
+  $('relLead').textContent = t('rel.lead', { areas: r.areas_tested, from: r.period[0], to: r.period[1], gold: r.gold_papers ?? '–', date: r.date });
+  const filter = el('input', { type: 'search', id: 'relFilter', placeholder: t('rel.filter'), 'aria-label': t('rel.filter') });
+  const fields = el('div');
+  const draw = () => fields.replaceChildren(relTable(r.by_field, filter.value.trim().toLowerCase()));
+  filter.oninput = draw; draw();
+  const list = items => el('ul', {}, ...items.map(x => el('li', { dir: 'ltr' }, x.replace(/\*\*/g, ''))));
+  box.replaceChildren(
+    el('h3', {}, t('rel.groups')), relTable(r.by_group, ''),
+    el('h3', {}, t('rel.fields')), filter, fields,
+    el('h3', {}, t('rel.improve')), list(r.improvements || []),
+    el('h3', {}, t('rel.limits')), list(r.limits || []));
+}
+
 function showSignedIn(email) {
   for (const id of ['searchCard', 'runsCard', 'translateCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.remove('hidden');
   $('authCard').classList.add('hidden');
@@ -1452,6 +1492,7 @@ const HELP = {
 };
 $('query').oninput = renderLangQueries;
 $('uiLang').onchange = () => setUiLanguage($('uiLang').value, true);
+loadReliability();
 
 async function start() {
   initTheme();
