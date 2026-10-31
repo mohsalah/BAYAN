@@ -47,6 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--from-year", type=int, default=2006)
     r.add_argument("--to-year", type=int, default=2025)
     r.add_argument("--doi-lookup-budget", type=int, default=20)
+    r.add_argument("--min-credits", type=int,
+                   help="start no area below this many OpenAlex credits (default: "
+                        f"{runner.AREA_CREDITS} x workers)")
     rs = sub.add_parser("rescore", help="rebuild a run's tables from its saved episodes")
     rs.add_argument("--run-id", required=True)
     mg = sub.add_parser("merge", help="join runs of parts of the taxonomy into one run")
@@ -94,7 +97,9 @@ def main(argv: list[str] | None = None) -> int:
             cfg_overrides={"per_search": args.per_search, "topic_queries": args.topic_queries,
                            "known_items": args.known_items, "year_from": args.from_year,
                            "year_to": args.to_year},
-            env_extra=env)
+            env_extra=env, credits=(lambda: runner.openalex_credits(key)) if key else None,
+            min_credits=args.min_credits if args.min_credits is not None
+            else runner.AREA_CREDITS * args.workers)
         print(f"run written to {run_dir}")
     elif args.cmd == "rescore":
         run_dir = runner.rescore(taxonomy.load(DATA / "taxonomy.json"), DATA / "gold", RESULTS,

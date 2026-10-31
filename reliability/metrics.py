@@ -178,6 +178,8 @@ def scorecard_row(episode: dict, rows: list[dict],
         "domain": area["domain"]["name"], "frascati": area["frascati"],
         "searches": len(rows), "errors": sum(1 for r in rows if r["status"] != 200),
         "agent_error": episode.get("error", ""),
+        # searches stopped by a library's usage limit: a fact about the test run, not BAYAN
+        "upstream_limit": sum(1 for r in rows if "usage limit" in (r.get("error") or "")),
         "latency_median_s": median([r["seconds"] for r in rows if r["seconds"] is not None])
         if rows else None,
         "topic_found_mean": _mean(r["found"] for r in topic),
@@ -217,6 +219,8 @@ def scorecard_row(episode: dict, rows: list[dict],
     # An area is scored only when it was fully tested; a partial test gets no score, so a
     # missing measure can never raise an area's standing.
     missing = [k for k, v in parts.items() if v is None]
+    if out["upstream_limit"]:
+        missing.append("upstream_limit")
     out["complete"] = int(not missing and not episode.get("error"))
     out["missing_measures"] = ",".join(missing)
     out["reliability_score"] = (round(sum(WEIGHTS[k] * v for k, v in parts.items()), 1)

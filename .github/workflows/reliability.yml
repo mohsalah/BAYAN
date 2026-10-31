@@ -23,6 +23,9 @@ on:
       per_field:
         description: "Pilot: only the N largest subfields of each field (empty = all 252)"
         default: ""
+      parallel_jobs:
+        description: "Domain jobs at once (1 shares a free daily budget safely; 4 with credit)"
+        default: "1"
   push:
     branches: [reliability-run]
 permissions:
@@ -44,6 +47,9 @@ jobs:
     timeout-minutes: 340
     strategy:
       fail-fast: false
+      # One OpenAlex key's daily credits are shared by every job; one at a time lets each job's
+      # credit check see what the previous one used.
+      max-parallel: ${{ fromJSON(inputs.parallel_jobs || '1') }}
       matrix:
         domain: ["1", "2", "3", "4"]  # Life, Social, Physical, Health Sciences
     steps:

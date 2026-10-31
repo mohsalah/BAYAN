@@ -30,6 +30,7 @@ from .client import Client, FetchError
 from .metrics import scorecard_row, search_rows, topic_map
 
 DOIS_PER_AREA = 10
+AREA_CREDITS = 500  # OpenAlex credits one area can use (measured 270-470 in the pilot)
 
 
 def free_port() -> int:
@@ -104,7 +105,10 @@ def write_csv(path: Path, rows: list[dict]) -> None:
 def run(taxonomy: dict, gold_dir: Path, results: Path, repo: Path, client: Client, *,
         run_id: str | None = None, only: list[str] | None = None, base_url: str | None = None,
         workers: int = 6, cfg_overrides: dict | None = None, env_extra: dict | None = None,
-        log=print) -> Path:
+        credits=None, min_credits: int = 0, log=print) -> Path:
+    """`credits()` returns the OpenAlex credits left (or None if unknown). An area is not
+    started while fewer than `min_credits` are left; it is listed as not run, never scored
+    on a half-finished test."""
     run_id = run_id or datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     run_dir = results / run_id
     (run_dir / "raw" / "episodes").mkdir(parents=True, exist_ok=True)
@@ -117,6 +121,7 @@ def run(taxonomy: dict, gold_dir: Path, results: Path, repo: Path, client: Clien
     t0 = time.time()
     rows: list[dict] = []
     cards: list[dict] = []
+    not_run: list[str] = []
     # written first, so a run that fails at the end can still be rescored from its episodes
     meta = {"run_id": run_id, "started": datetime.fromtimestamp(t0, UTC).isoformat(),
             "minutes": None, "bayan_commit": git_sha(repo),
@@ -126,7 +131,10 @@ def run(taxonomy: dict, gold_dir: Path, results: Path, repo: Path, client: Clien
             "server_env": {k: v for k, v in (env_extra or {}).items() if "KEY" not in k}}
     (run_dir / "run.json").write_text(json.dumps(meta, indent=1) + "\n")
     try:
-        def one(area: dict) -> tuple[list[dict], dict]:
+        def one(area: dict) -> tuple[list[dict], dict] | None:
+            left = credits() if credits else None
+            if left is not None and left < min_credits:
+                return None
             gold = gold_mod.load(gold_dir, area["id"])
             ep = AreaAgent(cfg, area, gold).run().to_dict()
             (run_dir / "raw" / "episodes" / f"{area['id']}.json").write_text(
@@ -138,9 +146,15 @@ def run(taxonomy: dict, gold_dir: Path, results: Path, repo: Path, client: Clien
             for n, fut in enumerate(as_completed(futures), 1):
                 area = futures[fut]
                 try:
-                    r, card = fut.result()
+                    res = fut.result()
+                    r, card = res if res is not None else (None, None)
                 except Exception as exc:
                     log(f"[{n}/{len(areas)}] {area['id']} {area['name']}: bench error {exc}")
+                    continue
+                if r is None:
+                    not_run.append(area["id"])
+                    log(f"[{n}/{len(areas)}] {area['id']} {area['name']}: not run, fewer "
+                        f"than {min_credits} OpenAlex credits left")
                     continue
                 rows += r
                 cards.append(card)
@@ -150,7 +164,21 @@ def run(taxonomy: dict, gold_dir: Path, results: Path, repo: Path, client: Clien
         if proc is not None:
             stop_server(proc)
     meta["minutes"] = round((time.time() - t0) / 60, 1)
+    meta["not_run_low_credits"] = sorted(not_run)
     return finish(run_dir, meta, rows, cards)
+
+
+def openalex_credits(key: str, http: httpx.Client | None = None) -> int | None:
+    """Credits left today on this key, from a 1-credit request (None when unknown)."""
+    try:
+        resp = (http or httpx).get("https://api.openalex.org/works",
+                                   params={"filter": "publication_year:2020", "per-page": 1,
+                                           "select": "id"},
+                                   headers={"Authorization": f"Bearer {key}"}, timeout=30)
+        value = resp.headers.get("x-ratelimit-remaining", "")
+        return int(value) if value.isdigit() else None
+    except httpx.HTTPError:
+        return None
 
 
 def stop_server(proc: subprocess.Popen, grace: float = 20) -> None:
@@ -231,6 +259,8 @@ def merge(results: Path, run_id: str, parts: list[str]) -> Path:
             "base_url": metas[0]["base_url"], "areas": sum(m["areas"] for m in metas),
             "scored": len(cards), "searches": len(rows),
             "config": metas[0]["config"] | {"run_id": run_id},
-            "server_env": metas[0]["server_env"], "parts": parts}
+            "server_env": metas[0]["server_env"], "parts": parts,
+            "not_run_low_credits": sorted(x for m in metas
+                                          for x in m.get("not_run_low_credits") or [])}
     (run_dir / "run.json").write_text(json.dumps(meta, indent=1) + "\n")
     return run_dir

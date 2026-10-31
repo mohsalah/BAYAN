@@ -532,3 +532,50 @@ def test_rescore_rebuilds_tables_from_saved_episodes(tmp_path, monkeypatch):
     assert meta["status"] == "complete" and meta["searches"] == 2 and "rescored" in meta
     assert seen == ["r11101", "r12102"]  # same DOI sample seed as the original run
     assert [c["subfield_id"] for c in ml.read_csv(out / "scorecard.csv")] == ["1101", "2102"]
+
+
+def test_a_search_stopped_by_a_usage_limit_leaves_the_area_unscored():
+    topics = {"Music History and Culture": ("1210", "12")}
+    known = [{"source": "openalex", "id": "W1", "doi": "10.1/a", "year": 2006,
+              "title": GOLD[0]["title"], "first_author": "J. Hepokoski"}]
+    ep = episode(topic_papers(30, 0), known)
+    ep["steps"][4] |= {"status": 502, "found": 0, "error": "OpenAlex request failed: HTTP "
+                       "429; the library asks to wait about 17 hours ... (a usage limit)."}
+    card = metrics.scorecard_row(ep, metrics.search_rows(ep, GOLD, topics), {})
+    assert card["upstream_limit"] == 1 and card["reliability_score"] is None
+    assert "upstream_limit" in card["missing_measures"]
+
+
+def test_low_credits_stop_new_areas_and_list_them(tmp_path, monkeypatch):
+    calls = []
+
+    class FakeAgent:
+        def __init__(self, cfg, area, gold):
+            self.area = area
+
+        def run(self):
+            calls.append(self.area["id"])
+            return type("E", (), {"to_dict": lambda s: {"area": self.area, "steps": []}})()
+
+    monkeypatch.setattr(runner, "AreaAgent", FakeAgent)
+    monkeypatch.setattr(runner.gold_mod, "load", lambda d, sid: [])
+    monkeypatch.setattr(runner, "score_episode", lambda ep, *a: (
+        [{"subfield_id": ep["area"]["id"]}],
+        {"subfield_id": ep["area"]["id"], "reliability_score": 70}))
+    left = iter([5000, 900, 100])
+    tax = {"areas": [{"id": i, "name": i} for i in ("1101", "1102", "1103")]}
+    out = runner.run(tax, tmp_path, tmp_path, tmp_path, None, run_id="r", base_url="http://x",
+                     workers=1, credits=lambda: next(left), min_credits=1000,
+                     log=lambda *_: None)
+    meta = json.loads((out / "run.json").read_text())
+    assert calls == ["1101"] and meta["not_run_low_credits"] == ["1102", "1103"]
+    assert meta["scored"] == 1 and meta["status"] == "complete"
+
+
+def test_openalex_credits_reads_the_header_and_never_fails():
+    ok = httpx.Client(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json={}, headers={"x-ratelimit-remaining": "7530"})))
+    assert runner.openalex_credits("K", ok) == 7530
+    down = httpx.Client(transport=httpx.MockTransport(
+        lambda r: (_ for _ in ()).throw(httpx.ConnectError("x"))))
+    assert runner.openalex_credits("K", down) is None
