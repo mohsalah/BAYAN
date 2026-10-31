@@ -264,11 +264,15 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
       <label for="exportScope"><span data-i18n="export.label">Export</span><select id="exportScope"></select></label>
       <button type="button" id="exportXlsx" data-i18n="export.xlsx">Export Excel</button>
       <button type="button" id="exportCsv" class="ghost" data-i18n="export.csv">Export CSV</button>
+      <button type="button" id="copyBib" data-i18n="export.copy">Copy BibTeX</button>
+      <button type="button" id="exportBib" class="ghost" data-i18n="export.bib">Export BibTeX</button>
+      <button type="button" id="exportRis" class="ghost" data-i18n="export.ris">Export RIS</button>
       <button type="button" id="clearSel" class="ghost" data-i18n="sel.clear">Clear selection</button>
       <button type="button" id="dlPdfs" data-i18n="dl.btn">Download selected PDFs</button>
       <span class="spacer"></span>
       <span id="exportMsg" class="note" role="status"></span>
     </div>
+    <div id="bibBox" class="hidden"><p class="note" data-i18n="export.copy_manual">Copying was blocked by the browser. Select the text below and copy it (Ctrl+C or ⌘C).</p><textarea id="bibText" readonly rows="8" style="width:100%" dir="ltr"></textarea></div>
     <p id="dlMsg" class="note" role="status"></p>
     <div class="tablewrap">
       <table>
@@ -1275,6 +1279,9 @@ function updateSelection() {
   $('gapScope').textContent = n ? t('gap.selected', { n, abs: withAbs }) : t('gap.none');
   $('exportXlsx').title = t('export.xlsx.help');
   $('exportCsv').title = t('export.csv.help');
+  $('exportBib').title = t('export.bib.help');
+  $('exportRis').title = t('export.ris.help');
+  $('copyBib').title = t('export.copy.help');
 }
 
 async function search() {
@@ -1364,7 +1371,9 @@ async function addManual() {
 }
 
 /* ---------- export ---------- */
-async function exportRun(format) {
+const FORMAT_NAMES = { xlsx: 'Excel', csv: 'CSV', bibtex: 'BibTeX', ris: 'RIS' };
+const FORMAT_EXT = { bibtex: 'bib' };
+async function exportRun(format, copy = false) {
   if (!run) return;
   $('exportMsg').textContent = t('export.preparing');
   try {
@@ -1377,10 +1386,24 @@ async function exportRun(format) {
       body.papers = chosen.map(ref);
     }
     const r = await api('/api/runs/' + run.id + '/export', { method: 'POST', body: JSON.stringify(body) });
+    $('bibBox').classList.add('hidden');
+    if (copy) {
+      const text = await r.text();
+      try {
+        await navigator.clipboard.writeText(text);
+        $('exportMsg').textContent = t('export.copied', { n: chosen.length });
+      } catch (_) {  // no clipboard access (plain http, or blocked): let the user copy by hand
+        $('bibText').value = text;
+        $('bibBox').classList.remove('hidden');
+        $('bibText').focus(); $('bibText').select();
+        $('exportMsg').textContent = '';
+      }
+      return;
+    }
     const blob = await r.blob();
-    const a = el('a', { href: URL.createObjectURL(blob), download: 'bayan-run-' + run.id + '.' + format });
+    const a = el('a', { href: URL.createObjectURL(blob), download: 'bayan-run-' + run.id + '.' + (FORMAT_EXT[format] || format) });
     document.body.append(a); a.click(); a.remove();
-    $('exportMsg').textContent = t('export.done', { n: chosen.length, scope: t('export.name.' + scope), format: format === 'xlsx' ? 'Excel' : 'CSV' });
+    $('exportMsg').textContent = t('export.done', { n: chosen.length, scope: t('export.name.' + scope), format: FORMAT_NAMES[format] });
   } catch (e) { $('exportMsg').textContent = e.message; }
 }
 
@@ -1431,6 +1454,9 @@ $('manualAdd').onclick = addManual;
 $('dlPdfs').onclick = downloadSelected;
 $('exportXlsx').onclick = () => exportRun('xlsx');
 $('exportCsv').onclick = () => exportRun('csv');
+$('exportBib').onclick = () => exportRun('bibtex');
+$('exportRis').onclick = () => exportRun('ris');
+$('copyBib').onclick = () => exportRun('bibtex', true);
 $('gapForm').onsubmit = ev => { ev.preventDefault(); analysis('gaps'); };
 $('createProps').onclick = () => analysis('proposals');
 $('copyPrompt').onclick = async () => {

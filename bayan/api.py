@@ -28,6 +28,7 @@ from .auth import (
     user_for_token,
     verify_password,
 )
+from .citations import to_bibtex, to_ris
 from .concepts import (
     CONCEPT_TYPES,
     TYPE_LABELS,
@@ -194,7 +195,7 @@ class NormalizeRequest(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    format: Literal["csv", "xlsx"] = "csv"
+    format: Literal["csv", "xlsx", "bibtex", "ris"] = "csv"
     # None exports every paper of the run; otherwise only these (they must belong to the run).
     papers: list[PaperRef] | None = Field(default=None, max_length=500)
 
@@ -598,9 +599,15 @@ def create_app(
             content = to_xlsx(papers, CATEGORY_LABELS, {
                 "id": run_id, "request": json.loads(run["request"]), "summary": summary})
             media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        elif body.format == "bibtex":
+            content, media = to_bibtex(papers).encode(), "application/x-bibtex; charset=utf-8"
+        elif body.format == "ris":
+            content = to_ris(papers).encode()
+            media = "application/x-research-info-systems; charset=utf-8"
         else:
             content, media = to_csv(papers, CATEGORY_LABELS), "text/csv; charset=utf-8"
-        name = f"bayan-run-{run_id}.{body.format}"
+        ext = {"bibtex": "bib"}.get(body.format, body.format)
+        name = f"bayan-run-{run_id}.{ext}"
         return Response(content, media_type=media,
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
 

@@ -78,6 +78,8 @@ def parse_work(work: dict) -> Paper:
         language=work.get("language") or "",
         venue=src.get("display_name") or "",
         first_author=(authors[0]["author"]["display_name"] if authors else ""),
+        authors=[a["author"]["display_name"] for a in authors
+                 if (a.get("author") or {}).get("display_name")],
         countries=sorted({c for a in authors for c in (a.get("countries") or [])}),
         citations=work.get("cited_by_count") or 0,
         is_oa=bool(oa.get("is_oa")),

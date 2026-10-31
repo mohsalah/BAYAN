@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bayan",
+      "runtimeExecutable": ".venv/bin/uvicorn",
+      "runtimeArgs": ["bayan.api:app", "--port", "8765"],
+      "port": 8765
+    }
+  ]
+}
