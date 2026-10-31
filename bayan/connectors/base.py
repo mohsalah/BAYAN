@@ -29,6 +29,9 @@ class Connector(Protocol):
     def search(self, profile: SearchProfile) -> Iterator[Paper]: ...
 
 
+MAX_RETRY_WAIT = 60.0  # seconds; the downloader caps its waits the same way
+
+
 def get_with_retry(
     client: httpx.Client,
     url: str,
@@ -57,9 +60,28 @@ def get_with_retry(
                 break
         if attempt < max_attempts:
             retry_after = response.headers.get("Retry-After") if response is not None else None
-            waits = retry_after is not None and retry_after.isdigit()
-            sleep(float(retry_after) if waits else 2.0 * attempt)
+            sleep(retry_wait(retry_after, attempt, label, error))
     raise ConnectorError(f"{label} request failed: {error}")
+
+
+def retry_wait(retry_after: str | None, attempt: int, label: str, error: str) -> float:
+    """Seconds to wait before the next try. A numeric Retry-After is honoured up to
+    MAX_RETRY_WAIT; a longer one (a daily or hourly limit) fails the request at once, so a
+    search reports the limit instead of hanging until it resets."""
+    if retry_after is None or not retry_after.strip().isdigit():
+        return 2.0 * attempt
+    wait = float(retry_after)
+    if wait > MAX_RETRY_WAIT:
+        raise ConnectorError(f"{label} request failed: {error}; the library asks to wait "
+                             f"{_duration(wait)} before the next request (a usage limit). "
+                             "Try again later.")
+    return wait
+
+
+def _duration(seconds: float) -> str:
+    if seconds >= 5400:
+        return f"about {round(seconds / 3600)} hours"
+    return f"about {max(1, round(seconds / 60))} minutes"
 
 
 def user_agent(contact_email: str | None) -> str:
