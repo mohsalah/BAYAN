@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator
 import httpx
 
 from ..models import Paper, SearchProfile
-from .base import ConnectorError
+from .base import ConnectorError, retry_wait
 
 BASE_URL = "https://api.openalex.org/works"
 TOPICS_URL = "https://api.openalex.org/topics"
@@ -83,7 +83,8 @@ def parse_work(work: dict) -> Paper:
         is_oa=bool(oa.get("is_oa")),
         oa_url=oa.get("oa_url") or "",
         landing_url=loc.get("landing_page_url") or "",
-        keywords=[k["display_name"] for k in (work.get("keywords") or [])],
+        keywords=[k["display_name"] for k in work.get("keywords") or []
+                  if isinstance(k, dict) and isinstance(k.get("display_name"), str)],
         topic=(work.get("primary_topic") or {}).get("display_name") or "",
     )
 
@@ -206,7 +207,14 @@ class OpenAlexConnector:
                     break
             if attempt < self._max_attempts:
                 retry_after = response.headers.get("Retry-After") if status else None
-                waits = retry_after is not None and retry_after.isdigit()
-                delay = float(retry_after) if waits else 2.0 * attempt
+                try:
+                    delay = retry_wait(retry_after, attempt, "OpenAlex", error)
+                except ConnectorError as exc:
+                    if self._api_key:
+                        raise
+                    raise ConnectorError(
+                        f"{exc} Without an API key OpenAlex shares one free daily budget "
+                        "between everyone on this network; a free key (OPENALEX_API_KEY) "
+                        "gives its own.") from None
                 self._sleep(delay)
         raise ConnectorError(f"OpenAlex request failed: {error}")

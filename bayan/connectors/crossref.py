@@ -69,7 +69,7 @@ def parse_item(item: dict) -> Paper:
         first_author=first_author,
         citations=item.get("is-referenced-by-count") or 0,
         landing_url=item.get("URL") or "",
-        keywords=list(item.get("subject") or []),
+        keywords=[s for s in item.get("subject") or [] if isinstance(s, str) and s.strip()],
     )
 
 
