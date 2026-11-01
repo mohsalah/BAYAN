@@ -148,3 +148,23 @@ def test_a_short_retry_after_is_still_honoured_up_to_the_cap():
 def test_keywords_without_a_name_are_skipped():
     work = WORK | {"keywords": [{"display_name": "fission"}, {"display_name": None}, None]}
     assert parse_work(work).keywords == ["fission"]
+
+
+@pytest.mark.parametrize("query, sent", [
+    ("Measuring Economic Policy Uncertainty*", "Measuring Economic Policy Uncertainty"),
+    ("Is nuclear power safe?", "Is nuclear power safe"),
+    ("neutron* AND transport", "neutron AND transport"),
+])
+def test_wildcards_are_dropped_from_the_search(query, sent):
+    # OpenAlex's default search answers * and ? with HTTP 400 (found by the M27 pilot).
+    seen = []
+    conn = OpenAlexConnector(client=client_for([(200, {"results": [], "meta": {}}, {})], seen))
+    list(conn.search(SearchProfile(query=query)))
+    assert seen[0].url.params["search"] == sent
+
+
+def test_a_query_of_only_wildcards_sends_no_search():
+    seen = []
+    conn = OpenAlexConnector(client=client_for([(200, {"results": [], "meta": {}}, {})], seen))
+    list(conn.search(SearchProfile(query="*")))
+    assert "search" not in seen[0].url.params
