@@ -271,7 +271,7 @@
   "status.verified": "PDF verified",
   "stop.complete": "All year quotas were filled.",
   "stop.exhausted": "The libraries had no more matching papers.",
-  "stop.limit": "Stopped at the result limit; more matching papers exist.",
+  "stop.limit": "Stopped at the result limit; there may be more matching papers.",
   "stop.scan": "Stopped at the scan limit; more matching papers may exist.",
   "sum.duplicates": "duplicates removed",
   "sum.scanned": "scanned",

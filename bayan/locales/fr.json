@@ -271,7 +271,7 @@
   "status.verified": "PDF vérifié",
   "stop.complete": "Tous les quotas annuels ont été atteints.",
   "stop.exhausted": "Les bibliothèques n'avaient plus d'articles correspondants.",
-  "stop.limit": "Arrêt à la limite de résultats ; d'autres articles correspondants existent.",
+  "stop.limit": "Arrêt à la limite de résultats ; d'autres articles correspondants peuvent exister.",
   "stop.scan": "Arrêt à la limite d'analyse ; d'autres articles correspondants peuvent exister.",
   "sum.duplicates": "doublons supprimés",
   "sum.scanned": "analysés",
