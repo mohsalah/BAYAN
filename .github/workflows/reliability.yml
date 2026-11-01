@@ -23,6 +23,9 @@ on:
       per_field:
         description: "Pilot: only the N largest subfields of each field (empty = all 252)"
         default: ""
+      domains:
+        description: "Only these domains, comma-separated (1 Life, 2 Social, 3 Physical, 4 Health; empty = all)"
+        default: ""
       parallel_jobs:
         description: "Domain jobs at once (1 shares a free daily budget safely; 4 with credit)"
         default: "1"
@@ -41,6 +44,7 @@ env:
   FROM_YEAR: ${{ inputs.from_year || '2006' }}
   TO_YEAR: ${{ inputs.to_year || '2025' }}
   PER_FIELD: ${{ inputs.per_field || '' }}
+  DOMAINS: ${{ inputs.domains || '' }}
 jobs:
   bench:
     runs-on: ubuntu-latest
@@ -63,7 +67,7 @@ jobs:
         if: github.event_name == 'push'
         run: |
           if [ -f reliability/cloud_run.env ]; then
-            grep -E '^(PER_SEARCH|KNOWN_ITEMS|FROM_YEAR|TO_YEAR|PER_FIELD)=[0-9]*$' \
+            grep -E '^(PER_SEARCH|KNOWN_ITEMS|FROM_YEAR|TO_YEAR|PER_FIELD|DOMAINS)=[0-9,]*$' \
               reliability/cloud_run.env | tee -a "$GITHUB_ENV"
           fi
       - uses: actions/cache@v4
@@ -76,12 +80,17 @@ jobs:
           OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
           DOMAIN: ${{ matrix.domain }}
         run: |
+          if [ -n "$DOMAINS" ] && [[ ",$DOMAINS," != *",$DOMAIN,"* ]]; then
+            echo "Domain $DOMAIN is not in DOMAINS=$DOMAINS; skipped"; exit 0
+          fi
           if [ -z "$OPENALEX_API_KEY" ]; then
             echo "::error::Add the OPENALEX_API_KEY repository secret first"; exit 1
           fi
+          # Credits, not time, limit a run: 2 areas at a time keep the low-credit stop
+          # (650 credits x workers) close to the end of the day's budget.
           python -m reliability run --domain "$DOMAIN" --run-id "$RUN_ID-d$DOMAIN" \
             --per-search "$PER_SEARCH" --known-items "$KNOWN_ITEMS" \
-            --from-year "$FROM_YEAR" --to-year "$TO_YEAR" \
+            --from-year "$FROM_YEAR" --to-year "$TO_YEAR" --workers 2 \
             ${PER_FIELD:+--per-field "$PER_FIELD"}
       - uses: actions/upload-artifact@v4
         if: always()

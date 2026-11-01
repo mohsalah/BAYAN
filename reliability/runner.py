@@ -30,7 +30,7 @@ from .client import Client, FetchError
 from .metrics import scorecard_row, search_rows, topic_map
 
 DOIS_PER_AREA = 10
-AREA_CREDITS = 500  # OpenAlex credits one area can use (measured 270-470 in the pilot)
+AREA_CREDITS = 650  # OpenAlex credits one area uses (measured: 7,028 for 11 areas, run 41270425902)
 
 
 def free_port() -> int:
