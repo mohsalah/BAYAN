@@ -271,7 +271,7 @@
   "status.verified": "PDF verificado",
   "stop.complete": "Se completaron todas las cuotas anuales.",
   "stop.exhausted": "Las bibliotecas no tenían más artículos coincidentes.",
-  "stop.limit": "Se detuvo en el límite de resultados; existen más artículos coincidentes.",
+  "stop.limit": "Se detuvo en el límite de resultados; puede haber más artículos coincidentes.",
   "stop.scan": "Se detuvo en el límite de exploración; puede haber más artículos coincidentes.",
   "sum.duplicates": "duplicados eliminados",
   "sum.scanned": "explorados",
