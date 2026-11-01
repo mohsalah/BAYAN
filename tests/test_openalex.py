@@ -148,3 +148,41 @@ def test_a_short_retry_after_is_still_honoured_up_to_the_cap():
 def test_keywords_without_a_name_are_skipped():
     work = WORK | {"keywords": [{"display_name": "fission"}, {"display_name": None}, None]}
     assert parse_work(work).keywords == ["fission"]
+
+
+@pytest.mark.parametrize("query, sent", [
+    ("Measuring Economic Policy Uncertainty*", "Measuring Economic Policy Uncertainty"),
+    ("Is nuclear power safe?", "Is nuclear power safe"),
+    ("neutron* AND transport", "neutron AND transport"),
+    ("colo?r", "color"),
+    ("中子＊安全吗？", "中子安全吗"),
+])
+def test_wildcards_are_dropped_from_the_search(query, sent):
+    # OpenAlex's default search answers * and ? with HTTP 400 (found by the M27 pilot).
+    seen = []
+    conn = OpenAlexConnector(client=client_for([(200, {"results": [], "meta": {}}, {})], seen))
+    list(conn.search(SearchProfile(query=query)))
+    assert seen[0].url.params["search"] == sent
+    assert conn.warnings and sent in conn.warnings[0]
+
+
+def test_a_query_without_wildcards_is_sent_as_typed_with_no_warning():
+    seen = []
+    conn = OpenAlexConnector(client=client_for([(200, {"results": [], "meta": {}}, {})], seen))
+    list(conn.search(SearchProfile(query="neutron transport")))
+    assert seen[0].url.params["search"] == "neutron transport" and conn.warnings == []
+
+
+def test_topic_search_drops_wildcards_and_skips_an_empty_name():
+    seen = []
+    conn = OpenAlexConnector(client=client_for([(200, {"results": []}, {})], seen))
+    assert conn.search_topics("reactor physics*") == []
+    assert seen[0].url.params["search"] == "reactor physics"
+    assert conn.search_topics("*?") == [] and len(seen) == 1  # no request sent
+
+
+def test_a_query_of_only_wildcards_sends_no_search():
+    seen = []
+    conn = OpenAlexConnector(client=client_for([(200, {"results": [], "meta": {}}, {})], seen))
+    list(conn.search(SearchProfile(query="*")))
+    assert "search" not in seen[0].url.params
