@@ -271,7 +271,7 @@
   "status.verified": "PDF 已核实",
   "stop.complete": "所有年份配额均已满足。",
   "stop.exhausted": "各文献库没有更多匹配的论文。",
-  "stop.limit": "已达结果上限而停止；还有更多匹配的论文。",
+  "stop.limit": "已达结果上限而停止；可能还有更多匹配的论文。",
   "stop.scan": "已达扫描上限而停止；可能还有更多匹配的论文。",
   "sum.duplicates": "已去除重复",
   "sum.scanned": "已扫描",

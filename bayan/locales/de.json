@@ -271,7 +271,7 @@
   "status.verified": "PDF geprüft",
   "stop.complete": "Alle Jahreskontingente wurden gefüllt.",
   "stop.exhausted": "Die Bibliotheken hatten keine weiteren passenden Arbeiten.",
-  "stop.limit": "Beim Ergebnislimit gestoppt; es gibt weitere passende Arbeiten.",
+  "stop.limit": "Beim Ergebnislimit gestoppt; es kann weitere passende Arbeiten geben.",
   "stop.scan": "Beim Durchsuchungslimit gestoppt; es kann weitere passende Arbeiten geben.",
   "sum.duplicates": "Duplikate entfernt",
   "sum.scanned": "durchsucht",

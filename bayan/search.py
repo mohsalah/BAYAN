@@ -240,13 +240,15 @@ def run_search(
 
 
 def _first(stream: Iterator[Paper], n: int, state: dict) -> Iterator[Paper]:
-    count = 0
-    for paper in stream:
+    # Stop at the n-th paper without reading one more: checking for an (n+1)-th cost a whole
+    # extra library page (10 OpenAlex credits) whenever n fell on a page boundary.
+    if n <= 0:
+        return
+    for count, paper in enumerate(stream, 1):
+        yield paper
         if count >= n:
             state["stopped"] = "limit"
             return
-        count += 1
-        yield paper
 
 
 def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
