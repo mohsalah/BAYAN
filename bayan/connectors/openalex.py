@@ -1,5 +1,6 @@
 """OpenAlex connector, ported from the Reactor Physics downloader and generalised."""
 
+import re
 import time
 from collections.abc import Callable, Iterator
 
@@ -23,6 +24,16 @@ OPENALEX_TYPES = {
     "thesis": ["dissertation"],
     "report": ["report"],
 }
+
+# OpenAlex's default (stemmed) search rejects * and ? as wildcards with HTTP 400. Users type
+# them as truncation (neutron*, colo?r) and titles end with them (a question, a footnote mark),
+# and stemming already matches the word endings, so they are removed (full-width forms too).
+WILDCARDS = re.compile(r"[*?\uff0a\uff1f]+")
+
+
+def search_text(query: str) -> str:
+    """`query` without the wildcard characters OpenAlex's default search refuses."""
+    return " ".join(WILDCARDS.sub("", query).split())
 
 
 def classify_work(work: dict) -> tuple[str, str]:
@@ -152,6 +163,11 @@ class OpenAlexConnector:
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
         cursor: str | None = "*"
         first_page = True
+        text = search_text(profile.query or "")
+        if text != (profile.query or "").strip():
+            self.warnings.append(
+                f"OpenAlex searched for '{text}': its default search does not accept the "
+                "wildcards * and ?, and it already matches word endings.")
         while cursor:
             params = {
                 "filter": build_filter(profile),
@@ -159,8 +175,8 @@ class OpenAlexConnector:
                 "cursor": cursor,
                 "select": SELECT,
             }
-            if profile.query:
-                params["search"] = profile.query
+            if text:
+                params["search"] = text
             if self._email:
                 params["mailto"] = self._email
             if self._api_key:
@@ -182,6 +198,9 @@ class OpenAlexConnector:
 
     def search_topics(self, text: str, limit: int = 5) -> list[dict]:
         """Topics whose name or description matches `text`, as OpenAlex ranks them."""
+        text = search_text(text)
+        if not text:
+            return []
         params: dict = {"search": text, "per-page": limit, "select": TOPIC_SELECT}
         if self._email:
             params["mailto"] = self._email
