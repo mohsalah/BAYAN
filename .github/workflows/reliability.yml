@@ -13,7 +13,7 @@ on:
         default: "50"
       known_items:
         description: "Known-item searches per area"
-        default: "10"
+        default: "6"
       from_year:
         description: "First year"
         default: "2006"
@@ -40,7 +40,7 @@ env:
   PYTHONPATH: .
   RUN_ID: gh-${{ github.run_id }}
   PER_SEARCH: ${{ inputs.per_search || '50' }}
-  KNOWN_ITEMS: ${{ inputs.known_items || '10' }}
+  KNOWN_ITEMS: ${{ inputs.known_items || '6' }}
   FROM_YEAR: ${{ inputs.from_year || '2006' }}
   TO_YEAR: ${{ inputs.to_year || '2025' }}
   PER_FIELD: ${{ inputs.per_field || '' }}

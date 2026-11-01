@@ -30,7 +30,8 @@ from .client import Client, FetchError
 from .metrics import scorecard_row, search_rows, topic_map
 
 DOIS_PER_AREA = 10
-AREA_CREDITS = 650  # OpenAlex credits one area uses (measured: 7,028 for 11 areas, run 41270425902)
+AREA_CREDITS = 300  # OpenAlex credits one area may use (650 before title searches dropped the
+# per-year spread and the area went from 18 to 12 searches; re-measure after a run)
 
 
 def free_port() -> int:

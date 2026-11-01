@@ -36,8 +36,9 @@ class AgentConfig:
     year_from: int = 2006
     year_to: int = 2025
     per_search: int = 50
-    topic_queries: int = 3
-    known_items: int = 10
+    topic_queries: int = 2
+    gold_topics: int = 1  # extra searches for topics of gold papers not otherwise searched
+    known_items: int = 6
     export_n: int = 10
     seed: int = 1
     run_id: str = "run"
@@ -110,16 +111,22 @@ class AreaAgent:
 
     def search(self, kind: str, query: str, *, years: tuple[int, int] | None = None,
                languages: list[str] | None = None, libraries: list[str] | None = None,
-               extra: dict | None = None) -> dict:
+               extra: dict | None = None, quota: bool = True) -> dict:
         y0, y1 = years or (self.cfg.year_from, self.cfg.year_to)
         libs = libraries or self.libraries
         profile = {"query": query, "year_from": y0, "year_to": y1,
                    "document_types": ["peer_reviewed", "proceedings", "thesis", "report",
                                       "other"],
                    "languages": languages or ["en", "ar", "fr", "zh", "de", "es"]}
-        body = {"profile": profile, "libraries": libs, "quota_total": self.cfg.per_search}
+        # A title search leaves "Papers wanted" empty, as the search form does by default: the
+        # per-year spread made BAYAN scan ~2,000 records (10 OpenAlex pages) to fill years a
+        # single paper's hits never reach.
+        body = {"profile": profile, "libraries": libs}
+        if quota:
+            body["quota_total"] = self.cfg.per_search
         log = {"query": query, "years": [y0, y1], "libraries": libs,
-               "languages": profile["languages"], **(extra or {})}
+               "languages": profile["languages"], "quota": body.get("quota_total"),
+               **(extra or {})}
         gate = ARXIV_GATE if "arxiv" in libs else None
         if gate:
             gate.acquire()
@@ -137,6 +144,8 @@ class AreaAgent:
             step["shortfalls"] = summary.get("shortfalls")
             step["warnings"] = (summary.get("warnings") or [])[:5]
             step["duplicates"] = summary.get("duplicates")
+            step["scanned"] = summary.get("scanned")  # records read: the credit cost driver
+            step["stopped"] = summary.get("stopped")
             # DOIs that BAYAN's own Crossref lookup filled in (not from the library record)
             step["doi_matches"] = [m.get("doi") for m in summary.get("doi_matches") or []
                                    if m.get("doi")]
@@ -194,10 +203,10 @@ class AreaAgent:
             searched = set(queries)
             extra_topics = list(dict.fromkeys(r["query"] for r in self.gold
                                               if r["query"] and r["query"] not in searched))
-            for q in extra_topics[:2]:
+            for q in extra_topics[: self.cfg.gold_topics]:
                 self.search("topic", q, extra={"query_origin": "gold_topic"})
             for r in self.known_sample():
-                self.search("known_item", r["title"], extra={
+                self.search("known_item", r["title"], quota=False, extra={
                     "gold_id": r["openalex_id"], "gold_doi": r["doi"], "stratum": r["stratum"]})
             if first is not None:
                 self.export_bibtex(first["run_id"], first["papers"])

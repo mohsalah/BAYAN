@@ -405,10 +405,14 @@ PYTHONPATH=. .venv/bin/python -m reliability publish         # writes bayan/stat
 
 `OPENALEX_API_KEY` (environment or `.env`) is used when present. Without it, OpenAlex limits
 the network to a shared free daily budget. A free key gives 10,000 credits a day; a text-search page costs 10
-credits and a filter-only page 1, so one area costs about 640 credits (measured) and a full
-run about 160,000: about 14 areas a day on one free key, or bought credit. `--per-field 1`
-runs a 26-area pilot (two days). On GitHub, `DOMAINS=3,4` in `reliability/cloud_run.env` (or the
-`domains` input) runs only those OpenAlex domains, to finish a run on a later day. Responses are cached in `reliability/cache/`
+credits and a filter-only page 1. An area runs 12 searches (subfield name, 2 topics, 1 gold
+topic, 6 known papers by title, a boolean query, another language); title searches leave
+"Papers wanted" empty, as the search form does, because the per-year spread made each one
+read about 2,000 records. That cut an area from about 640 credits to an estimated 250 (each
+search logs `scanned`, so the next run measures it). `--per-field 3` (stage 1) tests the 3
+largest subfields of all 26 fields: 77 areas holding 63% of the works, about 2 days on one
+free key. On GitHub, `DOMAINS=1,2` in `reliability/cloud_run.env` (or the `domains` input)
+runs only those OpenAlex domains, so a run can be finished on a later day. Responses are cached in `reliability/cache/`
 (not committed). The app shows the published result under "Reliability" (`GET /api/reliability`).
 
 ## Run locally

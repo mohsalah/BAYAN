@@ -250,6 +250,10 @@ def test_agent_runs_a_whole_episode_against_bayan(tmp_path):
     assert all(s["status"] in (200, 201, 422) for s in ep["steps"]), ep["steps"]
     known = next(s for s in ep["steps"] if s["kind"] == "known_item")
     assert metrics.rank_of(known["papers"], GOLD[0]) is not None
+    # a title search leaves "Papers wanted" empty; topic searches keep the per-year spread
+    topic = next(s for s in ep["steps"] if s["kind"] == "topic")
+    assert known["quota"] is None and topic["quota"] == cfg.per_search
+    assert known["scanned"] is not None and known["stopped"]
     assert special_query(AREA) == '"Musicology and Musical Analysis" AND (sonata OR harmony)'
 
 

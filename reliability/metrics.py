@@ -99,8 +99,9 @@ def search_rows(episode: dict, gold: list[dict], topics: dict) -> list[dict]:
             "year_from": y0, "year_to": y1, "status": st.get("status"),
             "error": st.get("error", ""), "seconds": st.get("seconds"),
             "found": st.get("found") if st.get("status") == 200 else 0,
-            "requested": 50, "duplicates": st.get("duplicates") or 0,
+            "requested": st.get("quota") or 50, "duplicates": st.get("duplicates") or 0,
             "shortfall_years": len(st.get("shortfalls") or {}),
+            "scanned": st.get("scanned"), "stopped": st.get("stopped") or "",
             "results_with_topic": len(known),
             "precision_subfield": (sum(s == area["id"] for s, _ in known) / len(known)
                                    if known else None),
