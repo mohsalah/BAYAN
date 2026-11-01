@@ -4,7 +4,6 @@ import json
 import sqlite3
 from collections import Counter
 from collections.abc import Iterator
-from itertools import zip_longest
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -43,10 +42,18 @@ _DONE = object()
 
 
 def _interleave(streams: list[Iterator[Paper]]) -> Iterator[Paper]:
-    """Round-robin over libraries so a full first library cannot starve the others."""
-    for round_ in zip_longest(*streams, fillvalue=_DONE):
-        for paper in round_:
-            if paper is not _DONE:
+    """Round-robin over libraries so a full first library cannot starve the others.
+
+    Each record is read only when it is wanted: reading a whole round ahead made every other
+    library fetch its next page for records that a full result then threw away.
+    """
+    active = list(streams)
+    while active:
+        for stream in list(active):
+            paper = next(stream, _DONE)
+            if paper is _DONE:
+                active.remove(stream)
+            else:
                 yield paper
 
 
@@ -93,12 +100,16 @@ def _counted(connector: Connector, profile: SearchProfile, state: dict) -> Itera
 
 
 def _scan(stream: Iterator[Paper], limit: int, state: dict) -> Iterator[Paper]:
+    # Checked after each record, so reaching the limit never reads (and pages for) one more.
+    if state["scanned"] >= limit:
+        state["stopped"] = "scan_limit"
+        return
     for paper in stream:
+        state["scanned"] += 1
+        yield paper
         if state["scanned"] >= limit:
             state["stopped"] = "scan_limit"
             return
-        state["scanned"] += 1
-        yield paper
 
 
 def _type_filtered(stream: Iterator[Paper], profile: SearchProfile, state: dict) -> Iterator[Paper]:
@@ -181,12 +192,14 @@ def run_search(
                    max_results * SCAN_FACTOR, state)
     stream = _type_filtered(stream, profile, state)
     stream = _geo_filtered(stream, profile, state)
-    if quotas is None:
-        stream = _first(stream, wanted, state)
     lookup = DoiLookup(conn, doi_lookup, doi_budget) if doi_lookup is not None else None
-    result = collect(stream, quotas, enrich=lookup)
+    # Without quotas the limit counts kept papers, after de-duplication, so a paper found in
+    # two libraries does not use up two places.
+    result = collect(stream, quotas, enrich=lookup, limit=None if quotas else wanted)
     if quotas is not None and not result.shortfalls:
         state["stopped"] = "complete"
+    elif quotas is None and len(result.papers) >= wanted:
+        state["stopped"] = "limit"
 
     geography = _geography_summary(profile, result.papers, state)
     by_category = Counter(p.category for p in result.papers)
@@ -237,18 +250,6 @@ def run_search(
         )
     conn.commit()
     return {"id": run_id, "summary": summary}
-
-
-def _first(stream: Iterator[Paper], n: int, state: dict) -> Iterator[Paper]:
-    # Stop at the n-th paper without reading one more: checking for an (n+1)-th cost a whole
-    # extra library page (10 OpenAlex credits) whenever n fell on a page boundary.
-    if n <= 0:
-        return
-    for count, paper in enumerate(stream, 1):
-        yield paper
-        if count >= n:
-            state["stopped"] = "limit"
-            return
 
 
 def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:

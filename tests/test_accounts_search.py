@@ -186,20 +186,3 @@ def test_connector_warnings_appear_in_run_summary(setup):
     register(client)
     assert search(client).json()["summary"]["warnings"] == fake.warnings
 
-
-def test_the_result_limit_does_not_read_one_paper_more():
-    # Peeking for an (n+1)-th paper cost a whole extra OpenAlex page (found by the M27 bench).
-    from bayan.search import _first
-
-    pulled = []
-
-    def stream():
-        for i in range(5):
-            pulled.append(i)
-            yield i
-
-    state = {"stopped": "exhausted"}
-    assert list(_first(stream(), 3, state)) == [0, 1, 2]
-    assert pulled == [0, 1, 2] and state["stopped"] == "limit"
-    state = {"stopped": "exhausted"}
-    assert list(_first(iter([1, 2]), 3, state)) == [1, 2] and state["stopped"] == "exhausted"
