@@ -40,16 +40,26 @@ def get_with_retry(
     sleep: Callable[[float], None] = time.sleep,
     max_attempts: int = 5,
     headers: dict | None = None,
+    time_limit: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> httpx.Response:
     """GET, retrying 429/5xx and transport errors; honours a numeric Retry-After.
 
+    `time_limit` bounds the whole call, tries and waits included: each request gets only the
+    time left as its timeout, and no wait or new try starts once it is used up.
     The error text carries only the library label and status, never the URL or parameters.
     """
     error = "unknown error"
+    end = clock() + time_limit if time_limit is not None else None
     for attempt in range(1, max_attempts + 1):
         response = None
+        left = end - clock() if end is not None else None
+        if left is not None and left <= 0:
+            error = f"{error}; out of time" if attempt > 1 else "out of time"
+            break
         try:
-            response = client.get(url, params=params, headers=headers)
+            kw = {"timeout": left} if left is not None else {}
+            response = client.get(url, params=params, headers=headers, **kw)
         except httpx.TransportError as exc:
             error = type(exc).__name__
         else:
@@ -60,7 +70,11 @@ def get_with_retry(
                 break
         if attempt < max_attempts:
             retry_after = response.headers.get("Retry-After") if response is not None else None
-            sleep(retry_wait(retry_after, attempt, label, error))
+            wait = retry_wait(retry_after, attempt, label, error)
+            if end is not None and clock() + wait >= end:
+                error = f"{error}; out of time"  # the wait alone would pass the limit
+                break
+            sleep(wait)
     raise ConnectorError(f"{label} request failed: {error}")
 
 

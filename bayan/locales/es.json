@@ -192,6 +192,7 @@
   "needs.upload": "Suba su propio PDF:",
   "needs.upload_aria": "Subir su propio PDF para {title}",
   "notes.doi": "Búsqueda automática de DOI (Crossref): {matched} encontrado(s), {nomatch} sin coincidencia fiable, {failed} fallido(s), {cache} desde la caché.",
+  "notes.doi_skipped": "{n} artículos sin DOI no se buscaron en Crossref (se alcanzó el límite de búsquedas de esta consulta); se muestran sin DOI.",
   "notes.shortfalls": "Faltantes (se encontraron menos artículos de los pedidos, sin rellenar): {list}",
   "notes.type_dropped": "{n} artículos devueltos fueron descartados por el filtro de tipo de referencia.",
   "notes.unapplied": "Filtros que una biblioteca no pudo aplicar: {list}. Los resultados no se adivinaron ni se refiltraron para ellos.",

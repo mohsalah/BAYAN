@@ -192,6 +192,7 @@
   "needs.upload": "上传您自己的 PDF：",
   "needs.upload_aria": "为 {title} 上传您自己的 PDF",
   "notes.doi": "自动 DOI 查找（Crossref）：找到 {matched} 个，{nomatch} 个无可靠匹配，{failed} 个失败，{cache} 个来自缓存。",
+  "notes.doi_skipped": "有 {n} 篇没有 DOI 的论文未在 Crossref 查找（本次搜索已达查找上限）；它们显示为无 DOI。",
   "notes.shortfalls": "缺口（找到的论文少于要求数量，未凑数）：{list}",
   "notes.type_dropped": "有 {n} 篇返回的论文被文献类型筛选剔除。",
   "notes.unapplied": "文献库无法应用的筛选条件：{list}。对这些条件未做猜测或事后筛选。",

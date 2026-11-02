@@ -192,6 +192,7 @@
   "needs.upload": "Upload your own PDF:",
   "needs.upload_aria": "Upload your own PDF for {title}",
   "notes.doi": "Automatic DOI lookup (Crossref): {matched} found, {nomatch} no confident match, {failed} failed, {cache} from cache.",
+  "notes.doi_skipped": "{n} papers without a DOI were not looked up at Crossref (this search's lookup limit was reached); they are shown without a DOI.",
   "notes.shortfalls": "Shortfalls (fewer papers found than requested, not padded): {list}",
   "notes.type_dropped": "{n} returned papers were dropped by the reference-type filter.",
   "notes.unapplied": "Filters a library could not apply: {list}. Results were not guessed or post-filtered for these.",
