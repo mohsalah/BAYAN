@@ -192,6 +192,7 @@
   "needs.upload": "Eigenes PDF hochladen:",
   "needs.upload_aria": "Eigenes PDF für {title} hochladen",
   "notes.doi": "Automatische DOI-Suche (Crossref): {matched} gefunden, {nomatch} ohne sicheren Treffer, {failed} fehlgeschlagen, {cache} aus dem Cache.",
+  "notes.doi_skipped": "Für {n} Arbeiten ohne DOI wurde nicht bei Crossref gesucht (das Suchlimit dieser Suche war erreicht); sie werden ohne DOI angezeigt.",
   "notes.shortfalls": "Fehlmengen (weniger Arbeiten gefunden als angefordert, nicht aufgefüllt): {list}",
   "notes.type_dropped": "{n} zurückgegebene Arbeiten wurden vom Referenztyp-Filter verworfen.",
   "notes.unapplied": "Filter, die eine Bibliothek nicht anwenden konnte: {list}. Die Ergebnisse wurden dafür nicht geraten oder nachgefiltert.",

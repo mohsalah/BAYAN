@@ -36,7 +36,7 @@ def quota_weights(profile: SearchProfile, weighting: str) -> dict[int, int]:
 
 
 NO_DOI_LOOKUP = {"attempted": 0, "matched": 0, "no_match": 0, "failed": 0,
-                 "skipped_over_budget": 0, "cache_hits": 0}
+                 "skipped_over_budget": 0, "skipped_over_time": 0, "cache_hits": 0}
 
 _DONE = object()
 
@@ -180,6 +180,7 @@ def run_search(
     max_results: int,
     doi_lookup: DoiLooker | None = None,
     doi_budget: int = 0,
+    doi_seconds: float | None = None,
 ) -> dict:
     profile = request.profile
     quotas = None
@@ -192,7 +193,8 @@ def run_search(
                    max_results * SCAN_FACTOR, state)
     stream = _type_filtered(stream, profile, state)
     stream = _geo_filtered(stream, profile, state)
-    lookup = DoiLookup(conn, doi_lookup, doi_budget) if doi_lookup is not None else None
+    lookup = (DoiLookup(conn, doi_lookup, doi_budget, doi_seconds)
+              if doi_lookup is not None else None)
     # Without quotas the limit counts kept papers, after de-duplication, so a paper found in
     # two libraries does not use up two places.
     result = collect(stream, quotas, enrich=lookup, limit=None if quotas else wanted)

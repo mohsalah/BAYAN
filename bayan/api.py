@@ -491,6 +491,7 @@ def create_app(
             return run_search(
                 conn, user["id"], body, connectors, settings.search_max_results,
                 doi_lookup=make_connector("crossref"), doi_budget=settings.doi_lookup_budget,
+                doi_seconds=settings.doi_lookup_seconds,
             )
         except ConnectorError as exc:
             raise HTTPException(502, str(exc)) from exc
