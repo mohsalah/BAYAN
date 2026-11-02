@@ -1251,6 +1251,8 @@ function renderRun(r, relabel) {
   if (s.filtered_by_type) notes.push(el('p', { class: 'note' }, t('notes.type_dropped', { n: s.filtered_by_type })));
   const d = s.doi_lookup;
   if (d && d.attempted) notes.push(el('p', { class: 'note' }, t('notes.doi', { matched: d.matched, nomatch: d.no_match, failed: d.failed, cache: d.cache_hits })));
+  const skipped = d ? (d.skipped_over_budget || 0) + (d.skipped_over_time || 0) : 0;
+  if (skipped) notes.push(el('p', { class: 'note' }, t('notes.doi_skipped', { n: skipped })));
   const sf = Object.entries(s.shortfalls || {});
   if (sf.length) notes.push(el('p', { class: 'warnmsg' }, t('notes.shortfalls', { list: sf.map(([y, v]) => y + ' ' + v.collected + '/' + v.quota).join(', ') })));
   $('notes').replaceChildren(...notes);

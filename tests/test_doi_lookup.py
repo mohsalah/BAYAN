@@ -128,12 +128,12 @@ def test_budget_is_enforced_and_reported():
 
 
 def test_time_limit_stops_lookups_and_is_reported():
-    # Crossref title queries take ~3 s each; 20 of them held a search for a minute (M27 bench).
-    calls, now = [], [0.0]
+    calls, limits, now = [], [], [0.0]
 
     class Slow:
-        def lookup_doi(self, title, first_author, year):
+        def lookup_doi(self, title, first_author, year, time_limit=None):
             calls.append(title)
+            limits.append(time_limit)
             now[0] += 4.0  # each lookup takes 4 s
             return None
 
@@ -142,6 +142,7 @@ def test_time_limit_stops_lookups_and_is_reported():
         lookup(paper(str(i), title=f"Distinct title number {i} on reactors"))
     assert len(calls) == 3  # 0, 4 and 8 s spent before each: the third still starts
     assert lookup.counts["attempted"] == 3 and lookup.counts["skipped_over_time"] == 3
+    assert limits == [10, 6, 2]  # each lookup may use only the time that is left
 
 
 def test_no_time_limit_by_default_in_the_class():
@@ -150,6 +151,46 @@ def test_no_time_limit_by_default_in_the_class():
     for i in range(3):
         lookup(paper(str(i), title=f"Distinct title number {i} on reactors"))
     assert len(calls) == 3 and lookup.counts["skipped_over_time"] == 0
+
+
+def test_a_slow_crossref_lookup_cannot_overrun_its_time_limit():
+    # 503 with Retry-After 30: without the limit the lookup would sleep 30 s and try again.
+    now, timeouts, sleeps = [0.0], [], []
+
+    def handler(request):
+        timeouts.append(request.extensions["timeout"]["read"])
+        now[0] += 3.0
+        return httpx.Response(503, headers={"Retry-After": "30"})
+
+    from bayan.connectors.base import get_with_retry
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(Exception, match="Crossref request failed: HTTP 503"):
+        get_with_retry(client, "https://api.crossref.org/works", {}, "Crossref",
+                       sleeps.append, 2, time_limit=10, clock=lambda: now[0])
+    assert timeouts == [10] and sleeps == []  # one try, given 10 s; the 30 s wait is skipped
+
+
+def test_retries_stop_when_the_time_limit_is_used_up():
+    now, sleeps = [0.0], []
+
+    def handler(request):
+        now[0] += 6.0
+        return httpx.Response(503)  # no Retry-After: waits 2 s, which still fits once
+
+    from bayan.connectors.base import get_with_retry
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(Exception, match="out of time"):
+        get_with_retry(client, "https://api.crossref.org/works", {}, "Crossref", lambda s: (sleeps.append(s),
+                       now.__setitem__(0, now[0] + s)), 5, time_limit=10, clock=lambda: now[0])
+    assert sleeps == [2.0]  # 6 s + 2 s wait + 6 s try = 14 s: no third try after the limit
+
+
+@pytest.mark.parametrize("raw", ["nan", "inf", "-1", "soon"])
+def test_lookup_seconds_setting_must_be_a_real_number_of_seconds(raw, monkeypatch, tmp_path):
+    from bayan.config import load_settings
+    monkeypatch.setenv("BAYAN_DOI_LOOKUP_SECONDS", raw)
+    with pytest.raises(ValueError, match="BAYAN_DOI_LOOKUP_SECONDS"):
+        load_settings()
 
 
 def test_crossref_5xx_is_counted_not_raised_and_not_cached():
@@ -202,10 +243,10 @@ def test_no_lookup_is_spent_on_papers_the_quota_drops():
 
 # ---- through the API ----
 
-def api_settings(tmp_path, budget=50):
+def api_settings(tmp_path, budget=50, seconds=15.0):
     return Settings(database_path=tmp_path / "t.sqlite", search_max_results=50,
                     searches_per_hour=5, contact_email="me@example.org",
-                    doi_lookup_budget=budget)
+                    doi_lookup_budget=budget, doi_lookup_seconds=seconds)
 
 
 def sign_in(client):
@@ -307,3 +348,31 @@ def test_search_survives_crossref_outage(tmp_path):
         assert res.status_code == 200, res.text
         s = res.json()["summary"]
         assert s["found"] == 1 and s["doi_lookup"]["failed"] == 1
+
+
+def test_the_lookup_time_setting_reaches_the_search(tmp_path):
+    settings = api_settings(tmp_path, seconds=0)
+    real = default_connector_factory(settings)
+    no_doi = {"id": "https://openalex.org/W2", "doi": None, "title": "Unrelated spectral work",
+              "publication_year": 2020, "type": "article", "language": "en"}
+    crossref_calls = []
+
+    def handler(request):
+        if "crossref" in str(request.url):
+            crossref_calls.append(request)
+            return httpx.Response(200, json={"message": {"items": []}})
+        return httpx.Response(200, json={"results": [no_doi], "meta": {"next_cursor": None}})
+
+    def factory(lib):
+        conn = real(lib)
+        conn._client = httpx.Client(transport=httpx.MockTransport(handler))
+        return conn
+
+    with TestClient(create_app(settings, connector_factory=factory)) as client:
+        sign_in(client)
+        res = client.post("/api/search", json={"libraries": ["openalex"],
+                                               "profile": {"year_from": 2015,
+                                                           "document_types": ["other"]}})
+        assert res.status_code == 200, res.text
+        lookup = res.json()["summary"]["doi_lookup"]
+    assert crossref_calls == [] and lookup["skipped_over_time"] == 1

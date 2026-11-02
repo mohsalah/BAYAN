@@ -19,7 +19,8 @@ DOI_SOURCE = "crossref_lookup"
 
 
 class DoiLooker(Protocol):
-    def lookup_doi(self, title: str, first_author: str, year: int) -> DoiMatch | None: ...
+    def lookup_doi(self, title: str, first_author: str, year: int,
+                   time_limit: float | None = None) -> DoiMatch | None: ...
 
 
 def cache_key(paper: Paper) -> str:
@@ -34,8 +35,8 @@ class DoiLookup:
         self._conn = conn
         self._looker = looker
         self._remaining = max(budget, 0)
-        # Crossref title queries take ~3 s each, so 20 of them held a search for a minute
-        # (measured by the M27 bench). `seconds` caps the time spent waiting on Crossref.
+        # `seconds` caps the total time a run waits on Crossref; each lookup gets only what is
+        # left, so a slow request cannot overrun it.
         self._seconds = seconds
         self._clock = clock
         self._spent = 0.0
@@ -58,14 +59,19 @@ class DoiLookup:
         if self._remaining <= 0:
             self.counts["skipped_over_budget"] += 1
             return
-        if self._seconds is not None and self._spent >= self._seconds:
+        left = self._seconds - self._spent if self._seconds is not None else None
+        if left is not None and left <= 0:
             self.counts["skipped_over_time"] += 1
             return
         self._remaining -= 1
         self.counts["attempted"] += 1
         started = self._clock()
         try:
-            match = self._looker.lookup_doi(paper.title, paper.first_author, paper.year)
+            if left is None:
+                match = self._looker.lookup_doi(paper.title, paper.first_author, paper.year)
+            else:
+                match = self._looker.lookup_doi(paper.title, paper.first_author, paper.year,
+                                                time_limit=left)
         except ConnectorError:
             self.counts["failed"] += 1  # not cached: a later run may succeed
             return

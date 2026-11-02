@@ -1,5 +1,6 @@
 """Settings read from the environment. Secrets never appear in repr or logs."""
 
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,18 @@ class Settings:
     concept_merges_per_hour: int = 10  # synonym passes per user per hour
 
 
+def _seconds(name: str, default: str) -> float:
+    """A number of seconds >= 0 from the environment; anything else stops startup."""
+    raw = os.environ.get(name, default)
+    try:
+        value = float(raw)
+    except ValueError:
+        value = math.nan
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"{name} must be a number of seconds, 0 or more (got {raw!r})")
+    return value
+
+
 def load_settings() -> Settings:
     load_dotenv()
     return Settings(
@@ -64,7 +77,7 @@ def load_settings() -> Settings:
         concept_readings_per_hour=int(os.environ.get("BAYAN_CONCEPT_READINGS_PER_HOUR", "20")),
         concept_merges_per_hour=int(os.environ.get("BAYAN_CONCEPT_MERGES_PER_HOUR", "10")),
         doi_lookup_budget=int(os.environ.get("BAYAN_DOI_LOOKUP_BUDGET", "50")),
-        doi_lookup_seconds=float(os.environ.get("BAYAN_DOI_LOOKUP_SECONDS", "15")),
+        doi_lookup_seconds=_seconds("BAYAN_DOI_LOOKUP_SECONDS", "15"),
         pdf_root=Path(os.environ.get("BAYAN_PDF_ROOT", "pdfs")),
         downloads_per_hour=int(os.environ.get("BAYAN_DOWNLOADS_PER_HOUR", "100")),
         download_host_delay=float(os.environ.get("BAYAN_DOWNLOAD_HOST_DELAY", "1.0")),

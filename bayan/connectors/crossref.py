@@ -155,7 +155,8 @@ class CrossrefConnector:
         self._max_attempts = max_attempts
         self._rows = rows
 
-    def lookup_doi(self, title: str, first_author: str, year: int) -> DoiMatch | None:
+    def lookup_doi(self, title: str, first_author: str, year: int,
+                   time_limit: float | None = None) -> DoiMatch | None:
         """Find the DOI of a known paper, or None. Raises ConnectorError if Crossref fails.
 
         Accepts a record only if the title is >= 0.95 similar, the year is within +/-1 and,
@@ -171,7 +172,7 @@ class CrossrefConnector:
         response = get_with_retry(
             self._client, BASE_URL, params, "Crossref", self._sleep,
             min(self._max_attempts, LOOKUP_ATTEMPTS),
-            headers={"User-Agent": user_agent(self._email)},
+            headers={"User-Agent": user_agent(self._email)}, time_limit=time_limit,
         )
         try:
             items = (response.json().get("message") or {}).get("items") or []
