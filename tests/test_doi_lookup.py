@@ -115,7 +115,7 @@ def test_cache_hit_and_cached_no_match_are_not_repeated():
     assert again_hit.doi == "10.1234/found.1" and again_hit.doi_source == "crossref_lookup"
     assert again_miss.doi == ""
     assert second.counts == {"attempted": 0, "matched": 0, "no_match": 0, "failed": 0,
-                             "skipped_over_budget": 0, "cache_hits": 2}
+                             "skipped_over_budget": 0, "skipped_over_time": 0, "cache_hits": 2}
 
 
 def test_budget_is_enforced_and_reported():
@@ -125,6 +125,31 @@ def test_budget_is_enforced_and_reported():
         lookup(paper(str(i), title=f"Distinct title number {i} on reactors"))
     assert len(calls) == 2
     assert lookup.counts["attempted"] == 2 and lookup.counts["skipped_over_budget"] == 3
+
+
+def test_time_limit_stops_lookups_and_is_reported():
+    # Crossref title queries take ~3 s each; 20 of them held a search for a minute (M27 bench).
+    calls, now = [], [0.0]
+
+    class Slow:
+        def lookup_doi(self, title, first_author, year):
+            calls.append(title)
+            now[0] += 4.0  # each lookup takes 4 s
+            return None
+
+    lookup = DoiLookup(db(), Slow(), budget=50, seconds=10, clock=lambda: now[0])
+    for i in range(6):
+        lookup(paper(str(i), title=f"Distinct title number {i} on reactors"))
+    assert len(calls) == 3  # 0, 4 and 8 s spent before each: the third still starts
+    assert lookup.counts["attempted"] == 3 and lookup.counts["skipped_over_time"] == 3
+
+
+def test_no_time_limit_by_default_in_the_class():
+    calls = []
+    lookup = DoiLookup(db(), connector([], calls=calls), budget=3)
+    for i in range(3):
+        lookup(paper(str(i), title=f"Distinct title number {i} on reactors"))
+    assert len(calls) == 3 and lookup.counts["skipped_over_time"] == 0
 
 
 def test_crossref_5xx_is_counted_not_raised_and_not_cached():
@@ -248,7 +273,7 @@ def test_search_fills_missing_dois_stores_duplicates_once_and_reports_counts(tmp
         assert s["by_library"] == {"openalex": 2, "arxiv": 0} and "crossref" not in s["by_library"]
         # arXiv paper: matched (and merged into the OpenAlex work); W2: no confident match
         assert s["doi_lookup"] == {"attempted": 2, "matched": 1, "no_match": 1, "failed": 0,
-                                   "skipped_over_budget": 0, "cache_hits": 0}
+                                   "skipped_over_budget": 0, "skipped_over_time": 0, "cache_hits": 0}
         detail = client.get(f"/api/runs/{run['id']}").json()
         assert sorted(p["doi"] for p in detail["papers"]) == ["", "10.1234/found.1"]
 

@@ -21,6 +21,7 @@ class Settings:
     searches_per_hour: int = 20
     search_max_results: int = 200
     doi_lookup_budget: int = 50  # Crossref DOI lookups per run (cache hits are free)
+    doi_lookup_seconds: float = 15.0  # time a run may spend waiting on those lookups
     pdf_root: Path = Path("pdfs")  # pdfs/<user_id>/<source>/<paper_id>.pdf
     downloads_per_hour: int = 100  # papers a user may queue for download per hour
     download_host_delay: float = 1.0  # minimum seconds between requests to the same host
@@ -63,6 +64,7 @@ def load_settings() -> Settings:
         concept_readings_per_hour=int(os.environ.get("BAYAN_CONCEPT_READINGS_PER_HOUR", "20")),
         concept_merges_per_hour=int(os.environ.get("BAYAN_CONCEPT_MERGES_PER_HOUR", "10")),
         doi_lookup_budget=int(os.environ.get("BAYAN_DOI_LOOKUP_BUDGET", "50")),
+        doi_lookup_seconds=float(os.environ.get("BAYAN_DOI_LOOKUP_SECONDS", "15")),
         pdf_root=Path(os.environ.get("BAYAN_PDF_ROOT", "pdfs")),
         downloads_per_hour=int(os.environ.get("BAYAN_DOWNLOADS_PER_HOUR", "100")),
         download_host_delay=float(os.environ.get("BAYAN_DOWNLOAD_HOST_DELAY", "1.0")),
