@@ -38,9 +38,12 @@ def main(argv: list[str] | None = None) -> int:
     rows = []
     try:
         http = httpx.Client(base_url=url, timeout=300)
-        http.post("/api/auth/register", json={"email": f"geometry-{args.run_id}@bench.invalid",
-                                             "password": PASSWORD}).raise_for_status()
-        for d in designs:
+        for i, d in enumerate(designs):
+            if i % 15 == 0:  # BAYAN allows 20 searches per user per hour: a new user per batch
+                http.cookies.clear()
+                email = f"geometry-{args.run_id}-{i}@bench.invalid"
+                http.post("/api/auth/register",
+                          json={"email": email, "password": PASSWORD}).raise_for_status()
             types = ["peer_reviewed", "proceedings", "thesis", "report", "other"]
             profile = {"query": d["query"], "year_from": 1950, "year_to": 2026,
                        "document_types": types, "languages": ["en"]}
