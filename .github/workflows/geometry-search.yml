@@ -1,0 +1,36 @@
+name: Geometry-bank search
+# BAYAN finds literature for each reactor / shielding design in geometry/designs.json.
+# Start it by pushing to the geometry-search-run branch or from the Actions tab.
+# Only public bibliographic metadata is fetched; results are a run artifact.
+on:
+  workflow_dispatch:
+  push:
+    branches: [geometry-search-run]
+permissions:
+  contents: read
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Search every design
+        env:
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+        run: python -m geometry.run --run-id "gh-${{ github.run_id }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: geometry-${{ github.run_id }}
+          path: |
+            geometry/results/
+            !geometry/results/**/raw/app.sqlite*
+            !geometry/results/**/raw/pdfs/
+          retention-days: 30

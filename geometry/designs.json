@@ -1,0 +1,210 @@
+[
+ {
+  "id": "westinghouse-4loop-17x17",
+  "query": "Westinghouse 4-loop PWR 17x17 fuel assembly"
+ },
+ {
+  "id": "ap1000",
+  "query": "AP1000 reactor core design"
+ },
+ {
+  "id": "epr",
+  "query": "EPR European Pressurized Reactor core design"
+ },
+ {
+  "id": "apr1400",
+  "query": "APR1400 reactor core design"
+ },
+ {
+  "id": "opr1000",
+  "query": "OPR1000 Korean standard nuclear power plant core"
+ },
+ {
+  "id": "hpr1000",
+  "query": "HPR1000 Hualong One reactor core"
+ },
+ {
+  "id": "cap1400",
+  "query": "CAP1400 reactor core design"
+ },
+ {
+  "id": "nuscale",
+  "query": "NuScale power module core design"
+ },
+ {
+  "id": "vver-1000",
+  "query": "VVER-1000 core benchmark"
+ },
+ {
+  "id": "vver-1200",
+  "query": "VVER-1200 AES-2006 reactor core"
+ },
+ {
+  "id": "rbmk-1000",
+  "query": "RBMK-1000 fuel channel lattice"
+ },
+ {
+  "id": "bwr-gen-bwr4",
+  "query": "BWR/4 fuel assembly lattice Peach Bottom"
+ },
+ {
+  "id": "abwr",
+  "query": "Advanced Boiling Water Reactor ABWR core"
+ },
+ {
+  "id": "esbwr",
+  "query": "ESBWR natural circulation core design"
+ },
+ {
+  "id": "candu-6",
+  "query": "CANDU-6 reactor lattice 37-element"
+ },
+ {
+  "id": "acr-1000-canflex",
+  "query": "CANFLEX 43-element fuel bundle ACR-1000"
+ },
+ {
+  "id": "ipwr-phwr-700",
+  "query": "Indian PHWR 700 MWe core"
+ },
+ {
+  "id": "agr",
+  "query": "Advanced Gas-cooled Reactor AGR fuel graphite core"
+ },
+ {
+  "id": "htr-pm",
+  "query": "HTR-PM pebble bed reactor core"
+ },
+ {
+  "id": "candu-37-element-bundle",
+  "query": "CANDU 37-element fuel bundle geometry"
+ },
+ {
+  "id": "canflex-43-element-bundle",
+  "query": "CANFLEX 43-element bundle geometry"
+ },
+ {
+  "id": "fuel-pellet-comparison",
+  "query": "nuclear fuel pellet dimensions cladding"
+ },
+ {
+  "id": "msre",
+  "query": "Molten Salt Reactor Experiment MSRE core"
+ },
+ {
+  "id": "imsr-or-msbr",
+  "query": "Molten Salt Breeder Reactor MSBR core design"
+ },
+ {
+  "id": "ebr-ii",
+  "query": "EBR-II fast reactor core subassembly"
+ },
+ {
+  "id": "bn-600-800",
+  "query": "BN-600 BN-800 fast reactor core"
+ },
+ {
+  "id": "superphenix",
+  "query": "Superphenix fast reactor core"
+ },
+ {
+  "id": "triga-mark-ii",
+  "query": "TRIGA Mark II reactor core model"
+ },
+ {
+  "id": "mnsr-slowpoke",
+  "query": "miniature neutron source reactor MNSR core"
+ },
+ {
+  "id": "opal",
+  "query": "OPAL research reactor core"
+ },
+ {
+  "id": "hfir",
+  "query": "High Flux Isotope Reactor HFIR core model"
+ },
+ {
+  "id": "godiva-jezebel",
+  "query": "Godiva Jezebel bare critical sphere"
+ },
+ {
+  "id": "linac-bunker-ncrp151",
+  "query": "linear accelerator bunker shielding design NCRP 151"
+ },
+ {
+  "id": "linac-bunker-no-maze",
+  "query": "mazeless linac vault shielding door"
+ },
+ {
+  "id": "tomotherapy-cyberknife-vault",
+  "query": "tomotherapy CyberKnife vault shielding"
+ },
+ {
+  "id": "proton-therapy-gantry-room",
+  "query": "proton therapy facility shielding design"
+ },
+ {
+  "id": "cobalt-60-teletherapy-room",
+  "query": "cobalt-60 teletherapy room shielding"
+ },
+ {
+  "id": "hdr-brachytherapy-room",
+  "query": "HDR brachytherapy room shielding Ir-192"
+ },
+ {
+  "id": "pet-ct-suite-aapm-tg108",
+  "query": "PET/CT facility shielding design TG-108"
+ },
+ {
+  "id": "diagnostic-xray-room-ncrp147",
+  "query": "diagnostic x-ray room shielding NCRP 147"
+ },
+ {
+  "id": "ct-scanner-room",
+  "query": "CT scanner room shielding"
+ },
+ {
+  "id": "nuclear-medicine-hot-lab",
+  "query": "nuclear medicine radiopharmacy hot lab shielding"
+ },
+ {
+  "id": "industrial-radiography-bay",
+  "query": "industrial radiography enclosure shielding"
+ },
+ {
+  "id": "panoramic-gamma-irradiator",
+  "query": "panoramic gamma irradiator shielding design"
+ },
+ {
+  "id": "electron-beam-sterilization-facility",
+  "query": "electron beam irradiation facility shielding"
+ },
+ {
+  "id": "hot-cell-manipulator",
+  "query": "hot cell shielding design"
+ },
+ {
+  "id": "spent-fuel-pool",
+  "query": "spent fuel pool shielding dose rate"
+ },
+ {
+  "id": "pwr-biological-shield",
+  "query": "PWR biological shield concrete"
+ },
+ {
+  "id": "research-reactor-beam-hall",
+  "query": "research reactor pool shielding beam port"
+ },
+ {
+  "id": "medical-cyclotron-vault",
+  "query": "medical cyclotron vault neutron shielding"
+ },
+ {
+  "id": "dry-cask-storage",
+  "query": "dry cask storage shielding HI-STORM"
+ },
+ {
+  "id": "d-t-neutron-generator-lab",
+  "query": "D-T neutron generator facility shielding"
+ }
+]

@@ -12,3 +12,4 @@ pdfs/
 reliability/cache/
 reliability/results/
 !reliability/data/
+geometry/results/
