@@ -116,7 +116,9 @@ def query_forms(rows: list[dict]) -> dict:
     for r in rows:
         if r["kind"] not in ("topic", "special_query") or r["status"] != "200":
             continue
-        form = "boolean" if r["kind"] == "special_query" else r["query_origin"]
+        # stage 1 wrote the topic label as a phrase ("boolean"); stage 2 uses keywords
+        form = (r["query_origin"] or "boolean") if r["kind"] == "special_query" \
+            else r["query_origin"]
         prec = _f(r.get("precision_field"))
         if prec is None:
             continue

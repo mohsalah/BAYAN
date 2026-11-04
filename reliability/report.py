@@ -91,7 +91,12 @@ def backlog(cards: list[dict], rows: list[dict], ml: dict) -> list[str]:
     # have no language_correct_known and fall back to the share over all records.
     def known(c):
         v = _f(c.get("language_correct_known"))
-        return v if v is not None or "language_correct_known" in c else _f(c["language_correct"])
+        if v is not None:
+            return v
+        if _f(c.get("language_unknown")) is not None:
+            return None  # stage 2, every record without a language: counted below
+        return _f(c.get("language_correct"))  # a stage-1 card (also inside a joined run)
+    tested = [c for c in cards if _f(c.get("language_correct")) is not None]
     lang = [c for c in cards if known(c) is not None]
     bad_lang = [c for c in lang if known(c) < 0.8]
     if bad_lang:
@@ -99,12 +104,15 @@ def backlog(cards: list[dict], rows: list[dict], ml: dict) -> list[str]:
                       f"**Language filter**: in {len(bad_lang)} of {len(lang)} single-language "
                       "searches under 80% of the results with a language were in the requested "
                       "language."))
-    unknown = [c for c in cards if (_f(c.get("language_unknown")) or 0) > 0.2]
+    unknown = [c for c in tested if (_f(c.get("language_unknown")) or 0) > 0.2]
     if unknown:
-        items.append((len(unknown) / max(1, len(cards)) * 20,
-                      f"**Libraries without a language field**: in {len(unknown)} single-language "
-                      "searches over 20% of the results had no language (arXiv records). BAYAN "
-                      "notes the unapplied filter; offer to leave such libraries out of a "
+        libs = sorted({x for c in unknown for x in (c.get("language_unapplied") or "").split(",")
+                       if x}) or ["not recorded"]
+        items.append((len(unknown) / max(1, len(tested)) * 20,
+                      f"**Libraries without a language field**: in {len(unknown)} of "
+                      f"{len(tested)} single-language searches over 20% of the results had no "
+                      f"language (libraries that cannot apply the filter: {', '.join(libs)}). "
+                      "BAYAN notes the unapplied filter; offer to leave such libraries out of a "
                       "single-language search."))
     unresolved = sum(int(c["dois_unresolved"] or 0) for c in cards)
     ours = sum(int(c.get("dois_unresolved_lookup") or 0) for c in cards)
@@ -165,9 +173,13 @@ def write(run_dir: Path, gold_meta: dict | None = None) -> Path:
           f"{cfg['per_search']} papers per search, {cfg['known_items']} known papers per area.",
           ""]
     if meta.get("part_runs"):
-        L += ["Joined from " + "; ".join(
-            f"{p['run_id']} ({(p['started'] or '')[:10]}, commit `{p['bayan_commit']}`, "
-            f"{p['minutes']} min)" for p in meta["part_runs"]) + ".", ""]
+        # the minutes above are the sum of the parts' run times (parts may run on different
+        # days or in parallel, so this is not the time from first start to last end)
+        L += [f"Joined from {len(meta['part_runs'])} parts; the minutes are their total run "
+              "time: " + "; ".join(
+                  f"{p['run_id']} ({(p['started'] or '')[:10]}, commit `{p['bayan_commit']}`, "
+                  + (f"{p['minutes']} min)" if p.get("minutes") is not None
+                     else "unfinished, not counted)") for p in meta["part_runs"]) + ".", ""]
     if gold_meta:
         L += [f"Gold set: {gold_meta['kept']} verified papers over {gold_meta['areas']} "
               f"subfields (period {gold_meta['period'][0]}-{gold_meta['period'][1]}, "

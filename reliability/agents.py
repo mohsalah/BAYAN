@@ -73,14 +73,19 @@ def special_query(area: dict) -> str:
     q = area["queries"][0] if area["queries"] else {"query": area["name"], "keywords": []}
     kws = [k.get("display_name") if isinstance(k, dict) else k
            for k in q.get("keywords") or []]
-    kws = list(dict.fromkeys(k.replace('"', "").strip() for k in kws if k))
-    kws = [f'"{k}"' for k in kws if k][:4]
+    clean = {}
+    for k in kws:
+        k = (k or "").replace('"', "").strip()
+        if k:
+            clean.setdefault(k.casefold(), k)  # "Coleoptera" and "coleoptera" are one term
+    kws = [f'"{k}"' for k in clean.values()][:4]
     if len(kws) >= 4:
         return f"({kws[0]} OR {kws[1]}) AND ({kws[2]} OR {kws[3]})"
     if len(kws) >= 2:
         return f'{kws[0]} AND ({" OR ".join(kws[1:])})'
     head = kws[0] if kws else '"' + q["query"].replace('"', "") + '"'
-    return f'{head} AND ({area["name"]})'
+    name = area["name"].replace('"', "")
+    return f'{head} AND ("{name}")'
 
 
 class AreaAgent:
@@ -224,7 +229,7 @@ class AreaAgent:
             if first is not None:
                 self.export_bibtex(first["run_id"], first["papers"])
             self.search("special_query", special_query(self.area),
-                        extra={"query_origin": "boolean"})
+                        extra={"query_origin": "boolean_keywords"})
             lang = LANG_ROTATION[int(self.area["id"]) % len(LANG_ROTATION)]
             self.search("language", self.area["name"], languages=[lang],
                         extra={"language": lang})

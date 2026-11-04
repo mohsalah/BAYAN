@@ -278,9 +278,28 @@ def test_special_query_uses_keywords_not_the_topic_label():
                                    '("Coleoptera" OR "carabids")')
     three = AREA | {"queries": [{"query": "L", "keywords": ["a b", "c", {"display_name": "d"}]}]}
     assert special_query(three) == '"a b" AND ("c" OR "d")'
-    assert special_query(AREA | {"queries": []}) == '"Music" AND (Music)'
-    assert special_query(AREA | {"queries": [{"query": "L", "keywords": ["x"]}]}) == (
-        '"x" AND (Music)')
+    assert special_query(AREA | {"queries": []}) == '"Music" AND ("Music")'
+    odd = AREA | {"name": 'Ecology, Evolution and "Systematics"',
+                  "queries": [{"query": "L", "keywords": ["x"]}]}
+    assert special_query(odd) == '"x" AND ("Ecology, Evolution and Systematics")'
+    cased = AREA | {"queries": [{"query": "L", "keywords": [
+        "Coleoptera", "coleoptera", "carabids", "beetles", "weevils"]}]}
+    assert special_query(cased) == ('("Coleoptera" OR "carabids") AND '
+                                    '("beetles" OR "weevils")')
+
+
+def test_language_backlog_reads_stage1_cards_in_a_joined_run():
+    base = {"topic_shortfall_rate": "0", "dois_unresolved": "0", "dois_checked": "0",
+            "topical_precision_field": "0.9", "known_item_found": "1", "metadata_accuracy": "1",
+            "out_of_years": "0", "reliability_score": "80", "subfield": "Music"}
+    stage1 = base | {"language_correct": "0.3", "language_correct_known": "",
+                     "language_unknown": "", "language_unapplied": ""}
+    stage2 = base | {"language_correct": "0.4", "language_correct_known": "1.0",
+                     "language_unknown": "0.6", "language_unapplied": "arxiv"}
+    items = report.backlog([stage1, stage2], [], {})
+    text = " ".join(items)
+    assert "in 1 of 2 single-language searches under 80%" in text  # the stage-1 card
+    assert "1 of 2 single-language searches over 20%" in text and "arxiv" in text
 
 
 # ---------------------------------------------------------------- models and report
