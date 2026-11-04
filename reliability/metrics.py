@@ -131,8 +131,15 @@ def search_rows(episode: dict, gold: list[dict], topics: dict) -> list[dict]:
                                               for r in ranks) / len(wanted)
         if st["kind"] == "language":
             lang = st.get("language")
-            row["language_correct"] = (sum(1 for p in papers if p.get("language") == lang)
-                                       / len(papers) if papers else None)
+            right = sum(1 for p in papers if p.get("language") == lang)
+            labelled = [p for p in papers if p.get("language")]
+            row["language_correct"] = right / len(papers) if papers else None
+            # records with no language field (arXiv has none) are unknown, not wrong
+            row["language_unknown"] = (1 - len(labelled) / len(papers)) if papers else None
+            row["language_correct_known"] = right / len(labelled) if labelled else None
+            row["language_unapplied"] = ",".join(sorted(
+                lib for lib, fs in (st.get("unapplied_filters") or {}).items()
+                if "languages" in fs))
         rows.append(row)
     return rows
 
@@ -198,6 +205,9 @@ def scorecard_row(episode: dict, rows: list[dict],
         "language_test": lang.get("languages", ""),
         "language_found": lang.get("found"),
         "language_correct": lang.get("language_correct"),
+        "language_correct_known": lang.get("language_correct_known"),
+        "language_unknown": lang.get("language_unknown"),
+        "language_unapplied": lang.get("language_unapplied", ""),
         "dois_checked": len(shown),
         "dois_unresolved": sum(1 for d in shown if not doi_checks[d][0]),
         # a wrong DOI that BAYAN itself added, as opposed to one passed on from a library record

@@ -200,7 +200,8 @@ def test_search_rows_and_scorecard():
     assert topic["gold_recall_at50"] == 0.0 and topic["gold_for_query"] == 1
     assert (k1["known_found"], k1["known_rank"], k1["gold_in_scope"]) == (1, 1, 1)
     assert k2["gold_in_scope"] == 0  # Portuguese: outside BAYAN's six languages
-    assert lang["language_correct"] == 0.5
+    assert lang["language_correct"] == 0.5 and lang["language_correct_known"] == 0.5
+    assert lang["language_unknown"] == 0.0 and lang["language_unapplied"] == ""
     card = metrics.scorecard_row(ep, rows, {"10.2/0": (True, False), "10.2/1": (False, True),
                                             "10.2/2": (False, False)})
     assert card["known_items"] == 1 and card["known_item_found"] == 1.0
@@ -208,6 +209,19 @@ def test_search_rows_and_scorecard():
     assert card["dois_unresolved"] == 2 and card["dois_unresolved_lookup"] == 1
     assert card["complete"] == 1 and 0 <= card["reliability_score"] <= 100
     assert sum(metrics.WEIGHTS.values()) == 100
+
+
+def test_records_without_a_language_are_unknown_not_wrong():
+    ep = {"area": AREA, "steps": [{
+        "kind": "language", "query": "Music", "language": "fr", "years": [2006, 2025],
+        "languages": ["fr"], "libraries": ["openalex", "arxiv"], "status": 200, "seconds": 1,
+        "found": 4, "unapplied_filters": {"openalex": [], "arxiv": ["languages", "topics"]},
+        "papers": [{"source": "openalex", "language": "fr"}, {"source": "openalex",
+                                                               "language": "fr"},
+                   {"source": "arxiv", "language": ""}, {"source": "arxiv"}]}]}
+    (row,) = metrics.search_rows(ep, [], {})
+    assert row["language_correct"] == 0.5 and row["language_correct_known"] == 1.0
+    assert row["language_unknown"] == 0.5 and row["language_unapplied"] == "arxiv"
 
 
 def test_partial_test_gets_no_score():
@@ -254,7 +268,19 @@ def test_agent_runs_a_whole_episode_against_bayan(tmp_path):
     topic = next(s for s in ep["steps"] if s["kind"] == "topic")
     assert known["quota"] is None and topic["quota"] == cfg.per_search
     assert known["scanned"] is not None and known["stopped"]
-    assert special_query(AREA) == '"Musicology and Musical Analysis" AND (sonata OR harmony)'
+    assert special_query(AREA) == '"sonata" AND ("harmony")'
+
+
+def test_special_query_uses_keywords_not_the_topic_label():
+    four = AREA | {"queries": [{"query": "Label Studies", "keywords": [
+        "ground beetles", 'beetle "specimen"', "Coleoptera", "ground beetles", "carabids"]}]}
+    assert special_query(four) == ('("ground beetles" OR "beetle specimen") AND '
+                                   '("Coleoptera" OR "carabids")')
+    three = AREA | {"queries": [{"query": "L", "keywords": ["a b", "c", {"display_name": "d"}]}]}
+    assert special_query(three) == '"a b" AND ("c" OR "d")'
+    assert special_query(AREA | {"queries": []}) == '"Music" AND (Music)'
+    assert special_query(AREA | {"queries": [{"query": "L", "keywords": ["x"]}]}) == (
+        '"x" AND (Music)')
 
 
 # ---------------------------------------------------------------- models and report
@@ -461,7 +487,7 @@ def test_publish_writes_a_compact_summary(tmp_path):
     assert json.loads((tmp_path / "pub.json").read_text())["run_id"] == "r1"
 
 
-def _part(results, name, sid, config):
+def _part(results, name, sid, config, commit="abc"):
     d = results / name
     (d / "raw" / "episodes").mkdir(parents=True)
     (d / "raw" / "episodes" / f"{sid}.json").write_text("{}")
@@ -469,17 +495,20 @@ def _part(results, name, sid, config):
     runner.write_csv(d / "scorecard.csv", [{"subfield_id": sid, "reliability_score": "70"}])
     (d / "run.json").write_text(json.dumps({
         "run_id": name, "started": f"2026-10-30T0{sid[-1]}:00", "minutes": 5.0,
-        "bayan_commit": "abc", "base_url": "own server", "areas": 1, "scored": 1,
+        "bayan_commit": commit, "base_url": "own server", "areas": 1, "scored": 1,
         "searches": 1, "config": config | {"run_id": name}, "server_env": {}}))
 
 
 def test_merge_joins_parts_and_refuses_overlap_or_mixed_settings(tmp_path):
     cfg = {"per_search": 50, "year_from": 2006}
     _part(tmp_path, "r-d1", "2102", cfg)
-    _part(tmp_path, "r-d2", "1101", cfg)
+    _part(tmp_path, "r-d2", "1101", cfg, commit="def")
     out = runner.merge(tmp_path, "r", ["r-d1", "r-d2"])
     meta = json.loads((out / "run.json").read_text())
     assert meta["areas"] == 2 and meta["searches"] == 2 and meta["config"]["run_id"] == "r"
+    # every part's commit and the total time, not the first part's commit and the longest part
+    assert meta["bayan_commit"] == "abc+def" and meta["minutes"] == 10.0
+    assert [p["bayan_commit"] for p in meta["part_runs"]] == ["abc", "def"]
     cards = ml.read_csv(out / "scorecard.csv")
     assert [c["subfield_id"] for c in cards] == ["1101", "2102"]
     assert sorted(p.name for p in (out / "raw" / "episodes").iterdir()) == [

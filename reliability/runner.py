@@ -254,9 +254,14 @@ def merge(results: Path, run_id: str, parts: list[str]) -> Path:
     cards.sort(key=lambda c: int(c["subfield_id"]))
     write_csv(run_dir / "searches.csv", rows)
     write_csv(run_dir / "scorecard.csv", cards)
+    # parts may run on different days and on different BAYAN commits: the header keeps every
+    # commit and the total time, and each part's own values stay in "part_runs"
+    commits = list(dict.fromkeys(m.get("bayan_commit") or "?" for m in metas))
     meta = {"run_id": run_id, "started": min(m["started"] for m in metas),
-            "minutes": max(m.get("minutes") or 0 for m in metas),
-            "bayan_commit": metas[0]["bayan_commit"],
+            "minutes": round(sum(m.get("minutes") or 0 for m in metas), 1),
+            "bayan_commit": "+".join(commits),
+            "part_runs": [{k: m.get(k) for k in ("run_id", "started", "minutes", "bayan_commit")}
+                          for m in metas],
             "base_url": metas[0]["base_url"], "areas": sum(m["areas"] for m in metas),
             "scored": len(cards), "searches": len(rows),
             "config": metas[0]["config"] | {"run_id": run_id},

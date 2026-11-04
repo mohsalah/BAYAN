@@ -64,12 +64,23 @@ def slim(paper: dict) -> dict:
 
 
 def special_query(area: dict) -> str:
-    """A Boolean query with a quoted phrase, as an experienced searcher would write it."""
+    """A Boolean query with quoted phrases, brackets, AND and OR, built from the topic's
+    keywords: ("k1" OR "k2") AND ("k3" OR "k4").
+
+    Stage 1 used the topic label as the quoted phrase ("Botany and Plant Ecology
+    Studies"); labels are OpenAlex's names, not words papers use, and 16 of 77 areas got no
+    results. Keywords are words papers use; this form found results in all 77 areas."""
     q = area["queries"][0] if area["queries"] else {"query": area["name"], "keywords": []}
     kws = [k.get("display_name") if isinstance(k, dict) else k
            for k in q.get("keywords") or []]
-    kws = [k for k in kws if k][:2] or [area["name"]]
-    return f'"{q["query"]}" AND ({" OR ".join(kws)})'
+    kws = list(dict.fromkeys(k.replace('"', "").strip() for k in kws if k))
+    kws = [f'"{k}"' for k in kws if k][:4]
+    if len(kws) >= 4:
+        return f"({kws[0]} OR {kws[1]}) AND ({kws[2]} OR {kws[3]})"
+    if len(kws) >= 2:
+        return f'{kws[0]} AND ({" OR ".join(kws[1:])})'
+    head = kws[0] if kws else '"' + q["query"].replace('"', "") + '"'
+    return f'{head} AND ({area["name"]})'
 
 
 class AreaAgent:
@@ -146,6 +157,8 @@ class AreaAgent:
             step["duplicates"] = summary.get("duplicates")
             step["scanned"] = summary.get("scanned")  # records read: the credit cost driver
             step["stopped"] = summary.get("stopped")
+            # filters a library could not apply (BAYAN reports them and does not guess)
+            step["unapplied_filters"] = summary.get("unapplied_filters")
             # DOIs that BAYAN's own Crossref lookup filled in (not from the library record)
             step["doi_matches"] = [m.get("doi") for m in summary.get("doi_matches") or []
                                    if m.get("doi")]

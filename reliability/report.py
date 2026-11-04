@@ -87,12 +87,25 @@ def backlog(cards: list[dict], rows: list[dict], ml: dict) -> list[str]:
                       f"**Explain shortfalls**: {len(short)} areas could not fill 50 papers in "
                       "at least one search; the per-year shortfall is reported, but suggest a "
                       "broader query or more libraries when it happens."))
-    lang = [c for c in cards if _f(c["language_correct"]) is not None]
-    bad_lang = [c for c in lang if _f(c["language_correct"]) < 0.8]
+    # Records without a language field (arXiv) are unknown, not wrong; runs before stage 2
+    # have no language_correct_known and fall back to the share over all records.
+    def known(c):
+        v = _f(c.get("language_correct_known"))
+        return v if v is not None or "language_correct_known" in c else _f(c["language_correct"])
+    lang = [c for c in cards if known(c) is not None]
+    bad_lang = [c for c in lang if known(c) < 0.8]
     if bad_lang:
         items.append((len(bad_lang) / max(1, len(lang)) * 40,
                       f"**Language filter**: in {len(bad_lang)} of {len(lang)} single-language "
-                      "searches under 80% of results were in the requested language."))
+                      "searches under 80% of the results with a language were in the requested "
+                      "language."))
+    unknown = [c for c in cards if (_f(c.get("language_unknown")) or 0) > 0.2]
+    if unknown:
+        items.append((len(unknown) / max(1, len(cards)) * 20,
+                      f"**Libraries without a language field**: in {len(unknown)} single-language "
+                      "searches over 20% of the results had no language (arXiv records). BAYAN "
+                      "notes the unapplied filter; offer to leave such libraries out of a "
+                      "single-language search."))
     unresolved = sum(int(c["dois_unresolved"] or 0) for c in cards)
     ours = sum(int(c.get("dois_unresolved_lookup") or 0) for c in cards)
     checked = sum(int(c["dois_checked"] or 0) for c in cards)
@@ -151,6 +164,10 @@ def write(run_dir: Path, gold_meta: dict | None = None) -> Path:
           f"{meta['minutes']} minutes. Period {cfg['year_from']}-{cfg['year_to']}, "
           f"{cfg['per_search']} papers per search, {cfg['known_items']} known papers per area.",
           ""]
+    if meta.get("part_runs"):
+        L += ["Joined from " + "; ".join(
+            f"{p['run_id']} ({(p['started'] or '')[:10]}, commit `{p['bayan_commit']}`, "
+            f"{p['minutes']} min)" for p in meta["part_runs"]) + ".", ""]
     if gold_meta:
         L += [f"Gold set: {gold_meta['kept']} verified papers over {gold_meta['areas']} "
               f"subfields (period {gold_meta['period'][0]}-{gold_meta['period'][1]}, "
