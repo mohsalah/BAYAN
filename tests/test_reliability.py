@@ -211,6 +211,34 @@ def test_search_rows_and_scorecard():
     assert sum(metrics.WEIGHTS.values()) == 100
 
 
+def test_gold_recall_uses_topic_filtered_searches_and_most_cited_papers():
+    gold = [GOLD[0], GOLD[0] | {"openalex_id": "W3", "doi": "10.1/c", "title": "Mid one",
+                                "stratum": "mid"},
+            GOLD[0] | {"openalex_id": "W4", "doi": "10.1/d", "title": "New one",
+                       "stratum": "recent"}]
+    ep = episode(topic_papers(10, 0), [])
+    ep["steps"].insert(2, {
+        "kind": "topic_filtered", "query": "Musicology and Musical Analysis",
+        "query_origin": "topic_name", "topics": ["T1"], "years": [2006, 2025],
+        "languages": ["en"], "libraries": ["openalex"], "status": 200, "seconds": 1.0,
+        "found": 2, "papers": [{"source": "openalex", "id": "W1"},
+                               {"source": "openalex", "id": "W9"}]})
+    rows = metrics.search_rows(ep, gold, {})
+    text = next(r for r in rows if r["kind"] == "topic")
+    filt = next(r for r in rows if r["kind"] == "topic_filtered")
+    assert text["gold_for_query"] == 3 and text["gold_recall_at50"] == 0.0
+    # only landmark and recent papers are expected: W1 found, W4 missed, W3 (mid) not counted
+    assert filt["gold_for_query"] == 2 and filt["gold_recall_at50"] == 0.5
+    assert filt["topics"] == "T1"
+    card = metrics.scorecard_row(ep, rows, {})
+    assert card["gold_recall_at50"] == 0.5 and card["gold_recall_from"] == "topic_filter"
+    assert card["gold_recall_text_at50"] == 0.0
+    # a stage-1 episode keeps its recall on the text searches
+    old = episode(topic_papers(10, 0), [])
+    card = metrics.scorecard_row(old, metrics.search_rows(old, gold, {}), {})
+    assert card["gold_recall_from"] == "text" and card["gold_recall_at50"] == 0.0
+
+
 def test_records_without_a_language_are_unknown_not_wrong():
     ep = {"area": AREA, "steps": [{
         "kind": "language", "query": "Music", "language": "fr", "years": [2006, 2025],
@@ -269,6 +297,11 @@ def test_agent_runs_a_whole_episode_against_bayan(tmp_path):
     assert known["quota"] is None and topic["quota"] == cfg.per_search
     assert known["scanned"] is not None and known["stopped"]
     assert special_query(AREA) == '"sonata" AND ("harmony")'
+    # the topic searched by name is searched again with BAYAN's topic filter
+    filtered = [s for s in ep["steps"] if s["kind"] == "topic_filtered"]
+    assert [(s["query"], s["topics"]) for s in filtered] == [
+        ("Musicology and Musical Analysis", ["T1"])]
+    assert filtered[0]["status"] == 200 and topic["topics"] == []
 
 
 def test_special_query_uses_keywords_not_the_topic_label():

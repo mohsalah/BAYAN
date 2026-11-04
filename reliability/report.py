@@ -191,7 +191,13 @@ def write(run_dir: Path, gold_meta: dict | None = None) -> Path:
           "- Gold papers and field labels come from OpenAlex, which BAYAN also searches, so "
           "these numbers test BAYAN's queries, merging and ranking more than library coverage. "
           "Field labels are OpenAlex's automatic classification and are imperfect.",
-          "- Results in other languages than BAYAN's six are out of scope and not counted.", ""]
+          "- Results in other languages than BAYAN's six are out of scope and not counted.",
+          "- **Gold recall**: " + (
+              "the share of the topic's landmark and recent gold papers in the top 50 of a "
+              "search with BAYAN's OpenAlex topic filter on (stage 2)."
+              if any(c.get("gold_recall_from") == "topic_filter" for c in cards) else
+              "the share of the topic's gold papers in the top 50 of a text search for the "
+              "topic name (stage 1; this rarely surfaces papers chosen from thousands)."), ""]
     for key, title in (("frascati", "By OECD Frascati group"), ("domain", "By OpenAlex domain"),
                        ("field", "By field")):
         L += [f"## {title}", "", "| Group | Areas (complete) | Score | Known found | In field | "

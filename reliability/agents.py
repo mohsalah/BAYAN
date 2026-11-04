@@ -38,6 +38,9 @@ class AgentConfig:
     per_search: int = 50
     topic_queries: int = 2
     gold_topics: int = 1  # extra searches for topics of gold papers not otherwise searched
+    # stage 2: each topic searched by its name is searched again with BAYAN's OpenAlex topic
+    # filter; gold recall (landmark and recent papers) is measured on these searches
+    topic_filter: bool = True
     known_items: int = 6
     export_n: int = 10
     seed: int = 1
@@ -127,13 +130,16 @@ class AreaAgent:
 
     def search(self, kind: str, query: str, *, years: tuple[int, int] | None = None,
                languages: list[str] | None = None, libraries: list[str] | None = None,
-               extra: dict | None = None, quota: bool = True) -> dict:
+               extra: dict | None = None, quota: bool = True,
+               topics: list[str] | None = None) -> dict:
         y0, y1 = years or (self.cfg.year_from, self.cfg.year_to)
         libs = libraries or self.libraries
         profile = {"query": query, "year_from": y0, "year_to": y1,
                    "document_types": ["peer_reviewed", "proceedings", "thesis", "report",
                                       "other"],
                    "languages": languages or ["en", "ar", "fr", "zh", "de", "es"]}
+        if topics:
+            profile["topics"] = topics
         # A title search leaves "Papers wanted" empty, as the search form does by default: the
         # per-year spread made BAYAN scan ~2,000 records (10 OpenAlex pages) to fill years a
         # single paper's hits never reach.
@@ -142,6 +148,7 @@ class AreaAgent:
             body["quota_total"] = self.cfg.per_search
         log = {"query": query, "years": [y0, y1], "libraries": libs,
                "languages": profile["languages"], "quota": body.get("quota_total"),
+               "topics": topics or [],
                **(extra or {})}
         gate = ARXIV_GATE if "arxiv" in libs else None
         if gate:
@@ -210,7 +217,11 @@ class AreaAgent:
             if not self.sign_up():
                 self.ep.error = "sign-up failed"
                 return self.ep
-            queries = [q["query"] for q in self.area["queries"][: self.cfg.topic_queries]]
+            topic_qs = self.area["queries"][: self.cfg.topic_queries]
+            queries = [q["query"] for q in topic_qs]
+            topic_ids = {q["query"]: q.get("topic_id") for q in topic_qs}
+            topic_ids.update({r["query"]: r.get("topic_id") for r in self.gold
+                              if r.get("query") and r["query"] not in topic_ids})
             first = None
             for q in [self.area["name"], *queries]:
                 step = self.search("topic", q, extra={"query_origin": (
@@ -223,6 +234,13 @@ class AreaAgent:
                                               if r["query"] and r["query"] not in searched))
             for q in extra_topics[: self.cfg.gold_topics]:
                 self.search("topic", q, extra={"query_origin": "gold_topic"})
+            if self.cfg.topic_filter:
+                gold_qs = extra_topics[: self.cfg.gold_topics]
+                for q, origin in [*((q, "topic_name") for q in queries),
+                                  *((q, "gold_topic") for q in gold_qs)]:
+                    if topic_ids.get(q):
+                        self.search("topic_filtered", q, topics=[topic_ids[q]],
+                                    extra={"query_origin": origin})
             for r in self.known_sample():
                 self.search("known_item", r["title"], quota=False, extra={
                     "gold_id": r["openalex_id"], "gold_doi": r["doi"], "stratum": r["stratum"]})

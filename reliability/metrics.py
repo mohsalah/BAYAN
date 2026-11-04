@@ -15,6 +15,7 @@ from statistics import median
 from .gold import title_score
 
 SCOPE_LANGUAGES = {"en", "ar", "fr", "zh", "de", "es"}
+RECALL_STRATA = ("landmark", "recent")  # gold recall on topic-filtered searches (stage 2)
 WEIGHTS = {"known_item_found": 30, "topical_precision": 20, "gold_recall": 15,
            "no_shortfall": 10, "no_errors": 10, "metadata": 10, "integrity": 5}
 
@@ -79,7 +80,8 @@ def search_rows(episode: dict, gold: list[dict], topics: dict) -> list[dict]:
     by_id = {g["openalex_id"]: g for g in gold}
     rows = []
     for st in episode["steps"]:
-        if st["kind"] not in ("topic", "known_item", "special_query", "language"):
+        if st["kind"] not in ("topic", "topic_filtered", "known_item", "special_query",
+                              "language"):
             continue
         papers = st.get("papers") or []
         y0, y1 = st.get("years") or [None, None]
@@ -95,6 +97,7 @@ def search_rows(episode: dict, gold: list[dict], topics: dict) -> list[dict]:
             "query_chars": len(st.get("query") or ""),
             "boolean": int(bool(re.search(r"\b(AND|OR|NOT)\b|\"", st.get("query") or ""))),
             "languages": ",".join(st.get("languages") or []),
+            "topics": ",".join(st.get("topics") or []),
             "libraries": ",".join(st.get("libraries") or []),
             "year_from": y0, "year_to": y1, "status": st.get("status"),
             "error": st.get("error", ""), "seconds": st.get("seconds"),
@@ -121,8 +124,12 @@ def search_rows(episode: dict, gold: list[dict], topics: dict) -> list[dict]:
             if r is not None:
                 checks = metadata_checks(papers[r - 1], g)
                 row.update({f"meta_{k}": int(v) for k, v in checks.items()})
-        if st["kind"] == "topic":
+        if st["kind"] in ("topic", "topic_filtered"):
             wanted = [g for g in in_scope if g.get("query") == st.get("query")]
+            if st["kind"] == "topic_filtered":
+                # with the topic filter on, the most cited papers of the topic should come up;
+                # a "mid" paper is a random one of thousands and is not expected in a top 50
+                wanted = [g for g in wanted if g.get("stratum") in RECALL_STRATA]
             if wanted:
                 ranks = [rank_of(papers, g) for g in wanted]
                 row["gold_for_query"] = len(wanted)
@@ -175,6 +182,7 @@ def scorecard_row(episode: dict, rows: list[dict],
     """`doi_checks`: DOI -> (exists, added by BAYAN's own Crossref lookup)."""
     area = episode["area"]
     topic = [r for r in rows if r["kind"] == "topic"]
+    filtered = [r for r in rows if r["kind"] == "topic_filtered"]
     known = [r for r in rows if r["kind"] == "known_item" and r.get("gold_in_scope")]
     found_known = [r for r in known if r["known_found"]]
     meta = [r[k] for r in found_known for k in r if k.startswith("meta_")]
@@ -194,8 +202,12 @@ def scorecard_row(episode: dict, rows: list[dict],
         "topic_shortfall_rate": _mean(int(r["found"] < r["requested"]) for r in topic),
         "topical_precision_subfield": _mean(r["precision_subfield"] for r in topic),
         "topical_precision_field": _mean(r["precision_field"] for r in topic),
-        "gold_recall_at50": _mean(r.get("gold_recall_at50") for r in topic),
-        "gold_recall_at10": _mean(r.get("gold_recall_at10") for r in topic),
+        # stage 2: recall on the topic-filtered searches; a stage-1 episode (no such searches)
+        # keeps its recall on the text searches. The text recall is kept for comparison.
+        "gold_recall_at50": _mean(r.get("gold_recall_at50") for r in (filtered or topic)),
+        "gold_recall_at10": _mean(r.get("gold_recall_at10") for r in (filtered or topic)),
+        "gold_recall_from": "topic_filter" if filtered else "text",
+        "gold_recall_text_at50": _mean(r.get("gold_recall_at50") for r in topic),
         "known_items": len(known),
         "known_item_found": _mean(r["known_found"] for r in known),
         "known_item_top1": _mean(r["known_top1"] for r in known),
