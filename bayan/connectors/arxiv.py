@@ -60,7 +60,7 @@ def parse_entry(entry: ET.Element) -> Paper:
     )
 
 
-_TOKEN = re.compile(r'"([^"]*)"|(\()|(\))|(\w+)')
+_TOKEN = re.compile(r'"([^"]*)"|(\()|(\))|(\w+(?:[-\u2010\u2011]\w+)*)')  # MERRA-2: one term
 _OPERATORS = {"AND": "AND", "OR": "OR", "NOT": "ANDNOT"}
 
 
@@ -68,15 +68,15 @@ def boolean_query(text: str) -> str | None:
     """A keyword query with AND/OR/NOT, parentheses and "phrases" in arXiv syntax.
 
     Adjacent terms are joined with AND, as before. Returns None when the text is not a
-    well-formed query of that kind (unbalanced parentheses, an operator in the wrong place),
-    so the caller can fall back to plain words.
+    well-formed query of that kind (unbalanced parentheses, an empty group, an operator
+    with nothing after it), so the caller can fall back to plain words. Where a term is
+    due, OR/AND/NOT is read as a word; empty "" phrases are skipped.
     """
     out: list[str] = []
     depth, expect_term = 0, True
     for phrase, opening, closing, word in _TOKEN.findall(text):
-        if word.upper() in _OPERATORS and word.isupper():
-            if expect_term:
-                return None
+        # where a term is due, OR/AND/NOT is a word, as in "Operations Research (OR)"
+        if word in _OPERATORS and not expect_term:
             out.append(_OPERATORS[word])
             expect_term = True
             continue
@@ -86,15 +86,16 @@ def boolean_query(text: str) -> str | None:
                 return None
             out.append(")")
             continue
+        words = re.findall(r"\w+", phrase or word)
+        if not opening and not words:  # "" or a phrase of punctuation: skip it
+            continue
         if not expect_term:  # two terms side by side
             out.append("AND")
         if opening:
             depth += 1
             out.append("(")
+            expect_term = True  # a group starts with a term, never with AND
             continue
-        words = re.findall(r"\w+", phrase) if phrase or not word else [word]
-        if not words:
-            return None
         out.append(f'all:"{" ".join(words)}"' if len(words) > 1 else f"all:{words[0]}")
         expect_term = False
     if depth or expect_term or not out:
