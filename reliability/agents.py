@@ -41,6 +41,9 @@ class AgentConfig:
     # stage 2: each topic searched by its name is searched again with BAYAN's OpenAlex topic
     # filter; gold recall (landmark and recent papers) is measured on these searches
     topic_filter: bool = True
+    # stage 2: the topic-filtered searches ask BAYAN for the most cited papers first (one
+    # OpenAlex query per year); text searches keep BAYAN's default text-match order
+    cited_first: bool = True
     known_items: int = 6
     export_n: int = 10
     seed: int = 1
@@ -131,7 +134,7 @@ class AreaAgent:
     def search(self, kind: str, query: str, *, years: tuple[int, int] | None = None,
                languages: list[str] | None = None, libraries: list[str] | None = None,
                extra: dict | None = None, quota: bool = True,
-               topics: list[str] | None = None) -> dict:
+               topics: list[str] | None = None, sort: str | None = None) -> dict:
         y0, y1 = years or (self.cfg.year_from, self.cfg.year_to)
         libs = libraries or self.libraries
         profile = {"query": query, "year_from": y0, "year_to": y1,
@@ -140,6 +143,8 @@ class AreaAgent:
                    "languages": languages or ["en", "ar", "fr", "zh", "de", "es"]}
         if topics:
             profile["topics"] = topics
+        if sort:
+            profile["sort"] = sort
         # A title search leaves "Papers wanted" empty, as the search form does by default: the
         # per-year spread made BAYAN scan ~2,000 records (10 OpenAlex pages) to fill years a
         # single paper's hits never reach.
@@ -148,7 +153,7 @@ class AreaAgent:
             body["quota_total"] = self.cfg.per_search
         log = {"query": query, "years": [y0, y1], "libraries": libs,
                "languages": profile["languages"], "quota": body.get("quota_total"),
-               "topics": topics or [],
+               "topics": topics or [], "sort": sort or "relevance",
                **(extra or {})}
         gate = ARXIV_GATE if "arxiv" in libs else None
         if gate:
@@ -240,6 +245,7 @@ class AreaAgent:
                                   *((q, "gold_topic") for q in gold_qs)]:
                     if topic_ids.get(q):
                         self.search("topic_filtered", q, topics=[topic_ids[q]],
+                                    sort="citations" if self.cfg.cited_first else None,
                                     extra={"query_origin": origin})
             for r in self.known_sample():
                 self.search("known_item", r["title"], quota=False, extra={

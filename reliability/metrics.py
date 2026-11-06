@@ -98,6 +98,7 @@ def search_rows(episode: dict, gold: list[dict], topics: dict) -> list[dict]:
             "boolean": int(bool(re.search(r"\b(AND|OR|NOT)\b|\"", st.get("query") or ""))),
             "languages": ",".join(st.get("languages") or []),
             "topics": ",".join(st.get("topics") or []),
+            "sort": st.get("sort") or "relevance",
             "libraries": ",".join(st.get("libraries") or []),
             "year_from": y0, "year_to": y1, "status": st.get("status"),
             "error": st.get("error", ""), "seconds": st.get("seconds"),

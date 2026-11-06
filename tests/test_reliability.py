@@ -302,6 +302,8 @@ def test_agent_runs_a_whole_episode_against_bayan(tmp_path):
     assert [(s["query"], s["topics"]) for s in filtered] == [
         ("Musicology and Musical Analysis", ["T1"])]
     assert filtered[0]["status"] == 200 and topic["topics"] == []
+    # ... asking for the most cited papers first; text searches keep the text-match order
+    assert filtered[0]["sort"] == "citations" and topic["sort"] == "relevance"
 
 
 def test_special_query_uses_keywords_not_the_topic_label():
