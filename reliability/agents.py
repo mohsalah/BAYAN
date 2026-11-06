@@ -39,7 +39,8 @@ class AgentConfig:
     topic_queries: int = 2
     gold_topics: int = 1  # extra searches for topics of gold papers not otherwise searched
     # stage 2: each topic searched by its name is searched again with BAYAN's OpenAlex topic
-    # filter; gold recall (landmark and recent papers) is measured on these searches
+    # filter and no search text (OpenAlex only); gold recall (landmark and recent papers) is
+    # measured on these searches
     topic_filter: bool = True
     # stage 2: the topic-filtered searches ask BAYAN for the most cited papers first (one
     # OpenAlex query per year); text searches keep BAYAN's default text-match order
@@ -134,10 +135,13 @@ class AreaAgent:
     def search(self, kind: str, query: str, *, years: tuple[int, int] | None = None,
                languages: list[str] | None = None, libraries: list[str] | None = None,
                extra: dict | None = None, quota: bool = True,
-               topics: list[str] | None = None, sort: str | None = None) -> dict:
+               topics: list[str] | None = None, sort: str | None = None,
+               text: str | None = None) -> dict:
         y0, y1 = years or (self.cfg.year_from, self.cfg.year_to)
         libs = libraries or self.libraries
-        profile = {"query": query, "year_from": y0, "year_to": y1,
+        # `text` is what BAYAN searches for when it differs from the logged `query` (the
+        # topic-filtered searches send no text: the filter alone picks the topic's papers).
+        profile = {"query": query if text is None else text, "year_from": y0, "year_to": y1,
                    "document_types": ["peer_reviewed", "proceedings", "thesis", "report",
                                       "other"],
                    "languages": languages or ["en", "ar", "fr", "zh", "de", "es"]}
@@ -154,6 +158,7 @@ class AreaAgent:
         log = {"query": query, "years": [y0, y1], "libraries": libs,
                "languages": profile["languages"], "quota": body.get("quota_total"),
                "topics": topics or [], "sort": sort or "relevance",
+               "sent_text": query if text is None else text,
                **(extra or {})}
         gate = ARXIV_GATE if "arxiv" in libs else None
         if gate:
@@ -244,7 +249,11 @@ class AreaAgent:
                 for q, origin in [*((q, "topic_name") for q in queries),
                                   *((q, "gold_topic") for q in gold_qs)]:
                     if topic_ids.get(q):
-                        self.search("topic_filtered", q, topics=[topic_ids[q]],
+                        # The topic's name as search text would also require its words
+                        # ("spatial" in "Spatial and Panel Data Analysis") and drop the
+                        # topic's landmark papers; only OpenAlex applies the topic filter.
+                        self.search("topic_filtered", q, topics=[topic_ids[q]], text="",
+                                    libraries=["openalex"],
                                     sort="citations" if self.cfg.cited_first else None,
                                     extra={"query_origin": origin})
             for r in self.known_sample():

@@ -304,6 +304,9 @@ def test_agent_runs_a_whole_episode_against_bayan(tmp_path):
     assert filtered[0]["status"] == 200 and topic["topics"] == []
     # ... asking for the most cited papers first; text searches keep the text-match order
     assert filtered[0]["sort"] == "citations" and topic["sort"] == "relevance"
+    # ... with the filter alone: no search text, OpenAlex only
+    assert filtered[0]["sent_text"] == "" and filtered[0]["libraries"] == ["openalex"]
+    assert topic["sent_text"] == topic["query"]
 
 
 def test_special_query_uses_keywords_not_the_topic_label():
