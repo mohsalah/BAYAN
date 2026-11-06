@@ -375,6 +375,46 @@ so the engine can be swapped.
 | `POST /api/translate/pdf` | `{"source", "id", "target_language", "pages"}`: pages of your validated PDF, aligned by page. |
 | `GET` / `PUT` / `DELETE /api/translate/glossary` | List, save (`source_language`, `target_language`, `source_term`, `target_term`) or remove your terms. |
 
+## Reliability bench (M27)
+
+`reliability/` tests BAYAN across every research area and learns from the results. It is a
+separate tool: nothing in it runs inside the app, and the app only reads the published summary.
+
+- **Areas**: the 252 OpenAlex subfields (4 domains, 26 fields), each with an approximate OECD
+  Frascati group.
+- **Gold set**: 50 papers per area from 2006-2025 (15 landmark, 25 mid-range, 10 recent). Each
+  record is checked before it is kept: a DOI against Crossref or doi.org, otherwise the
+  identifier its field uses (PMID/PMCID via Europe PMC, arXiv ID, ISBN via Open Library, handle,
+  LCCN, NCID). The record stores which database confirmed it and when. Records that cannot be
+  confirmed are dropped and counted; nothing is padded.
+- **Agents**: one scripted agent per area signs up on a fresh BAYAN, runs topic searches,
+  known-item searches, a Boolean query and a single-language search, and exports BibTeX.
+- **Measures**: known-item rank, topical precision, gold recall, fill rate, errors, metadata
+  accuracy and DOI integrity. An area with a missing measure gets no score.
+- **ML**: a failure predictor, a query-form learner, a re-ranker (nDCG@10) and a regression
+  check, all validated on fields left out of training.
+
+```
+PYTHONPATH=. .venv/bin/python -m reliability taxonomy
+PYTHONPATH=. .venv/bin/python -m reliability gold            # --per-area, --from-year, --to-year
+PYTHONPATH=. .venv/bin/python -m reliability run             # starts its own BAYAN
+PYTHONPATH=. .venv/bin/python -m reliability train --previous <run_id>
+PYTHONPATH=. .venv/bin/python -m reliability report
+PYTHONPATH=. .venv/bin/python -m reliability publish         # writes bayan/static/reliability.json
+```
+
+`OPENALEX_API_KEY` (environment or `.env`) is used when present. Without it, OpenAlex limits
+the network to a shared free daily budget. A free key gives 10,000 credits a day; a text-search page costs 10
+credits and a filter-only page 1. An area runs 12 searches (subfield name, 2 topics, 1 gold
+topic, 6 known papers by title, a boolean query, another language); title searches leave
+"Papers wanted" empty, as the search form does, because the per-year spread made each one
+read about 2,000 records. That cut an area from about 640 credits to an estimated 250 (each
+search logs `scanned`, so the next run measures it). `--per-field 3` (stage 1) tests the 3
+largest subfields of all 26 fields: 77 areas holding 63% of the works, about 2 days on one
+free key. On GitHub, `DOMAINS=1,2` in `reliability/cloud_run.env` (or the `domains` input)
+runs only those OpenAlex domains, so a run can be finished on a later day. Responses are cached in `reliability/cache/`
+(not committed). The app shows the published result under "Reliability" (`GET /api/reliability`).
+
 ## Run locally
 
 ```bash

@@ -1,0 +1,4249 @@
+{
+ "period": [
+  2006,
+  2025
+ ],
+ "per_area": 50,
+ "areas": 252,
+ "kept": 12600,
+ "failed_areas": [],
+ "summaries": [
+  {
+   "subfield_id": "1100",
+   "name": "General Agricultural and Biological Sciences",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1102",
+   "name": "Agronomy and Crop Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_crossref_title_mismatch": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1103",
+   "name": "Animal Science and Zoology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1104",
+   "name": "Aquatic Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_doi_not_found": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1105",
+   "name": "Ecology, Evolution, Behavior and Systematics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1106",
+   "name": "Food Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1107",
+   "name": "Forestry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1108",
+   "name": "Horticulture",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1109",
+   "name": "Insect Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1110",
+   "name": "Plant Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1111",
+   "name": "Soil Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1200",
+   "name": "General Arts and Humanities",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "drop_review_record": 1,
+    "drop_doi_not_found": 1,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1202",
+   "name": "History",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1203",
+   "name": "Language and Linguistics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "drop_doi_not_found": 1,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1204",
+   "name": "Archeology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1205",
+   "name": "Classics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 3
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1206",
+   "name": "Conservation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1207",
+   "name": "History and Philosophy of Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 2,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1208",
+   "name": "Literature and Literary Theory",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1209",
+   "name": "Museology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 3
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1210",
+   "name": "Music",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_review_record": 12,
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1211",
+   "name": "Philosophy",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 3
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1212",
+   "name": "Religious studies",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 4,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1213",
+   "name": "Visual Arts and Performing Arts",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "drop_review_record": 5,
+    "drop_doi_not_found": 1,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1302",
+   "name": "Aging",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1303",
+   "name": "Biochemistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1304",
+   "name": "Biophysics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1305",
+   "name": "Biotechnology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1306",
+   "name": "Cancer Research",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1307",
+   "name": "Cell Biology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1308",
+   "name": "Clinical Biochemistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1309",
+   "name": "Developmental Biology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_review_record": 1,
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1310",
+   "name": "Endocrinology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1311",
+   "name": "Genetics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1312",
+   "name": "Molecular Biology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1313",
+   "name": "Molecular Medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1314",
+   "name": "Physiology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1315",
+   "name": "Structural Biology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1402",
+   "name": "Accounting",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1403",
+   "name": "Business and International Management",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1404",
+   "name": "Management Information Systems",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1405",
+   "name": "Management of Technology and Innovation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1406",
+   "name": "Marketing",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1407",
+   "name": "Organizational Behavior and Human Resource Management",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1408",
+   "name": "Strategy and Management",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_doi_not_found": 2,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1409",
+   "name": "Tourism, Leisure and Hospitality Management",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1410",
+   "name": "Industrial relations",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2,
+    "drop_crossref_title_mismatch": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1502",
+   "name": "Bioengineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1503",
+   "name": "Catalysis",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1504",
+   "name": "Chemical Health and Safety",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1506",
+   "name": "Filtration and Separation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1507",
+   "name": "Fluid Flow and Transfer Processes",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1508",
+   "name": "Process Chemistry and Technology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1602",
+   "name": "Analytical Chemistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1603",
+   "name": "Electrochemistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1604",
+   "name": "Inorganic Chemistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1605",
+   "name": "Organic Chemistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1606",
+   "name": "Physical and Theoretical Chemistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1607",
+   "name": "Spectroscopy",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1702",
+   "name": "Artificial Intelligence",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 41,
+    "ok_doi_registered": 9
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1703",
+   "name": "Computational Theory and Mathematics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1704",
+   "name": "Computer Graphics and Computer-Aided Design",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "drop_review_record": 1,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1705",
+   "name": "Computer Networks and Communications",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_doi_registered": 2,
+    "ok_crossref": 48,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1706",
+   "name": "Computer Science Applications",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1707",
+   "name": "Computer Vision and Pattern Recognition",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 44,
+    "ok_doi_registered": 6
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1708",
+   "name": "Hardware and Architecture",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_doi_registered": 3,
+    "ok_crossref": 47
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1709",
+   "name": "Human-Computer Interaction",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1710",
+   "name": "Information Systems",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 3
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1711",
+   "name": "Signal Processing",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1712",
+   "name": "Software",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_doi_not_found": 2,
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1800",
+   "name": "General Decision Sciences",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_review_record": 2,
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1802",
+   "name": "Information Systems and Management",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1803",
+   "name": "Management Science and Operations Research",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1804",
+   "name": "Statistics, Probability and Uncertainty",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1902",
+   "name": "Atmospheric Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1904",
+   "name": "Earth-Surface Processes",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "drop_review_record": 2,
+    "ok_doi_registered": 2,
+    "drop_incomplete": 1,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1906",
+   "name": "Geochemistry and Petrology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1907",
+   "name": "Geology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1908",
+   "name": "Geophysics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1910",
+   "name": "Oceanography",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1911",
+   "name": "Paleontology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "1912",
+   "name": "Space and Planetary Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2000",
+   "name": "General Economics, Econometrics and Finance",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2002",
+   "name": "Economics and Econometrics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2003",
+   "name": "Finance",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2100",
+   "name": "General Energy",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2102",
+   "name": "Energy Engineering and Power Technology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2103",
+   "name": "Fuel Technology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2104",
+   "name": "Nuclear Energy and Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2105",
+   "name": "Renewable Energy, Sustainability and the Environment",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2200",
+   "name": "General Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2202",
+   "name": "Aerospace Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2203",
+   "name": "Automotive Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 46,
+    "ok_doi_registered": 4
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2204",
+   "name": "Biomedical Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2205",
+   "name": "Civil and Structural Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2206",
+   "name": "Computational Mechanics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 47,
+    "ok_doi_registered": 3
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2207",
+   "name": "Control and Systems Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2208",
+   "name": "Electrical and Electronic Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2209",
+   "name": "Industrial and Manufacturing Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2210",
+   "name": "Mechanical Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2211",
+   "name": "Mechanics of Materials",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2212",
+   "name": "Ocean Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2213",
+   "name": "Safety, Risk, Reliability and Quality",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2214",
+   "name": "Media Technology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2215",
+   "name": "Building and Construction",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2216",
+   "name": "Architecture",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_review_record": 3,
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2302",
+   "name": "Ecological Modeling",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2303",
+   "name": "Ecology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_doi_not_found": 3,
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2304",
+   "name": "Environmental Chemistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "drop_doi_not_found": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2305",
+   "name": "Environmental Engineering",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_doi_registered": 3,
+    "ok_crossref": 47
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2306",
+   "name": "Global and Planetary Change",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2307",
+   "name": "Health, Toxicology and Mutagenesis",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2308",
+   "name": "Management, Monitoring, Policy and Law",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_review_record": 1,
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2309",
+   "name": "Nature and Landscape Conservation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2310",
+   "name": "Pollution",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2311",
+   "name": "Waste Management and Disposal",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_review_record": 1,
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2312",
+   "name": "Water Science and Technology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2402",
+   "name": "Applied Microbiology and Biotechnology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2403",
+   "name": "Immunology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2404",
+   "name": "Microbiology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2405",
+   "name": "Parasitology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2406",
+   "name": "Virology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2500",
+   "name": "General Materials Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2502",
+   "name": "Biomaterials",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2503",
+   "name": "Ceramics and Composites",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2504",
+   "name": "Electronic, Optical and Magnetic Materials",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2505",
+   "name": "Materials Chemistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2506",
+   "name": "Metals and Alloys",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2507",
+   "name": "Polymers and Plastics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2508",
+   "name": "Surfaces, Coatings and Films",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2602",
+   "name": "Algebra and Number Theory",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "drop_review_record": 1,
+    "ok_doi_registered": 2,
+    "drop_doi_not_found": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2604",
+   "name": "Applied Mathematics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2605",
+   "name": "Computational Mathematics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 47,
+    "ok_doi_registered": 3
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2607",
+   "name": "Discrete Mathematics and Combinatorics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2608",
+   "name": "Geometry and Topology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2610",
+   "name": "Mathematical Physics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2611",
+   "name": "Modeling and Simulation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2612",
+   "name": "Numerical Analysis",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2613",
+   "name": "Statistics and Probability",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2614",
+   "name": "Theoretical Computer Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2702",
+   "name": "Anatomy",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2703",
+   "name": "Anesthesiology and Pain Medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2704",
+   "name": "Biochemistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2705",
+   "name": "Cardiology and Cardiovascular Medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2706",
+   "name": "Critical Care and Intensive Care Medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2707",
+   "name": "Complementary and alternative medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2708",
+   "name": "Dermatology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2711",
+   "name": "Emergency Medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2712",
+   "name": "Endocrinology, Diabetes and Metabolism",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2713",
+   "name": "Epidemiology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2714",
+   "name": "Family Practice",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2715",
+   "name": "Gastroenterology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_doi_not_found": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2716",
+   "name": "Genetics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2717",
+   "name": "Geriatrics and Gerontology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2718",
+   "name": "Health Informatics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2720",
+   "name": "Hematology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2721",
+   "name": "Hepatology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2723",
+   "name": "Immunology and Allergy",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2724",
+   "name": "Internal Medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2725",
+   "name": "Infectious Diseases",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2726",
+   "name": "Microbiology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2727",
+   "name": "Nephrology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2728",
+   "name": "Neurology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2729",
+   "name": "Obstetrics and Gynecology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2730",
+   "name": "Oncology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2731",
+   "name": "Ophthalmology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2732",
+   "name": "Orthopedics and Sports Medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2733",
+   "name": "Otorhinolaryngology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2734",
+   "name": "Pathology and Forensic Medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2735",
+   "name": "Pediatrics, Perinatology and Child Health",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2736",
+   "name": "Pharmacology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2737",
+   "name": "Physiology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2738",
+   "name": "Psychiatry and Mental health",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2739",
+   "name": "Public Health, Environmental and Occupational Health",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2740",
+   "name": "Pulmonary and Respiratory Medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2741",
+   "name": "Radiology, Nuclear Medicine and Imaging",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2742",
+   "name": "Rehabilitation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2743",
+   "name": "Reproductive Medicine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_doi_registered": 1,
+    "ok_crossref": 49
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2745",
+   "name": "Rheumatology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2746",
+   "name": "Surgery",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2747",
+   "name": "Transplantation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2748",
+   "name": "Urology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2802",
+   "name": "Behavioral Neuroscience",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2803",
+   "name": "Biological Psychiatry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2804",
+   "name": "Cellular and Molecular Neuroscience",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2805",
+   "name": "Cognitive Neuroscience",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2806",
+   "name": "Developmental Neuroscience",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2807",
+   "name": "Endocrine and Autonomic Systems",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2808",
+   "name": "Neurology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2809",
+   "name": "Sensory Systems",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2910",
+   "name": "Issues, ethics and legal aspects",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_review_record": 2,
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2911",
+   "name": "Leadership and Management",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 47,
+    "ok_doi_registered": 3
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2916",
+   "name": "Nutrition and Dietetics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "2922",
+   "name": "Research and Theory",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3002",
+   "name": "Drug Discovery",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 3
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3003",
+   "name": "Pharmaceutical Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3004",
+   "name": "Pharmacology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3005",
+   "name": "Toxicology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3102",
+   "name": "Acoustics and Ultrasonics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3103",
+   "name": "Astronomy and Astrophysics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3104",
+   "name": "Condensed Matter Physics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3105",
+   "name": "Instrumentation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 47,
+    "ok_doi_registered": 3
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3106",
+   "name": "Nuclear and High Energy Physics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3107",
+   "name": "Atomic and Molecular Physics, and Optics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3108",
+   "name": "Radiation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_doi_not_found": 1,
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3109",
+   "name": "Statistical and Nonlinear Physics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3200",
+   "name": "General Psychology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "drop_review_record": 3,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3202",
+   "name": "Applied Psychology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3203",
+   "name": "Clinical Psychology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3204",
+   "name": "Developmental and Educational Psychology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3205",
+   "name": "Experimental and Cognitive Psychology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3206",
+   "name": "Neuropsychology and Physiological Psychology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3207",
+   "name": "Social Psychology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3300",
+   "name": "General Social Sciences",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 48,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3302",
+   "name": "Archeology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 2,
+    "ok_doi_registered": 1,
+    "drop_crossref_title_mismatch": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3303",
+   "name": "Development",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_review_record": 3,
+    "ok_crossref": 50,
+    "drop_doi_not_found": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3304",
+   "name": "Education",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3305",
+   "name": "Geography, Planning and Development",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_doi_registered": 5,
+    "ok_crossref": 45,
+    "drop_doi_not_found": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3306",
+   "name": "Health",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3307",
+   "name": "Human Factors and Ergonomics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3308",
+   "name": "Law",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3309",
+   "name": "Library and Information Sciences",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3310",
+   "name": "Linguistics and Language",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3311",
+   "name": "Safety Research",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3312",
+   "name": "Sociology and Political Science",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_doi_not_found": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3313",
+   "name": "Transportation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3314",
+   "name": "Anthropology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_doi_registered": 1,
+    "ok_crossref": 49,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3315",
+   "name": "Communication",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "drop_doi_not_found": 1,
+    "ok_crossref": 48,
+    "drop_review_record": 1,
+    "drop_crossref_title_mismatch": 1,
+    "ok_doi_registered": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3316",
+   "name": "Cultural Studies",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 3,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3317",
+   "name": "Demography",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3318",
+   "name": "Gender Studies",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 2,
+    "drop_doi_not_found": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3319",
+   "name": "Life-span and Life-course Studies",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3320",
+   "name": "Political Science and International Relations",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_review_record": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3321",
+   "name": "Public Administration",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3322",
+   "name": "Urban Studies",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_review_record": 2,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3402",
+   "name": "Equine",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3404",
+   "name": "Small Animals",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_doi_not_found": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3500",
+   "name": "General Dentistry",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3504",
+   "name": "Oral Surgery",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3505",
+   "name": "Orthodontics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3506",
+   "name": "Periodontics",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3600",
+   "name": "General Health Professions",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3603",
+   "name": "Complementary and Manual Therapy",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3604",
+   "name": "Emergency Medical Services",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3605",
+   "name": "Health Information Management",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_crossref_title_mismatch": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3607",
+   "name": "Medical Laboratory Technology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 1
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3608",
+   "name": "Medical Terminology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3609",
+   "name": "Occupational Therapy",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3611",
+   "name": "Pharmacy",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3612",
+   "name": "Physical Therapy, Sports Therapy and Rehabilitation",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3614",
+   "name": "Radiological and Ultrasound Technology",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 50,
+    "drop_doi_not_found": 2
+   },
+   "without_doi": 0
+  },
+  {
+   "subfield_id": "3616",
+   "name": "Speech and Hearing",
+   "wanted": 50,
+   "kept": 50,
+   "by_stratum": {
+    "landmark": 15,
+    "mid": 25,
+    "recent": 10
+   },
+   "shortfall": {},
+   "checks": {
+    "ok_crossref": 49,
+    "drop_doi_not_found": 1,
+    "ok_doi_registered": 1
+   },
+   "without_doi": 0
+  }
+ ]
+}

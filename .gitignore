@@ -9,3 +9,6 @@ pdfs/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+reliability/cache/
+reliability/results/
+!reliability/data/
