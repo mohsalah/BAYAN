@@ -100,6 +100,9 @@ class SearchProfile(BaseModel):
     # Region ids from bayan.regions; they expand to country codes together with `countries`.
     regions: list[str] = Field(default_factory=list)
     geo_mode: Literal["include", "exclude"] = "include"
+    # Result order: the library's text-match order, or most cited first. Only libraries that
+    # can sort by citations apply it; the others keep their order and are reported.
+    sort: Literal["relevance", "citations"] = "relevance"
     # v1 supports only the authors' affiliation countries (study location is not inferred).
     geo_basis: str = "author_affiliation"
 

@@ -47,18 +47,24 @@ def collect(
     quotas: dict[int, int] | None = None,
     enrich: Callable[[Paper], None] | None = None,
     limit: int | None = None,
+    counts: dict[int, int] | None = None,
 ) -> CollectResult:
     """Keep each work once (DOI, else source+id); with quotas, cap years and report shortfalls.
 
     `enrich` (e.g. the DOI lookup) runs only on a paper that would be kept, before it is
     counted, so a DOI it finds can still reveal a duplicate that must not use up a quota slot.
     `limit` stops after that many kept papers, without reading another record.
+    `counts`, when given, is the dict the kept papers per year are counted in, so a caller's
+    streams can see that a year is full and stop reading it (no further library pages).
     """
     result = CollectResult()
     if limit is not None and limit <= 0:
         return result
     kept: dict[str, Paper] = {}
-    counts = {y: 0 for y in quotas} if quotas else {}
+    if counts is None:
+        counts = {}
+    if quotas:
+        counts.update({y: 0 for y in quotas})
     for paper in papers:
         key = _key(paper)
         if key in kept:

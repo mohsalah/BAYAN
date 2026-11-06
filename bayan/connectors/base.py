@@ -25,6 +25,9 @@ class Connector(Protocol):
     # Reference types (models.DOCUMENT_TYPES) the source can return. A connector without it
     # is reported as "capability not recorded", never assumed to supply a type.
     supported_categories: frozenset[str]
+    # Result orders the source can apply (SearchProfile.sort). A connector without it is read
+    # as {"relevance"}: it keeps its own order and a citation sort is reported as unapplied.
+    supported_sorts: frozenset[str]
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]: ...
 
