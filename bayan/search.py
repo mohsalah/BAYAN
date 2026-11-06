@@ -99,6 +99,36 @@ def _counted(connector: Connector, profile: SearchProfile, state: dict) -> Itera
         yield paper
 
 
+def _sorts(connector: Connector) -> frozenset[str]:
+    return getattr(connector, "supported_sorts", frozenset({"relevance"}))
+
+
+def _until_full(stream: Iterator[Paper], year: int, quotas: dict[int, int],
+                counts: dict[int, int]) -> Iterator[Paper]:
+    """One year's records until that year's quota is kept. Checked before each read, so a full
+    year never asks its library for another record (or page)."""
+    while counts.get(year, 0) < quotas[year]:
+        paper = next(stream, _DONE)
+        if paper is _DONE:
+            return
+        yield paper
+
+
+def _library_stream(connector: Connector, profile: SearchProfile, state: dict,
+                    quotas: dict[int, int] | None, counts: dict[int, int]) -> Iterator[Paper]:
+    """A library's records. Most cited first with year quotas runs one query per year with a
+    quota (round-robin), so recent years, with fewer citations so far, are not crowded out by
+    older ones; each year's query stops once that year is full."""
+    if not (profile.sort == "citations" and quotas and "citations" in _sorts(connector)):
+        return _counted(connector, profile, state)
+    years = [y for y, q in sorted(quotas.items()) if q > 0]
+    state["sorted_by_year"].append(connector.name)
+    return _interleave([
+        _until_full(_counted(connector, profile.model_copy(
+            update={"year_from": y, "year_to": y}), state), y, quotas, counts)
+        for y in years])
+
+
 def _scan(stream: Iterator[Paper], limit: int, state: dict) -> Iterator[Paper]:
     # Checked after each record, so reaching the limit never reads (and pages for) one more.
     if state["scanned"] >= limit:
@@ -188,8 +218,10 @@ def run_search(
         quotas = allocate_quotas(request.quota_total, quota_weights(profile, request.weighting))
     wanted = request.quota_total or max_results
     state = {"scanned": 0, "stopped": "exhausted", "filtered_by_type": 0, "geo_outside": 0,
-             "scanned_by_library": {c.name: 0 for c in connectors}}
-    stream = _scan(_interleave([_counted(c, profile, state) for c in connectors]),
+             "scanned_by_library": {c.name: 0 for c in connectors}, "sorted_by_year": []}
+    counts: dict[int, int] = {}
+    stream = _scan(_interleave([_library_stream(c, profile, state, quotas, counts)
+                                for c in connectors]),
                    max_results * SCAN_FACTOR, state)
     stream = _type_filtered(stream, profile, state)
     stream = _geo_filtered(stream, profile, state)
@@ -197,12 +229,19 @@ def run_search(
               if doi_lookup is not None else None)
     # Without quotas the limit counts kept papers, after de-duplication, so a paper found in
     # two libraries does not use up two places.
-    result = collect(stream, quotas, enrich=lookup, limit=None if quotas else wanted)
+    result = collect(stream, quotas, enrich=lookup, limit=None if quotas else wanted,
+                     counts=counts)
     if quotas is not None and not result.shortfalls:
         state["stopped"] = "complete"
     elif quotas is None and len(result.papers) >= wanted:
         state["stopped"] = "limit"
 
+    if profile.sort == "citations":
+        # Most cited first across years for records from libraries that sorted by citations.
+        # Other libraries report no citation count we can trust as 0 ("not reported" is not
+        # zero), so their records follow, in their own order (the sort is stable).
+        sorting = {c.name for c in connectors if "citations" in _sorts(c)}
+        result.papers.sort(key=lambda p: (0, -p.citations) if p.source in sorting else (1, 0))
     geography = _geography_summary(profile, result.papers, state)
     by_category = Counter(p.category for p in result.papers)
     summary = {
@@ -219,7 +258,15 @@ def run_search(
                      if f not in getattr(c, "supported_filters", frozenset())]
             for c in connectors},
         "stopped": state["stopped"],
-        "warnings": [w for c in connectors for w in getattr(c, "warnings", [])],
+        "sort": profile.sort,
+        # Libraries that could not sort by citations: searched in their own order, and their
+        # records are listed after the sorted ones.
+        "sort_unapplied": [c.name for c in connectors if profile.sort not in _sorts(c)],
+        # Libraries that ran one most-cited query per year with a quota.
+        "sorted_by_year": state["sorted_by_year"],
+        # Once each: a per-year search asks a library several times and may repeat a note.
+        "warnings": list(dict.fromkeys(
+            w for c in connectors for w in getattr(c, "warnings", []))),
         "duplicates": result.duplicates,
         "skipped_over_quota": result.skipped_over_quota,
         "skipped_no_year": result.skipped_no_year,

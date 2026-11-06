@@ -138,6 +138,7 @@ class OpenAlexConnector:
     name = "openalex"
     tier = "open"
     supported_filters = frozenset({"years", "document_types", "languages", "countries", "topics"})
+    supported_sorts = frozenset({"relevance", "citations"})
     # Reference types classify_work can return (see OPENALEX_TYPES and the `other` fallback).
     supported_categories = frozenset(
         {"peer_reviewed", "proceedings", "thesis", "report", "other"})
@@ -177,6 +178,8 @@ class OpenAlexConnector:
             }
             if text:
                 params["search"] = text
+            if profile.sort == "citations":
+                params["sort"] = "cited_by_count:desc"
             if self._email:
                 params["mailto"] = self._email
             if self._api_key:
