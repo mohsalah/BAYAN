@@ -209,6 +209,7 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
       <label><span data-i18n="search.geography">Geography</span><details class="dd" id="ddGeo"><summary id="geoSummary"></summary><div class="menu geo" id="geoMenu"></div></details></label>
       <label for="quota"><span data-i18n="search.quota">Papers wanted</span><input id="quota" type="number" min="1" max="200" style="width:110px" placeholder="optional" data-i18n-ph="search.optional"></label>
       <label for="weighting"><span data-i18n="search.weighting">Year weighting</span><select id="weighting"><option value="equal" data-i18n="search.weight.equal">Equal per year</option><option value="recent" data-i18n="search.weight.recent">Favour recent years</option></select></label>
+      <label for="sortOrder"><span data-i18n="search.sort">Order</span><select id="sortOrder"><option value="relevance" data-i18n="search.sort.relevance">Best text match</option><option value="citations" data-i18n="search.sort.citations">Most cited first</option></select></label>
       <button type="submit" id="go" data-i18n="search.go">Search</button>
     </form>
     <fieldset class="langqueries hidden" id="langQueries">
@@ -1248,6 +1249,8 @@ function renderRun(r, relabel) {
   for (const w of s.warnings || []) notes.push(el('p', { class: 'warnmsg' }, w));
   const un = Object.entries(s.unapplied_filters || {}).filter(([, v]) => v.length);
   if (un.length) notes.push(el('p', { class: 'note' }, t('notes.unapplied', { list: un.map(([k, v]) => k + ' (' + v.join(', ') + ')').join('; ') })));
+  if (s.sort === 'citations') notes.push(el('p', { class: 'note' }, t('notes.sort_citations')));
+  if (s.sort === 'citations' && (s.sort_unapplied || []).length) notes.push(el('p', { class: 'note' }, t('notes.sort_unapplied', { list: s.sort_unapplied.join(', ') })));
   if (s.filtered_by_type) notes.push(el('p', { class: 'note' }, t('notes.type_dropped', { n: s.filtered_by_type })));
   const d = s.doi_lookup;
   if (d && d.attempted) notes.push(el('p', { class: 'note' }, t('notes.doi', { matched: d.matched, nomatch: d.no_match, failed: d.failed, cache: d.cache_hits })));
@@ -1291,6 +1294,7 @@ async function search() {
         document_types: getTypes(), languages,
         queries_by_language: queriesForRequest(languages, readLangBoxes()),
         topics: activeTopics.map(x => x.id),
+        sort: $('sortOrder').value,
         ...getGeo(),
       },
       libraries: getLibs(), weighting: $('weighting').value,
@@ -1449,7 +1453,7 @@ const HELP = {
   dlPrompt: 'help.dlPrompt', dlPacket: 'help.dlPacket', openClaude: 'help.openClaude', openChatgpt: 'help.openChatgpt',
   logout: 'help.logout', login: 'help.login', register: 'help.register', query: 'help.query',
   yFrom: 'help.yFrom', yTo: 'help.yTo', geoSummary: 'help.geoSummary', quota: 'help.quota',
-  weighting: 'help.weighting', gapCount: 'help.gapCount', propCount: 'help.propCount', question: 'help.question',
+  weighting: 'help.weighting', sortOrder: 'help.sort', gapCount: 'help.gapCount', propCount: 'help.propCount', question: 'help.question',
   gapText: 'help.gapText', themeSummary: 'theme.help', uiLang: 'ui.language.help', dlPdfs: 'help.dlPdfs',
 };
 $('query').oninput = renderLangQueries;
