@@ -14,8 +14,11 @@ TOPICS_URL = "https://api.openalex.org/topics"
 TOPIC_SELECT = "id,display_name,description,subfield,field,domain,works_count"
 SELECT = (
     "id,doi,title,publication_year,type,language,primary_location,open_access,"
-    "cited_by_count,authorships,abstract_inverted_index,keywords,primary_topic"
+    "cited_by_count,authorships,abstract_inverted_index,keywords,primary_topic,"
+    "referenced_works,counts_by_year"
 )
+# Most values one OR filter (openalex:W1|W2|..., doi:...|...) may carry in a lookup request.
+LOOKUP_BATCH = 50
 # Category -> OpenAlex `type` values used as a coarse pre-filter. `other` has none: it is
 # "everything else", so asking for it sends no type filter at all.
 OPENALEX_TYPES = {
@@ -69,6 +72,27 @@ def rebuild_abstract(inverted: dict[str, list[int]] | None) -> str:
     return " ".join(positions[i] for i in sorted(positions))
 
 
+def short_id(value: str) -> str:
+    """'https://openalex.org/W123' -> 'W123'."""
+    return value.rsplit("/", 1)[-1]
+
+
+def parse_references(value: object) -> list[str] | None:
+    """`referenced_works` as W-ids, or None when the record carries no list at all."""
+    if not isinstance(value, list):
+        return None
+    return list(dict.fromkeys(short_id(v) for v in value if isinstance(v, str) and v))
+
+
+def parse_counts_by_year(value: object) -> list[dict] | None:
+    """`counts_by_year` as [{year, cited_by_count}] sorted by year, or None when absent."""
+    if not isinstance(value, list):
+        return None
+    rows = [{"year": c["year"], "cited_by_count": int(c.get("cited_by_count") or 0)}
+            for c in value if isinstance(c, dict) and isinstance(c.get("year"), int)]
+    return sorted(rows, key=lambda c: c["year"])
+
+
 def parse_work(work: dict) -> Paper:
     loc = work.get("primary_location") or {}
     src = loc.get("source") or {}
@@ -78,7 +102,7 @@ def parse_work(work: dict) -> Paper:
     category, basis = classify_work(work)
     return Paper(
         source="openalex",
-        id=work["id"].rsplit("/", 1)[-1],
+        id=short_id(work["id"]),
         doi=doi,
         title=work.get("title") or "",
         abstract=rebuild_abstract(work.get("abstract_inverted_index")),
@@ -97,6 +121,9 @@ def parse_work(work: dict) -> Paper:
         keywords=[k["display_name"] for k in work.get("keywords") or []
                   if isinstance(k, dict) and isinstance(k.get("display_name"), str)],
         topic=(work.get("primary_topic") or {}).get("display_name") or "",
+        openalex_id=short_id(work["id"]),
+        referenced_works=parse_references(work.get("referenced_works")),
+        counts_by_year=parse_counts_by_year(work.get("counts_by_year")),
     )
 
 
@@ -198,6 +225,19 @@ class OpenAlexConnector:
             for work in data.get("results", []):
                 yield parse_work(work)
             cursor = (data.get("meta") or {}).get("next_cursor")
+
+    def lookup(self, filter_: str) -> list[Paper]:
+        """One request for the works matching an ID filter (`openalex:W1|W2`, `doi:a|b`).
+
+        At most LOOKUP_BATCH values per call; this is a lookup by identifier, not a text search.
+        """
+        params: dict = {"filter": filter_, "per-page": LOOKUP_BATCH, "select": SELECT}
+        if self._email:
+            params["mailto"] = self._email
+        if self._api_key:
+            params["api_key"] = self._api_key
+        data = self._get(params)
+        return [parse_work(w) for w in data.get("results", []) if w.get("id")]
 
     def search_topics(self, text: str, limit: int = 5) -> list[dict]:
         """Topics whose name or description matches `text`, as OpenAlex ranks them."""

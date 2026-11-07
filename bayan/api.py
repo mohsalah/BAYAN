@@ -70,6 +70,16 @@ from .downloads import (
 )
 from .export import safe_cell, to_csv, to_xlsx
 from .libraries import LIBRARIES, key_publishers
+from .library import (
+    BACKFILL_KIND,
+    MAX_BACKFILL_REQUESTS,
+    backfill_candidates,
+    backfill_view,
+    new_backfill_payload,
+    open_backfill,
+    resume_stale_backfills,
+    run_backfill_job,
+)
 from .manuals import (
     add_to_run,
     clean_title,
@@ -166,6 +176,11 @@ class Credentials(BaseModel):
 class PaperRef(BaseModel):
     source: str
     id: str
+
+
+class BackfillRequest(BaseModel):
+    # OpenAlex requests this job may send (each looks up to 50 works by ID or DOI).
+    max_requests: int = Field(default=20, ge=1, le=MAX_BACKFILL_REQUESTS)
 
 
 class DownloadRequest(BaseModel):
@@ -320,6 +335,13 @@ def create_app(
                                  contact_email=settings.contact_email)
     make_connector = connector_factory or default_connector_factory(settings)
 
+    def lookup_connector():
+        """The OpenAlex connector used to look works up by ID (backfill)."""
+        conn = make_connector("openalex")
+        if not hasattr(conn, "lookup"):
+            raise HTTPException(503, "OpenAlex lookups are not available")
+        return conn
+
     def resume_loop(stop: threading.Event) -> None:
         """Continue interrupted download jobs and clear their leftover `.part` files."""
         while True:
@@ -331,18 +353,31 @@ def create_app(
             if stop.wait(settings.job_resume_interval):
                 return
 
+    def backfill_loop(stop: threading.Event) -> None:
+        """Continue interrupted backfill jobs (a thread of its own: they can run for minutes)."""
+        while True:
+            try:
+                resume_stale_backfills(settings.database_path, lookup_connector,
+                                       settings.job_stale_seconds)
+            except Exception as exc:
+                log.warning("backfill resume pass failed: %s", type(exc).__name__)
+            if stop.wait(settings.job_resume_interval):
+                return
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         init_db(settings.database_path)
         stop = threading.Event()
-        worker = None
+        workers = []
         if settings.job_resume_interval > 0:
-            worker = threading.Thread(target=resume_loop, args=(stop,), daemon=True,
-                                      name="bayan-job-resume")
-            worker.start()
+            for target, name in ((resume_loop, "bayan-job-resume"),
+                                 (backfill_loop, "bayan-backfill-resume")):
+                workers.append(threading.Thread(target=target, args=(stop,), daemon=True,
+                                                name=name))
+                workers[-1].start()
         yield
         stop.set()
-        if worker is not None:
+        for worker in workers:
             worker.join(timeout=5)
 
     app = FastAPI(title="BAYAN", version=__version__, lifespan=lifespan)
@@ -487,6 +522,44 @@ def create_app(
             )
         except ConnectorError as exc:
             raise HTTPException(502, str(exc)) from exc
+
+    @app.post("/api/library/backfill", status_code=202)
+    def start_backfill(body: BackfillRequest, background: BackgroundTasks, user: User,
+                       conn: Conn) -> dict:
+        """Store references and yearly citations for library papers saved without them."""
+        # Hold the write lock from the check to the insert, so two requests at once cannot
+        # both start a job.
+        conn.execute("BEGIN IMMEDIATE")
+        running = open_backfill(conn, user["id"])
+        if running is not None:
+            conn.rollback()
+            raise HTTPException(409, f"A backfill is already running (job {running['id']})")
+        by_id, by_doi, _ = backfill_candidates(conn, user["id"])
+        if not by_id and not by_doi:
+            conn.rollback()
+            return backfill_view(conn, None, user["id"])
+        try:
+            connector = lookup_connector()
+        except HTTPException:
+            conn.rollback()
+            raise
+        cur = conn.execute(
+            "INSERT INTO jobs(kind, payload, status) VALUES(?, ?, 'pending')",
+            (BACKFILL_KIND, json.dumps(new_backfill_payload(user["id"], body.max_requests))))
+        conn.commit()
+        background.add_task(run_backfill_job, settings.database_path, cur.lastrowid, connector)
+        job = conn.execute("SELECT id, payload, status, error FROM jobs WHERE id = ?",
+                           (cur.lastrowid,)).fetchone()
+        return backfill_view(conn, job, user["id"])
+
+    @app.get("/api/library/backfill/jobs/{job_id}")
+    def backfill_job(job_id: int, user: User, conn: Conn) -> dict:
+        job = conn.execute("SELECT id, kind, payload, status, error FROM jobs WHERE id = ?",
+                           (job_id,)).fetchone()
+        if (job is None or job["kind"] != BACKFILL_KIND
+                or json.loads(job["payload"]).get("user_id") != user["id"]):
+            raise HTTPException(404, "Job not found")
+        return backfill_view(conn, job, user["id"])
 
     @app.get("/api/runs")
     def runs(user: User, conn: Conn) -> list[dict]:

@@ -1,7 +1,13 @@
 """SQLite storage. Starts from the reference schema; later milestones add tables."""
 
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
+
+
+def now_iso() -> str:
+    """UTC time as stored in the database (second precision, `Z` suffix)."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS papers(
@@ -9,8 +15,16 @@ CREATE TABLE IF NOT EXISTS papers(
   document_type TEXT, language TEXT, venue TEXT, first_author TEXT, countries TEXT,
   citations INTEGER, is_oa INTEGER, oa_url TEXT, landing_url TEXT, keywords TEXT, topic TEXT,
   category TEXT, native_type TEXT, category_basis TEXT, document_kind TEXT,
+  openalex_id TEXT, counts_by_year TEXT, citations_updated_at TEXT, references_count INTEGER,
+  openalex_status TEXT,
   PRIMARY KEY(source, id)
 );
+-- Citation network: OpenAlex W-ids. A paper's rows are replaced only when a library supplied
+-- its reference list (papers.references_count is then set; NULL = never stored).
+CREATE TABLE IF NOT EXISTS paper_references(
+  citing TEXT NOT NULL, cited TEXT NOT NULL, PRIMARY KEY(citing, cited)
+);
+CREATE INDEX IF NOT EXISTS paper_references_cited ON paper_references(cited);
 CREATE VIRTUAL TABLE IF NOT EXISTS paper_search USING fts5(
   source UNINDEXED, id UNINDEXED, title, abstract, keywords, topic
 );
@@ -179,7 +193,9 @@ def connect(path: Path) -> sqlite3.Connection:
 # Columns added after the first release; init_db adds them to an existing file in place.
 COLUMNS_ADDED = {
     "papers": (("category", "TEXT"), ("native_type", "TEXT"), ("category_basis", "TEXT"),
-               ("document_kind", "TEXT")),
+               ("document_kind", "TEXT"), ("openalex_id", "TEXT"), ("counts_by_year", "TEXT"),
+               ("citations_updated_at", "TEXT"), ("references_count", "INTEGER"),
+               ("openalex_status", "TEXT")),
     "downloads": (("page_count", "INTEGER"), ("pages_with_text", "INTEGER"),
                   ("index_status", "TEXT")),
 }
@@ -193,3 +209,11 @@ def init_db(path: Path) -> None:
             for column, kind in columns:
                 if column not in have:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+        # Indexes on added columns, created once the columns exist.
+        conn.executescript(INDEXES_ON_ADDED_COLUMNS)
+
+
+INDEXES_ON_ADDED_COLUMNS = """
+CREATE INDEX IF NOT EXISTS papers_openalex_id ON papers(openalex_id);
+CREATE INDEX IF NOT EXISTS papers_doi ON papers(doi);
+"""
