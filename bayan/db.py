@@ -1,7 +1,13 @@
 """SQLite storage. Starts from the reference schema; later milestones add tables."""
 
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
+
+
+def now_iso() -> str:
+    """UTC time as stored in the database (second precision, `Z` suffix)."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS papers(
@@ -9,7 +15,52 @@ CREATE TABLE IF NOT EXISTS papers(
   document_type TEXT, language TEXT, venue TEXT, first_author TEXT, countries TEXT,
   citations INTEGER, is_oa INTEGER, oa_url TEXT, landing_url TEXT, keywords TEXT, topic TEXT,
   category TEXT, native_type TEXT, category_basis TEXT, document_kind TEXT,
+  openalex_id TEXT, counts_by_year TEXT, citations_updated_at TEXT, references_count INTEGER,
+  openalex_status TEXT,
   PRIMARY KEY(source, id)
+);
+-- Citation network: OpenAlex W-ids. A paper's rows are replaced only when a library supplied
+-- its reference list (papers.references_count is then set; NULL = never stored).
+CREATE TABLE IF NOT EXISTS paper_references(
+  citing TEXT NOT NULL, cited TEXT NOT NULL, PRIMARY KEY(citing, cited)
+);
+CREATE INDEX IF NOT EXISTS paper_references_cited ON paper_references(cited);
+-- Collections (M31): one corpus per research track, owner-only.
+CREATE TABLE IF NOT EXISTS collections(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', profile TEXT, libraries TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP, last_refreshed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS collections_user ON collections(user_id);
+CREATE TABLE IF NOT EXISTS collection_papers(
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, paper_id TEXT NOT NULL, added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  added_from_run INTEGER, origin TEXT NOT NULL DEFAULT 'run',
+  PRIMARY KEY(collection_id, source, paper_id)
+);
+-- Papers the owner removed from a collection: adding a run again does not bring them back.
+CREATE TABLE IF NOT EXISTS collection_removed(
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, paper_id TEXT NOT NULL, removed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(collection_id, source, paper_id)
+);
+-- Refreshes of a collection (M32): one row per refresh job, updated as it runs. Counts and
+-- shortfalls/skipped (JSON) are what the job really did.
+CREATE TABLE IF NOT EXISTS collection_refreshes(
+  id INTEGER PRIMARY KEY,
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  job_id INTEGER, trigger TEXT NOT NULL DEFAULT 'manual', status TEXT NOT NULL DEFAULT 'pending',
+  since TEXT, started_at TEXT DEFAULT CURRENT_TIMESTAMP, finished_at TEXT,
+  new_papers INTEGER NOT NULL DEFAULT 0, citations_updated INTEGER NOT NULL DEFAULT 0,
+  requests_made INTEGER NOT NULL DEFAULT 0, run_id INTEGER, shortfalls TEXT, skipped TEXT,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS collection_refreshes_collection
+  ON collection_refreshes(collection_id);
+-- OpenAlex lookups a user asked for directly (foundations), for the hourly limit.
+CREATE TABLE IF NOT EXISTS lookup_attempts(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  requests INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS paper_search USING fts5(
   source UNINDEXED, id UNINDEXED, title, abstract, keywords, topic
@@ -151,6 +202,31 @@ CREATE TABLE IF NOT EXISTS concept_attempts(
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   kind TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS idea_runs(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  run_id INTEGER NOT NULL, job_id INTEGER, status TEXT NOT NULL, detail TEXT,
+  background TEXT NOT NULL, request TEXT NOT NULL, steps TEXT NOT NULL DEFAULT '[]',
+  result TEXT, model TEXT, calls INTEGER NOT NULL DEFAULT 0,
+  cached_calls INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idea_runs_user ON idea_runs(user_id, run_id, created_at);
+CREATE TABLE IF NOT EXISTS idea_attempts(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS topic_maps(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  run_id INTEGER NOT NULL, job_id INTEGER, status TEXT NOT NULL, detail TEXT,
+  scope TEXT NOT NULL, request TEXT NOT NULL, steps TEXT NOT NULL DEFAULT '[]', result TEXT,
+  model TEXT, calls INTEGER NOT NULL DEFAULT 0, cached_calls INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS topic_maps_user ON topic_maps(user_id, run_id, created_at);
+CREATE TABLE IF NOT EXISTS topic_attempts(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS plans(
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   area TEXT NOT NULL, request TEXT NOT NULL, suggested TEXT NOT NULL, plan TEXT NOT NULL,
@@ -179,7 +255,9 @@ def connect(path: Path) -> sqlite3.Connection:
 # Columns added after the first release; init_db adds them to an existing file in place.
 COLUMNS_ADDED = {
     "papers": (("category", "TEXT"), ("native_type", "TEXT"), ("category_basis", "TEXT"),
-               ("document_kind", "TEXT"), ("authors", "TEXT")),
+               ("document_kind", "TEXT"), ("openalex_id", "TEXT"), ("counts_by_year", "TEXT"),
+               ("citations_updated_at", "TEXT"), ("references_count", "INTEGER"),
+               ("openalex_status", "TEXT"), ("authors", "TEXT")),
     "downloads": (("page_count", "INTEGER"), ("pages_with_text", "INTEGER"),
                   ("index_status", "TEXT")),
 }
@@ -193,3 +271,11 @@ def init_db(path: Path) -> None:
             for column, kind in columns:
                 if column not in have:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+        # Indexes on added columns, created once the columns exist.
+        conn.executescript(INDEXES_ON_ADDED_COLUMNS)
+
+
+INDEXES_ON_ADDED_COLUMNS = """
+CREATE INDEX IF NOT EXISTS papers_openalex_id ON papers(openalex_id);
+CREATE INDEX IF NOT EXISTS papers_doi ON papers(doi);
+"""

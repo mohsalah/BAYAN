@@ -101,6 +101,9 @@ class SearchProfile(BaseModel):
     # Region ids from bayan.regions; they expand to country codes together with `countries`.
     regions: list[str] = Field(default_factory=list)
     geo_mode: Literal["include", "exclude"] = "include"
+    # Result order: the library's text-match order, or most cited first. Only libraries that
+    # can sort by citations apply it; the others keep their order and are reported.
+    sort: Literal["relevance", "citations"] = "relevance"
     # v1 supports only the authors' affiliation countries (study location is not inferred).
     geo_basis: str = "author_affiliation"
 
@@ -236,3 +239,11 @@ class Paper(BaseModel):
     # Set only when the DOI was found by the automatic Crossref lookup (never for source DOIs).
     doi_source: str = ""
     doi_match_score: float | None = None
+    # OpenAlex work ID ("W123"): set for OpenAlex records, and for other libraries' records
+    # once they are matched to an OpenAlex work by DOI.
+    openalex_id: str = ""
+    # OpenAlex W-ids this work cites. None = the library did not supply a list (which is not the
+    # same as an empty list), so stored references are kept.
+    referenced_works: list[str] | None = None
+    # [{"year": 2024, "cited_by_count": 12}, ...] as OpenAlex reports it (recent years only).
+    counts_by_year: list[dict] | None = None

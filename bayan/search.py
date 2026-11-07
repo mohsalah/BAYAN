@@ -4,12 +4,12 @@ import json
 import sqlite3
 from collections import Counter
 from collections.abc import Iterator
-from itertools import zip_longest
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from .connectors.base import FILTERS, Connector
+from .db import now_iso
 from .doi_lookup import DoiLooker, DoiLookup
 from .models import DOCUMENT_TYPES, MAX_AUTHORS, USER_SOURCE, Paper, SearchProfile, language_key
 from .quotas import allocate_quotas
@@ -26,6 +26,9 @@ class SearchRequest(BaseModel):
     # Optional per-year quotas over the chosen period. Without it, the first N results are kept.
     quota_total: int | None = Field(default=None, ge=1)
     weighting: Literal["equal", "recent"] = "equal"
+    # remote: search the libraries (default). local: search only the papers you already have.
+    # local_then_remote: local hits first, then the remote search, with new/known counts.
+    mode: Literal["remote", "local", "local_then_remote"] = "remote"
 
 
 def quota_weights(profile: SearchProfile, weighting: str) -> dict[int, int]:
@@ -37,16 +40,24 @@ def quota_weights(profile: SearchProfile, weighting: str) -> dict[int, int]:
 
 
 NO_DOI_LOOKUP = {"attempted": 0, "matched": 0, "no_match": 0, "failed": 0,
-                 "skipped_over_budget": 0, "cache_hits": 0}
+                 "skipped_over_budget": 0, "skipped_over_time": 0, "cache_hits": 0}
 
 _DONE = object()
 
 
 def _interleave(streams: list[Iterator[Paper]]) -> Iterator[Paper]:
-    """Round-robin over libraries so a full first library cannot starve the others."""
-    for round_ in zip_longest(*streams, fillvalue=_DONE):
-        for paper in round_:
-            if paper is not _DONE:
+    """Round-robin over libraries so a full first library cannot starve the others.
+
+    Each record is read only when it is wanted: reading a whole round ahead made every other
+    library fetch its next page for records that a full result then threw away.
+    """
+    active = list(streams)
+    while active:
+        for stream in list(active):
+            paper = next(stream, _DONE)
+            if paper is _DONE:
+                active.remove(stream)
+            else:
                 yield paper
 
 
@@ -92,13 +103,47 @@ def _counted(connector: Connector, profile: SearchProfile, state: dict) -> Itera
         yield paper
 
 
+def _sorts(connector: Connector) -> frozenset[str]:
+    return getattr(connector, "supported_sorts", frozenset({"relevance"}))
+
+
+def _until_full(stream: Iterator[Paper], year: int, quotas: dict[int, int],
+                counts: dict[int, int]) -> Iterator[Paper]:
+    """One year's records until that year's quota is kept. Checked before each read, so a full
+    year never asks its library for another record (or page)."""
+    while counts.get(year, 0) < quotas[year]:
+        paper = next(stream, _DONE)
+        if paper is _DONE:
+            return
+        yield paper
+
+
+def _library_stream(connector: Connector, profile: SearchProfile, state: dict,
+                    quotas: dict[int, int] | None, counts: dict[int, int]) -> Iterator[Paper]:
+    """A library's records. Most cited first with year quotas runs one query per year with a
+    quota (round-robin), so recent years, with fewer citations so far, are not crowded out by
+    older ones; each year's query stops once that year is full."""
+    if not (profile.sort == "citations" and quotas and "citations" in _sorts(connector)):
+        return _counted(connector, profile, state)
+    years = [y for y, q in sorted(quotas.items()) if q > 0]
+    state["sorted_by_year"].append(connector.name)
+    return _interleave([
+        _until_full(_counted(connector, profile.model_copy(
+            update={"year_from": y, "year_to": y}), state), y, quotas, counts)
+        for y in years])
+
+
 def _scan(stream: Iterator[Paper], limit: int, state: dict) -> Iterator[Paper]:
+    # Checked after each record, so reaching the limit never reads (and pages for) one more.
+    if state["scanned"] >= limit:
+        state["stopped"] = "scan_limit"
+        return
     for paper in stream:
+        state["scanned"] += 1
+        yield paper
         if state["scanned"] >= limit:
             state["stopped"] = "scan_limit"
             return
-        state["scanned"] += 1
-        yield paper
 
 
 def _type_filtered(stream: Iterator[Paper], profile: SearchProfile, state: dict) -> Iterator[Paper]:
@@ -169,6 +214,7 @@ def run_search(
     max_results: int,
     doi_lookup: DoiLooker | None = None,
     doi_budget: int = 0,
+    doi_seconds: float | None = None,
 ) -> dict:
     profile = request.profile
     quotas = None
@@ -176,18 +222,30 @@ def run_search(
         quotas = allocate_quotas(request.quota_total, quota_weights(profile, request.weighting))
     wanted = request.quota_total or max_results
     state = {"scanned": 0, "stopped": "exhausted", "filtered_by_type": 0, "geo_outside": 0,
-             "scanned_by_library": {c.name: 0 for c in connectors}}
-    stream = _scan(_interleave([_counted(c, profile, state) for c in connectors]),
+             "scanned_by_library": {c.name: 0 for c in connectors}, "sorted_by_year": []}
+    counts: dict[int, int] = {}
+    stream = _scan(_interleave([_library_stream(c, profile, state, quotas, counts)
+                                for c in connectors]),
                    max_results * SCAN_FACTOR, state)
     stream = _type_filtered(stream, profile, state)
     stream = _geo_filtered(stream, profile, state)
-    if quotas is None:
-        stream = _first(stream, wanted, state)
-    lookup = DoiLookup(conn, doi_lookup, doi_budget) if doi_lookup is not None else None
-    result = collect(stream, quotas, enrich=lookup)
+    lookup = (DoiLookup(conn, doi_lookup, doi_budget, doi_seconds)
+              if doi_lookup is not None else None)
+    # Without quotas the limit counts kept papers, after de-duplication, so a paper found in
+    # two libraries does not use up two places.
+    result = collect(stream, quotas, enrich=lookup, limit=None if quotas else wanted,
+                     counts=counts)
     if quotas is not None and not result.shortfalls:
         state["stopped"] = "complete"
+    elif quotas is None and len(result.papers) >= wanted:
+        state["stopped"] = "limit"
 
+    if profile.sort == "citations":
+        # Most cited first across years for records from libraries that sorted by citations.
+        # Other libraries report no citation count we can trust as 0 ("not reported" is not
+        # zero), so their records follow, in their own order (the sort is stable).
+        sorting = {c.name for c in connectors if "citations" in _sorts(c)}
+        result.papers.sort(key=lambda p: (0, -p.citations) if p.source in sorting else (1, 0))
     geography = _geography_summary(profile, result.papers, state)
     by_category = Counter(p.category for p in result.papers)
     summary = {
@@ -204,7 +262,15 @@ def run_search(
                      if f not in getattr(c, "supported_filters", frozenset())]
             for c in connectors},
         "stopped": state["stopped"],
-        "warnings": [w for c in connectors for w in getattr(c, "warnings", [])],
+        "sort": profile.sort,
+        # Libraries that could not sort by citations: searched in their own order, and their
+        # records are listed after the sorted ones.
+        "sort_unapplied": [c.name for c in connectors if profile.sort not in _sorts(c)],
+        # Libraries that ran one most-cited query per year with a quota.
+        "sorted_by_year": state["sorted_by_year"],
+        # Once each: a per-year search asks a library several times and may repeat a note.
+        "warnings": list(dict.fromkeys(
+            w for c in connectors for w in getattr(c, "warnings", []))),
         "duplicates": result.duplicates,
         "skipped_over_quota": result.skipped_over_quota,
         "skipped_no_year": result.skipped_no_year,
@@ -239,28 +305,69 @@ def run_search(
     return {"id": run_id, "summary": summary}
 
 
-def _first(stream: Iterator[Paper], n: int, state: dict) -> Iterator[Paper]:
-    count = 0
-    for paper in stream:
-        if count >= n:
-            state["stopped"] = "limit"
-            return
-        count += 1
-        yield paper
+# Libraries whose records carry a citation count. Others report none, so storing their record
+# does not mean the count was checked (citations_updated_at stays unset).
+CITATION_LIBRARIES = frozenset({"openalex", "crossref", "europepmc"})
 
 
 def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
+    openalex_id = p.openalex_id or (p.id if p.source == "openalex" else "")
+    if not openalex_id and p.doi:
+        # Another library's record of a work already stored from OpenAlex.
+        row = conn.execute("SELECT openalex_id FROM papers WHERE doi = ? AND openalex_id"
+                           " IS NOT NULL AND openalex_id != '' LIMIT 1", (p.doi,)).fetchone()
+        openalex_id = row["openalex_id"] if row else ""
+    refs = p.referenced_works if openalex_id else None
+    # How many references are stored for this work: from this record's list, or from an
+    # earlier record of the same work (so backfill does not look it up again).
+    known_refs = len(refs) if refs is not None else None
+    if openalex_id and known_refs is None:
+        known_refs = conn.execute(
+            "SELECT MAX(references_count) FROM papers WHERE openalex_id = ?",
+            (openalex_id,)).fetchone()[0]
+    # An upsert, not a replace: a later record without OpenAlex data (no W-id, no yearly counts,
+    # no reference list) keeps what an earlier one stored.
     conn.execute(
-        "INSERT OR REPLACE INTO papers(source, id, doi, title, abstract, year, native_type,"
+        "INSERT INTO papers(source, id, doi, title, abstract, year, native_type,"
         " category, category_basis, document_kind, language, venue, first_author, countries,"
-        " citations, is_oa, oa_url, landing_url, keywords, topic, authors)"
-        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " citations, is_oa, oa_url, landing_url, keywords, topic, openalex_id, counts_by_year,"
+        " citations_updated_at, references_count, authors)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        " ON CONFLICT(source, id) DO UPDATE SET doi = excluded.doi, title = excluded.title,"
+        " abstract = excluded.abstract, year = excluded.year,"
+        " native_type = excluded.native_type, category = excluded.category,"
+        " category_basis = excluded.category_basis, document_kind = excluded.document_kind,"
+        " language = excluded.language, venue = excluded.venue,"
+        " first_author = excluded.first_author, countries = excluded.countries,"
+        " citations = excluded.citations, is_oa = excluded.is_oa, oa_url = excluded.oa_url,"
+        " landing_url = excluded.landing_url, keywords = excluded.keywords,"
+        " topic = excluded.topic,"
+        " openalex_id = COALESCE(excluded.openalex_id, papers.openalex_id),"
+        " counts_by_year = COALESCE(excluded.counts_by_year, papers.counts_by_year),"
+        " citations_updated_at = COALESCE(excluded.citations_updated_at,"
+        " papers.citations_updated_at),"
+        " references_count = COALESCE(excluded.references_count, papers.references_count),"
+        # A record that lists no authors keeps the authors stored from an earlier one.
+        " authors = CASE WHEN excluded.authors = '[]' THEN papers.authors"
+        " ELSE excluded.authors END",
         (p.source, p.id, p.doi, p.title, p.abstract, p.year, p.native_type, p.category,
          p.category_basis, p.document_kind or None, p.language, p.venue, p.first_author,
          json.dumps(p.countries), p.citations, int(p.is_oa), p.oa_url, p.landing_url,
-         json.dumps(p.keywords), p.topic,
-         json.dumps(p.authors[:MAX_AUTHORS], ensure_ascii=False)),
+         json.dumps(p.keywords), p.topic, openalex_id or None,
+         json.dumps(p.counts_by_year) if p.counts_by_year is not None else None,
+         now_iso() if p.source in CITATION_LIBRARIES else None,
+         known_refs, json.dumps(p.authors[:MAX_AUTHORS], ensure_ascii=False)),
     )
+    if openalex_id:
+        if refs is not None:
+            store_references(conn, openalex_id, refs)
+        if p.doi:
+            # Records of the same work from other libraries now share its W-id and its stored
+            # references; an earlier failed lookup no longer applies to them.
+            conn.execute("UPDATE papers SET openalex_id = ?, openalex_status = NULL,"
+                         " references_count = COALESCE(references_count, ?) WHERE doi = ? AND"
+                         " (openalex_id IS NULL OR openalex_id = '')",
+                         (openalex_id, known_refs, p.doi))
     conn.execute("DELETE FROM paper_search WHERE source=? AND id=?", (p.source, p.id))
     conn.execute(
         "INSERT INTO paper_search(source, id, title, abstract, keywords, topic)"
@@ -268,6 +375,13 @@ def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
         (p.source, p.id, index_text(p.title), index_text(p.abstract),
          index_text(" ".join(p.keywords)), index_text(p.topic)),
     )
+
+
+def store_references(conn: sqlite3.Connection, citing: str, cited: list[str]) -> None:
+    """Replace one work's reference rows. Only call it with a list a library supplied."""
+    conn.execute("DELETE FROM paper_references WHERE citing = ?", (citing,))
+    conn.executemany("INSERT OR IGNORE INTO paper_references(citing, cited) VALUES(?,?)",
+                     [(citing, c) for c in cited if c and c != citing])
 
 
 def paper_row_to_dict(row: sqlite3.Row) -> dict:
@@ -292,4 +406,8 @@ def paper_row_to_dict(row: sqlite3.Row) -> dict:
     d["access"] = "open_copy_listed" if d["oa_url"] else "no_open_copy_listed"
     d["abstract"] = d.get("abstract") or ""
     d["abstract_status"] = "supplied" if d["abstract"] else "not_supplied_by_source"
+    d["openalex_id"] = d.get("openalex_id") or ""
+    raw = d.get("counts_by_year")
+    d["counts_by_year"] = json.loads(raw) if raw else None
+    d.pop("openalex_status", None)
     return d

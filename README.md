@@ -191,6 +191,105 @@ synonym passes); model `BAYAN_MODEL_CONCEPTS`. Uses the same `ANTHROPIC_API_KEY`
 endpoints answer 503. Answers are cached, so re-running on the same text costs nothing. There is
 no screen for this yet: the mind map (M18) will show it.
 
+## Map-based gap hints (M19)
+
+`GET /api/concepts/gaps?run_id=` turns the run's concept nodes into a graph and reads gap hints
+off it. No model is called: every number comes from the database. Two concepts are linked when
+at least one chosen paper has verified mentions of both, so a link means co-occurrence within
+one paper, not a stated relation (evidence-backed relations come with the map edges of M18).
+
+The answer has the graph (`nodes` with cluster, degree and betweenness; `edges`, each labelled
+`co-occurs-with` with its papers; `clusters` from a seeded Louvain pass; `bridges`, the concepts
+that join clusters) and the `hints`:
+
+| Kind | Hint |
+| --- | --- |
+| `isolated` | Concepts found in one chosen paper only, sharing no concept with the others. |
+| `weakly_linked_clusters` | Two clusters joined by at most one chosen paper (the bridging paper is named). |
+| `never_together` | Two concepts, each in at least `min_papers` papers, that no chosen paper studies together. |
+| `method_single_system` | A method (in at least `min_papers` papers) used with only one system in the set. |
+
+Every hint is an `unverified candidate`. It lists its concepts with their papers and verified
+quotes, the papers it rests on, a `follow_up` search query to run beyond the chosen set, and the
+same `caveat`: the map covers only the chosen papers whose extraction is done (the `coverage`
+block counts full-text, abstract-only and concept-less papers), so "never together" means "not
+together in this set" until the broader search and a counterevidence pass were recorded. Hints
+about `contradicts` edges with no resolving paper wait for M18, which adds relation edges.
+`min_papers` (default 2, at most 10) sets the support a concept needs for pair and method hints.
+The same input always gives the same output.
+
+## Idea proposer and proposal drafts (M10, after SciPIP)
+
+The gap card has a second way to get proposals: **Suggest and draft** runs BAYAN's own agent
+instead of preparing a prompt. The pipeline follows [SciPIP](https://github.com/cheerss/SciPIP)
+(Wang et al. 2024, arXiv:2410.23166, MIT licence), adapted to the rules of this project. The
+background is the gap text (or the research question); the corpus is the current run.
+
+1. **Entities.** The model lists up to 8 key terms of the background.
+2. **Brainstorm** (optional). 3-4 ideas from the background alone, labelled *ungrounded*. They
+   only feed the integration step and never become proposals by themselves.
+3. **Retrieval** (code, no model). The ticked papers first, then papers of the run whose indexed
+   title, abstract, keywords or topic match an entity, then papers whose verified concept
+   mentions (M17) match one. Each paper lists its signals. SciPIP's third signal, citation
+   co-occurrence, is reported as not available: reference lists are not stored. At most 40.
+4. **Inspirations.** For each of the top papers (12 by default) the model gets that paper's
+   verified reader evidence (M8 methods, data and validation quotes with pages) or, failing
+   that, its abstract, labelled, and says what could address the background, or *not usable*.
+5. **Ideas.** The inspirations are combined into ideas, each citing its papers as [P1], [P2]...
+6. **Integration.** Ideas and brainstorm are merged into at most the requested number of
+   distinct ideas. Citations are then checked in code: unknown references are removed and
+   listed, and an idea with no supporting paper is dropped with that reason.
+7. **Proposals.** Each kept idea (up to the number of proposals chosen) is expanded into a draft
+   with the sections of the proposal writer, three research questions, assumptions and a list
+   of what must be verified. Citations are checked again. Every draft is a
+   `draft (unverified candidate)`.
+
+API: `POST /api/ideas` (`run_id`, `background`, optional `papers`, `idea_count`,
+`proposal_count`, `brainstorm`; answers 202 with the run id), `GET /api/ideas/{id}` (status,
+the step log with calls per step, and the result: entities, retrieval with signals and material
+level per paper, inspirations, brainstorm, initial and integrated ideas, dropped items,
+proposals), `GET /api/ideas?run_id=` (previous runs). Limits: `BAYAN_IDEA_RUNS_PER_HOUR` (3),
+`BAYAN_IDEA_INSPIRATION_PAPERS` (12), model `BAYAN_MODEL_IDEAS`, effort
+`BAYAN_IDEAS_EFFORT`. A run makes at most 1 + 1 + 12 + 1 + 1 + 5 model calls; every call is
+cached per prompt, so running the same input again costs nothing. Without `ANTHROPIC_API_KEY`
+the endpoints answer 503.
+
+## Topic mapping of the papers (M26)
+
+The result card has an **Organise the papers by topic** section.
+
+- **Library topics.** Chips count the topic each library reported for a paper, one per paper,
+  in the library's own words. Clicking one filters the table. No model is needed.
+- **Your topics of interest.** Enter up to 10 topics or minor research areas, one per line.
+  They are always kept unchanged as headings; one the model leaves out is added back and marked.
+- **Suggest topics.** The model proposes 4-10 main topics with 2-6 subtopics each, built for
+  your research area from the papers' titles, library topics and keywords. Untick what you do
+  not want before mapping.
+- **Map the papers.** Choose all collected papers or only the ticked ones. Each paper gets one
+  main topic, one subtopic and up to two related subtopics, with a phrase copied from its title
+  or abstract. Code checks every answer; a paper that fails a check is listed as unclassified
+  with the reason. Counts show every topic, including zeros.
+
+What the mapping feeds:
+
+- the table filter, a topic label on each row, and three export columns: "Main topic",
+  "Subtopic" and "Related subtopics";
+- topic gap hints, `thin_topic` and `topics_never_together`, shown in the section and returned
+  by `GET /api/concepts/gaps` as `topic_hints`. They are unverified candidates for the chosen
+  set only;
+- the idea proposer: a fourth retrieval signal, `topic`, for papers whose mapped topic is named
+  in the background or matches a key term, and each paper's topic in the model prompts;
+- **Develop this** on a topic: it ticks that topic's papers and fills the gap text, so the gap
+  and proposal tools start from that topic.
+
+API: `POST /api/topics/suggest` (`run_id`, `scope` `all` or `selected`, `papers`,
+`own_topics`; answers with the structure), `POST /api/topics` (the same fields plus an optional
+`taxonomy` chosen from the suggestion; 202 with the mapping id), `GET /api/topics/{id}` (status,
+steps, result and hints), `GET /api/topics?run_id=` (the latest mapping in full and earlier
+ones). Limits: `BAYAN_TOPIC_RUNS_PER_HOUR` (10), at most 500 papers per mapping, model
+`BAYAN_MODEL_TOPICS`, effort `BAYAN_TOPICS_EFFORT`. Calls are cached per prompt. Without
+`ANTHROPIC_API_KEY` the model endpoints answer 503.
+
 ## References for Zotero, Mendeley and EndNote (BibTeX and RIS)
 
 Next to Excel and CSV, the Export box has **Copy BibTeX**, **Export BibTeX** (`.bib`) and
@@ -392,6 +491,182 @@ so the engine can be swapped.
 | `POST /api/translate/paper` | `{"source", "id", "target_language"}`: title and abstract of a paper in your runs or your manuals. |
 | `POST /api/translate/pdf` | `{"source", "id", "target_language", "pages"}`: pages of your validated PDF, aligned by page. |
 | `GET` / `PUT` / `DELETE /api/translate/glossary` | List, save (`source_language`, `target_language`, `source_term`, `target_term`) or remove your terms. |
+
+## Citation network and backfill (M29)
+
+First of four milestones that turn stored papers into a reusable local library (M29 to M32).
+
+**What is stored.** OpenAlex records now bring each work's reference list (`referenced_works`)
+and its citations per year (`counts_by_year`). Papers gain `openalex_id` (the W-id; also set on
+another library's record of the same work once its DOI matches an OpenAlex record),
+`counts_by_year`, `citations_updated_at` (UTC, set when a library that reports citation counts
+stores the record) and `references_count` (`NULL` = never stored, which is not the same as `0`).
+References go into `paper_references(citing, cited)`, both OpenAlex W-ids. A paper's references are
+replaced only when a library supplied a list; a later record without one never wipes them.
+
+**Backfill.** Papers stored before this milestone have no references. `POST /api/library/backfill`
+looks up the papers of your library (your runs and manuals) that lack them, 50 per OpenAlex
+request, by W-id (`openalex:W1|W2|…`) or, when there is none, by DOI (`doi:…|…`). These are ID
+lookups, not text searches. It runs as a background job that counts each request before sending
+it, so it never goes over `max_requests` (default 20, at most 200), and it resumes after a restart
+like downloads do (in a thread of its own, so it never delays the download checks). A W-id
+OpenAlex no longer lists (a merged work) is looked up once more by DOI. A paper OpenAlex does not
+have is marked and not looked up again; a paper with neither a W-id nor a usable DOI is counted as
+`no_identifier`. A record that comes back without a reference list updates the citations and
+leaves stored references alone. When backfill matches another library's record (Crossref, Europe
+PMC), its citation count is replaced by OpenAlex's.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/library/backfill` `{"max_requests": 20}` | Start the job (202). Answers 409 while one is running; `status: nothing_to_do` when nothing is left. |
+| `GET /api/library/backfill/jobs/{id}` | `status`, `requests_made`, `updated`, `not_found`, `remaining`, `no_identifier`. Owner only (404 otherwise). |
+
+**Export.** CSV and Excel gain *Citations updated*, *OpenAlex ID* and *References (count)*
+(`not stored` when the list was never fetched).
+
+## Search the local library first (M30)
+
+Your **library** is every paper you reached through your own runs and manuals (collections join
+it in M31). `papers` is shared between users, but every local query goes through your own runs and
+manuals, so you never see another user's papers, runs or searches.
+
+**Search.** The local search uses the `paper_search` full-text table with the same normalisation
+as stored text (case and accents folded, Arabic marks removed, Chinese split into character
+pairs). It accepts `AND`, `OR`, `NOT` (also `AND NOT`), `"quoted phrases"` and parentheses;
+words side by side must all match. A query that is not well formed falls back to "every word".
+`year_from` after `year_to` is refused (422). Orders:
+
+| `sort` | Meaning |
+| --- | --- |
+| `relevance` | Best text match (`bm25`); without words, newest first. |
+| `citations` | Citation count as the library reported it. |
+| `velocity` | Citations ÷ (current year − publication year + 1). Papers without a year come last. |
+| `local_citations` | How many papers in your library cite it (from the M29 references). |
+
+**Coverage.** Every local answer carries `coverage`: `{"scope": "local_library", "papers", "runs",
+"libraries", "years", "last_refreshed", "note"}`. The note says the answer covers only papers you
+have already searched. A paper missing from your library is never evidence that it does not exist
+or that a gap exists.
+
+**Modes on `POST /api/search`** (`mode`): `remote` (default, unchanged), `local` (no library is
+asked and the hourly search limit is not used), or `local_then_remote` (local hits first, then the
+remote search). The run summary reports `local_hits`, `remote_new` (not in your library before),
+`remote_known` (already there, matched by ID, OpenAlex ID or DOI) and `remote_also_local` (remote
+results that were already among the local hits, listed once). Settings a local search cannot
+apply (topics, countries, per-language text) are listed in `unapplied_filters.local_library`.
+Search languages choose the words sent to libraries, so the local part matches papers of any
+language (many libraries cannot filter by language). Local hits are capped at the papers wanted
+(`quota_total`, else the run limit) and listed in addition to the remote papers, whose per-year
+quotas are unchanged. A local run stores `libraries: []` (the libraries on the form are kept as
+`libraries_requested`) and its `coverage.runs` as a count and the latest run. Saved local runs
+have their own hourly limit, `BAYAN_LOCAL_SEARCHES_PER_HOUR` (default 120). Each result of such a
+run is marked *Local* or *New*; the search card has a "Search my library first" switch.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/library/search?q=..&year_from=&year_to=&types=a,b&languages=en,fr&sort=..&limit=50&offset=0` | Your matching papers, `total`, `by_year` and `coverage`. Each paper has `velocity` and `local_citations`. |
+| `POST /api/library/runs` `{"query", "year_from", "year_to", "types", "languages", "sort", "limit"}` | Save a local search as a run (`origin: local_library`). Download, reader, concepts, export and gap packets work on it unchanged. |
+
+## Collections and milestones (M31)
+
+A **collection** is one corpus per research track (for example "Geant4 criticality validation"
+or "CANDU lattice physics"), built once and grown over time. Its papers join your library, so the
+local search and the backfill cover them. Collections are owner-only: anyone else gets 404.
+Adding the same run or paper twice changes nothing. A paper you remove stays out when its run is
+added again (adding it by hand brings it back). Counts in `stats` are per work: records of the
+same work from several libraries (same OpenAlex ID or DOI) count once (`records` gives the rows). A collection made from (or first given) a
+remote run keeps that run's search profile and libraries, for the incremental refresh (M32).
+
+**Milestones** are computed deterministically from the stored references (M29) only:
+
+| Measure | Meaning |
+| --- | --- |
+| LCS | Local citation score: how many collection works cite the work. |
+| GCS | Global citations, as the library reported them. |
+| Velocity / recent velocity | Citations per year since publication / mean yearly citations over the last `recent` full years (`counts_by_year`). |
+| Main path | Search-path count (SPC) on the citation graph (Hummon & Doreian; Batagelj), key-route search from the top `key_routes` SPC edges, always following the highest-SPC neighbour (ties: lower W-id). Every route is returned in order. Cycles are removed by ordering works by (year, W-id); dropped edges are counted. |
+| Milestones | Works on a main path or in the top 5% by LCS rank (ties included; a work nobody in the collection cites is never one), each with `why`. |
+| Foundations | Works outside the collection cited by at least `min_cocite` collection works (by W-id; titles only for works already in your library). "Fetch foundations" looks them up by ID and adds them, marked `foundation`. |
+| Frontier | Works from the last `recent` calendar years, this one included (`recent=3` in 2026: 2024–2026), ranked by max(recent velocity, velocity), with the milestones each cites. |
+
+Fetched foundations join your library but were not found by a search of yours, so `coverage`
+counts them (`fetched_by_id`) and its note says so. Foundation lookups share an hourly limit,
+`BAYAN_LOOKUPS_PER_HOUR` (default 20 requests). Every answer carries `coverage` and
+`references_coverage` (the share of papers whose references
+are stored). Below 80% a note suggests running the backfill. A work missing from a collection is
+never treated as a gap.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/collections` `{"name", "description", "from_run"}` · `GET /api/collections` | Create (optionally from a run) and list. |
+| `GET / PATCH / DELETE /api/collections/{id}` | Read, rename or describe, delete. |
+| `POST /api/collections/{id}/runs` `{"run_id"}` | Add a run's papers. |
+| `POST /api/collections/{id}/papers` `{"add": [...], "remove": [...]}` | Add papers from your library, or remove papers. |
+| `GET /api/collections/{id}/papers?…` | Same filters and orders as the library search. |
+| `POST /api/collections/{id}/export` `{"format": "csv"\|"xlsx", filters…}` | Export (with the OpenAlex ID column). |
+| `POST /api/collections/{id}/runs/new` `{filters…}` | A run from the collection (or part of it) for the reader, downloads and concepts. |
+| `GET /api/collections/{id}/stats?top=10` | Counts per year, top venues, top cited, top velocity, top local citations, references share. |
+| `GET /api/collections/{id}/milestones?min_cocite=3&recent=3&top=25&key_routes=3` | LCS, main paths, milestones, frontier, foundations. |
+| `POST /api/collections/{id}/foundations` `{"min_cocite": 3, "max_requests": 2}` | Fetch foundation works by ID (50 per request, at most 10 requests). |
+
+The page has a Collections card: create one from the current search, add the current search,
+and show counts or milestones with the main-path chain.
+
+## Incremental refresh (M32)
+
+A **refresh** keeps a collection current without searching the whole track again. It runs as a
+resumable background job with a request budget (`max_requests`) it never goes over, and it has
+two steps:
+
+1. **New papers.** The collection's stored profile is run again on its libraries, limited to
+   records published *or added to the library* since the last refresh minus a 30-day overlap
+   (the first refresh starts from the newest run the collection was built from). A profile
+   whose end year had been reached by that date is extended to this year (recorded as
+   `year_to_extended` in the run summary); one that ends earlier, a closed period, keeps its
+   end year. OpenAlex gets
+   two passes, `from_publication_date` and `from_created_date` (filters in one OpenAlex request
+   are ANDed); if OpenAlex refuses the created-date filter for your key, the run says so and
+   keeps the other pass. Europe PMC uses `FIRST_PDATE` or `CREATION_DATE`, and arXiv uses
+   `submittedDate`. A library without a date filter is skipped and listed, never searched in
+   full. The search is stored as a normal run (origin `collection_refresh`).
+   Papers already in the collection (same record, OpenAlex ID or DOI), or that you removed, are
+   not added. The rest are added with origin `refresh` (`added_by_refresh: true`), and the
+   history counts how many of them were already in your library for another track.
+   `last_refreshed_at` moves only when this step finished. If the budget or the per-search
+   limit (`search_max_results`, 200 by default) stopped it, or a library returned only its
+   first page (OpenAlex without a key), the next refresh starts from the same date.
+2. **Citations.** Collection papers whose citation count is older than
+   `BAYAN_CITATIONS_MAX_AGE_DAYS` (default 30), or was never checked, get their count, yearly
+   counts and references again by OpenAlex ID filter, 50 works per request (by DOI when there is
+   no OpenAlex ID). Fresh papers are not looked up.
+
+The budget counts every request sent, retries included: an OpenAlex retry that would go over it
+is not sent, and the refresh stops as failed. Manual refreshes share an hourly limit,
+`BAYAN_REFRESH_REQUESTS_PER_HOUR` (default 200 requests of budget started per hour, 429 above).
+Automatic refreshes run in their own background thread.
+
+Every refresh is recorded with its start and end, `since`, new papers, citations updated,
+requests made, `shortfalls` (budget, no profile, no library with a date filter, the per-search
+limit) and `skipped` items, and its status: `done`, `partial` (finished with a shortfall) or
+`failed`. Only one refresh per collection runs at a time (409).
+
+Every paper in library, collection and run responses carries `citations_stale: true|false`
+(true when the count was never checked or is older than the maximum age; papers you added
+yourself have no count and are never stale).
+
+**Automatic refresh** is off by default. With `BAYAN_AUTO_REFRESH_DAYS=N`, the background checker
+queues a refresh (budget `BAYAN_AUTO_REFRESH_MAX_REQUESTS`, default 20, kept within 1–200) for each collection with
+a stored profile whose last refresh is older than N days and that had no refresh attempt in that
+time. Automatic refreshes spend OpenAlex credits.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/collections/{id}/refresh` `{"max_requests": 30, "citations": true}` | Start a refresh (at most 200 requests). Returns its history row. |
+| `GET /api/collections/{id}/refreshes` | Refresh history, newest first, with `last_refreshed_at`. |
+| `GET /api/collections/{id}/new?since=YYYY-MM-DD&limit=50` | Papers added since a date (UTC), fastest gaining citations first, with `added_at`, `origin` and `coverage`. |
+
+New papers found by a refresh cover only what the stored profile asks for on the collection's
+libraries; a paper that does not appear is not evidence that nothing was published.
 
 ## Run locally
 

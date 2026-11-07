@@ -166,3 +166,20 @@ def test_rows_saved_before_author_lists_fall_back_to_first_author(tmp_path):
                      " is_oa, oa_url) VALUES('openalex','W1','T','Ana López','[]','[]',0,'')")
         row = conn.execute("SELECT * FROM papers").fetchone()
         assert paper_row_to_dict(row)["authors"] == ["Ana López"]
+
+
+def test_a_later_record_without_authors_keeps_the_stored_list(tmp_path):
+    import sqlite3 as _sqlite3
+
+    from bayan.db import init_db as _init
+    from bayan.models import Paper as _Paper
+    from bayan.search import _store_paper
+
+    path = tmp_path / "a.sqlite"
+    _init(path)
+    with _sqlite3.connect(path) as conn:
+        _store_paper(conn, _Paper(source="openalex", id="W1", title="T",
+                                  authors=["Ada Lopez", "Ben Kim"]))
+        _store_paper(conn, _Paper(source="openalex", id="W1", title="T", authors=[]))
+        stored = conn.execute("SELECT authors FROM papers WHERE id = 'W1'").fetchone()[0]
+    assert stored == '["Ada Lopez", "Ben Kim"]'

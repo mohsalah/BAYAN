@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterator
 import httpx
 
 from ..models import Paper, SearchProfile
-from .base import ConnectorError, get_with_retry, user_agent
+from .base import ConnectorError, RequestBudget, get_with_retry, user_agent
 
 BASE_URL = "https://export.arxiv.org/api/query"
 NS = {"a": "http://www.w3.org/2005/Atom", "x": "http://arxiv.org/schemas/atom",
@@ -62,7 +62,7 @@ def parse_entry(entry: ET.Element) -> Paper:
     )
 
 
-_TOKEN = re.compile(r'"([^"]*)"|(\()|(\))|(\w+)')
+_TOKEN = re.compile(r'"([^"]*)"|(\()|(\))|(\w+(?:[-\u2010\u2011]\w+)*)')  # MERRA-2: one term
 _OPERATORS = {"AND": "AND", "OR": "OR", "NOT": "ANDNOT"}
 
 
@@ -70,15 +70,15 @@ def boolean_query(text: str) -> str | None:
     """A keyword query with AND/OR/NOT, parentheses and "phrases" in arXiv syntax.
 
     Adjacent terms are joined with AND, as before. Returns None when the text is not a
-    well-formed query of that kind (unbalanced parentheses, an operator in the wrong place),
-    so the caller can fall back to plain words.
+    well-formed query of that kind (unbalanced parentheses, an empty group, an operator
+    with nothing after it), so the caller can fall back to plain words. Where a term is
+    due, OR/AND/NOT is read as a word; empty "" phrases are skipped.
     """
     out: list[str] = []
     depth, expect_term = 0, True
     for phrase, opening, closing, word in _TOKEN.findall(text):
-        if word.upper() in _OPERATORS and word.isupper():
-            if expect_term:
-                return None
+        # where a term is due, OR/AND/NOT is a word, as in "Operations Research (OR)"
+        if word in _OPERATORS and not expect_term:
             out.append(_OPERATORS[word])
             expect_term = True
             continue
@@ -88,15 +88,16 @@ def boolean_query(text: str) -> str | None:
                 return None
             out.append(")")
             continue
+        words = re.findall(r"\w+", phrase or word)
+        if not opening and not words:  # "" or a phrase of punctuation: skip it
+            continue
         if not expect_term:  # two terms side by side
             out.append("AND")
         if opening:
             depth += 1
             out.append("(")
+            expect_term = True  # a group starts with a term, never with AND
             continue
-        words = re.findall(r"\w+", phrase) if phrase or not word else [word]
-        if not words:
-            return None
         out.append(f'all:"{" ".join(words)}"' if len(words) > 1 else f"all:{words[0]}")
         expect_term = False
     if depth or expect_term or not out:
@@ -104,9 +105,13 @@ def boolean_query(text: str) -> str | None:
     return " ".join(out).replace("( ", "(").replace(" )", ")")
 
 
-def build_query(profile: SearchProfile) -> str:
-    # submittedDate is the date of the first version.
-    parts = [f"submittedDate:[{profile.year_from}01010000 TO {profile.year_to}12312359]"]
+def build_query(profile: SearchProfile, since: str | None = None) -> str:
+    # submittedDate is the date of the first version. A refresh (M32) starts at `since`
+    # (YYYY-MM-DD) when that is later than the profile's first year.
+    start = f"{profile.year_from}0101"
+    if since and since.replace("-", "") > start:
+        start = since.replace("-", "")
+    parts = [f"submittedDate:[{start}0000 TO {profile.year_to}12312359]"]
     query = boolean_query(profile.query)
     if query is None:
         words = re.findall(r"\w+", profile.query)
@@ -141,11 +146,23 @@ class ArxivConnector:
         self._page_delay = page_delay
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
+        yield from self._pages(profile)
+
+    def search_since(self, profile: SearchProfile, since: str,
+                     budget: RequestBudget) -> Iterator[Paper]:
+        """Preprints first submitted on or after `since` (YYYY-MM-DD); each page takes one
+        request from `budget`."""
+        yield from self._pages(profile, since, budget)
+
+    def _pages(self, profile: SearchProfile, since: str | None = None,
+               budget: RequestBudget | None = None) -> Iterator[Paper]:
         if not wants_preprints(profile):
             return
         start = 0
         while True:
-            params = {"search_query": build_query(profile), "start": start,
+            if budget is not None and not budget.take():
+                return
+            params = {"search_query": build_query(profile, since), "start": start,
                       "max_results": self._page_size, "sortBy": "relevance"}
             if start:
                 self._sleep(self._page_delay)

@@ -402,3 +402,20 @@ def test_unavailable_planned_libraries_stay_refused(tmp_path):
         for lib in ("semanticscholar", "core", "unpaywall"):
             res = client.post("/api/search", json={"libraries": [lib], "profile": {}})
             assert res.status_code == 422
+
+
+@pytest.mark.parametrize("index", [0, 1, 2])
+def test_a_long_retry_after_fails_at_once_instead_of_hanging(index):
+    sleeps = []
+    client = sequence([(429, {}, {"Retry-After": "60977"})])
+    with pytest.raises(ConnectorError) as exc:
+        list(make_all(client, sleeps)[index].search(SearchProfile(document_types=[])))
+    assert sleeps == []  # a daily limit is reported, never slept through
+    assert "HTTP 429" in str(exc.value) and "about 17 hours" in str(exc.value)
+
+
+def test_empty_keywords_are_dropped_not_fatal():
+    epmc = parse_result(EPMC_RECORD | {"keywordList": {"keyword": ["chromatin", None, " "]}})
+    assert epmc.keywords == ["chromatin"]
+    item = {"DOI": "10.1/x", "title": ["T"], "subject": ["Physics", None]}
+    assert parse_item(item).keywords == ["Physics"]

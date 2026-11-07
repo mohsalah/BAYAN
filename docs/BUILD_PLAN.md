@@ -45,7 +45,7 @@ One interface: `search(profile, years, cursor) -> Iterator[Paper]` and `find_ful
 | Tier | Source | Access |
 |---|---|---|
 | Open | OpenAlex (primary index), arXiv, Europe PMC/PubMed, Semantic Scholar, CORE, Unpaywall | Free; send a contact email for polite pools; OpenAlex key from env |
-| Open (automatic DOI lookup, not a search source) | Crossref | Free; polite pool. Keyword search returned off-topic papers, so Crossref is only used to find the DOI of a paper already found elsewhere that has none (`query.bibliographic` = title + first author + year). A DOI is accepted only if the normalised title similarity is >= 0.95, the year is within +/-1 and the first author's family name matches; otherwise it stays empty. At most 50 lookups per run (`BAYAN_DOI_LOOKUP_BUDGET`), sequential, cached including "no match". Papers get `doi_source = crossref_lookup` and the match score. `/api/search` rejects `crossref` in `libraries`. |
+| Open (automatic DOI lookup, not a search source) | Crossref | Free; polite pool. Keyword search returned off-topic papers, so Crossref is only used to find the DOI of a paper already found elsewhere that has none (`query.bibliographic` = title + first author + year). A DOI is accepted only if the normalised title similarity is >= 0.95, the year is within +/-1 and the first author's family name matches; otherwise it stays empty. At most 50 lookups and 15 s of waiting per run (`BAYAN_DOI_LOOKUP_BUDGET`, `BAYAN_DOI_LOOKUP_SECONDS`), sequential, cached including "no match". Papers get `doi_source = crossref_lookup` and the match score. `/api/search` rejects `crossref` in `libraries`. |
 | Membership | IEEE Xplore, Elsevier/ScienceDirect, Springer Nature, Wiley | Per-user API key/token (encrypted), institutional proxy link, or user-uploaded PDF |
 
 Membership handling (decided): the user can (a) paste their own API key/token, (b) enter an institutional proxy URL template (EZproxy/OpenAthens) so the app emits links the user opens while logged in, (c) upload PDFs they have rights to, (d) use open sources only. An email address alone gives no access; it is used only for Unpaywall and polite-pool headers.
@@ -140,7 +140,33 @@ Additional tables for this version: `paper_selections` (user, paper, requested_a
 - **Normalization:** merge synonyms and cross-language equivalents into one node (e.g. the same concept named in Arabic, French and English), keeping every original label.
 - **Links:** an edge needs evidence. Allowed relations: `uses`, `extends`, `contradicts`, `validates`, `compared-with`, `depends-on`, `co-occurs-with`. Each edge stores the paper IDs and quotes that support it; an edge with no supporting quote is not drawn. Co-occurrence is shown as a weaker, dashed edge and labelled as co-occurrence only.
 - **Interactive view:** nodes sized by number of supporting papers, coloured by concept type or by cluster; click a node or edge to see the papers, pages and quotes; filter by year, language, relation; drag, pin, merge or split nodes; the user edits the map and the edits are kept. Export as PNG, SVG, JSON and Markdown outline.
-- **Gap hints from the map (candidates only):** isolated nodes, weakly linked clusters, `contradicts` edges with no resolving paper, concept pairs studied separately but never together in the chosen set, and methods validated on only one system. Each hint is shown with its evidence and the limit that the map covers only the chosen papers, so "never studied together" means "not together in this set" until the broader search is done.
+- **Gap hints from the map (candidates only):** isolated nodes, weakly linked clusters, `contradicts` edges with no resolving paper, concept pairs studied separately but never together in the chosen set, and methods validated on only one system. Each hint is shown with its evidence and the limit that the map covers only the chosen papers, so "never studied together" means "not together in this set" until the broader search is done. Built in M19 (`mapgaps.py`, `GET /api/concepts/gaps`) on the co-occurrence graph; the `contradicts` hint waits for the relation edges of M18.
+
+### 6c. Idea proposer and proposal drafts (M10, after SciPIP)
+
+The proposal writer follows the pipeline of SciPIP (Wang et al. 2024, arXiv:2410.23166, MIT licence), adapted to the rules above. Every step is a separate, cached model call or deterministic code, and the record of each step is kept:
+
+1. **Entities:** the model lists up to 8 key noun phrases from the researcher's background text (a gap from M9/M19 or a problem statement).
+2. **Brainstorm (optional):** 3-4 ideas from the background alone. They are labelled *ungrounded*: they never become proposals by themselves, they only widen the search terms and feed the integration step.
+3. **Retrieval (deterministic):** from the run's own papers: the papers the user ticked (always, first), then papers whose indexed title, abstract, keywords or topic match an entity, then papers whose verified concept mentions (M17) match an entity. Each paper records which signals matched. Citation co-occurrence, SciPIP's third signal, is reported as *not available* because reference lists are not stored. At most 40 papers.
+4. **Inspirations:** for each of the top papers (default 12) the model is given that paper's verified reader evidence (M8 methods, data, validation quotes with pages) or, failing that, its abstract (labelled), and asked what from it could address the background. It may answer *not usable*. Every inspiration carries its paper reference.
+5. **Ideas:** the model combines the inspirations into 3-4 ideas, each citing its papers as [P1], [P2]...
+6. **Integration:** the model merges the ideas with the brainstorm into at most the requested number of distinct, feasible ideas, each still citing papers. Citations are then checked in code: unknown references are removed, and an idea left with no supporting paper from the chosen set is *dropped* and listed with the reason, never shown as a result.
+7. **Proposals:** each kept idea is expanded into a draft with the sections of section 6 (question/hypothesis, objectives, methods, comparators, validation, uncertainty, reproducibility, resources, risks, deliverables, success criteria) and three research questions, citing papers, with explicit assumptions and a list of what must be verified. Citations are checked again. A proposal is a *draft (unverified candidate)*.
+
+Limits: `BAYAN_IDEA_RUNS_PER_HOUR` runs per user (default 3); each run makes at most 1 + 1 + 12 + 1 + 1 + 5 model calls; cached calls are free.
+
+### 6d. Topic mapping of the papers (M26)
+
+After a search the researcher can organise the papers under main topics and subtopics of the research area (for a nuclear area, for example: reactor physics and neutronics, shielding design, materials, fuel management, thermal-hydraulics, fuel fabrication). The headings are built for the area, not taken from a fixed list.
+
+1. **Library topics (deterministic):** the topic each library reported (OpenAlex primary topic), counted and usable as a table filter. Always available.
+2. **Topics of interest:** the researcher may enter up to 10 topics or minor research areas (80 characters each). They are kept verbatim; if the model leaves one out, code adds it back as its own main topic, marked.
+3. **Suggestion (model, cached):** from the area text and the papers' titles, library topics and keywords, the model proposes 4-10 main topics with 2-6 subtopics each. The researcher unticks what is not wanted. Nothing is mapped yet.
+4. **Mapping (model, background job):** scope is all collected papers or the ticked ones. Papers go in batches of 25; each gets one main topic, one subtopic, up to two related subtopics and a phrase copied from its own title or abstract. Code checks the paper reference, the topic ids and that the phrase occurs in the text; a failure is `unclassified` with the reason, never guessed. The basis is `abstract` or `title_only` from the data. Counts list every topic, zeros included.
+5. **Use downstream:** the table filters by topic and rows show their topic; the export adds "Main topic", "Subtopic", "Related subtopics"; the map-based gap hints add `thin_topic` and `topics_never_together` (unverified candidates with the chosen-set caveat; pairs include a topic of interest when there are any); the idea proposer (6c) gains a `topic` retrieval signal and shows each paper's topic in its prompts; "Develop this" on a topic ticks its papers and fills the gap text.
+
+Limits: `BAYAN_TOPIC_RUNS_PER_HOUR` suggestions plus mappings per user (default 10); at most 500 papers per mapping; model `BAYAN_MODEL_TOPICS`, effort `BAYAN_TOPICS_EFFORT`. Without `ANTHROPIC_API_KEY` the model endpoints answer 503; the library topics still work.
 
 ### 6b. Trend research gaps for the area
 
@@ -207,6 +233,7 @@ Additional tables for this version: `paper_selections` (user, paper, requested_a
 | M22 | Report and thesis connectors (OSTI, INIS, NTRS, OATD, NDLTD, DART-Europe, EThOS where terms allow) | Each documents its terms; unconfirmed ones show "not available yet" |
 | M23 | Geographic filter (regions, countries, basis selector, unknown-location bucket) | Region lists tested; results reproducible; unknown location listed separately |
 | M24 | Translator (any language to English or Arabic) with glossary, OCR and side-by-side view | Numbers/units/equations preserved in tests; translations marked and never used as evidence quotes |
+| M26 | Topic mapping: suggested and own topics (up to 10), papers mapped to main topics and subtopics | Every assignment checked against the paper text; unclassified listed with reasons; topics of interest never dropped; mapping feeds filters, export, gap hints and the idea proposer |
 
 Suggested order after M8: M14, M15, M17, M18, M9 (gap analyst can then use the map), M19, M20, M16, M10-M13.
 
