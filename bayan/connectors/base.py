@@ -17,6 +17,26 @@ class ConnectorError(RuntimeError):
     """Raised for failed requests. Messages never contain keys or request parameters."""
 
 
+class RequestBudget:
+    """Requests a job may still send. `take()` is called before each request: it counts the
+    request (and calls `on_take`, so the count can be saved before anything is sent) or
+    returns False once the limit is reached, and the caller then stops."""
+
+    def __init__(self, limit: int, used: int = 0,
+                 on_take: Callable[[int], None] | None = None) -> None:
+        self.limit, self.used, self.on_take = limit, used, on_take
+        self.exhausted = False
+
+    def take(self) -> bool:
+        if self.used >= self.limit:
+            self.exhausted = True
+            return False
+        self.used += 1
+        if self.on_take is not None:
+            self.on_take(self.used)
+        return True
+
+
 class Connector(Protocol):
     name: str
     tier: str  # "open" or "membership"

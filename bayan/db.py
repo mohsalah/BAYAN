@@ -44,6 +44,19 @@ CREATE TABLE IF NOT EXISTS collection_removed(
   source TEXT NOT NULL, paper_id TEXT NOT NULL, removed_at TEXT DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(collection_id, source, paper_id)
 );
+-- Refreshes of a collection (M32): one row per refresh job, updated as it runs. Counts and
+-- shortfalls/skipped (JSON) are what the job really did.
+CREATE TABLE IF NOT EXISTS collection_refreshes(
+  id INTEGER PRIMARY KEY,
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  job_id INTEGER, trigger TEXT NOT NULL DEFAULT 'manual', status TEXT NOT NULL DEFAULT 'pending',
+  since TEXT, started_at TEXT DEFAULT CURRENT_TIMESTAMP, finished_at TEXT,
+  new_papers INTEGER NOT NULL DEFAULT 0, citations_updated INTEGER NOT NULL DEFAULT 0,
+  requests_made INTEGER NOT NULL DEFAULT 0, run_id INTEGER, shortfalls TEXT, skipped TEXT,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS collection_refreshes_collection
+  ON collection_refreshes(collection_id);
 -- OpenAlex lookups a user asked for directly (foundations), for the hourly limit.
 CREATE TABLE IF NOT EXISTS lookup_attempts(
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

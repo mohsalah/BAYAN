@@ -8,6 +8,7 @@ import sqlite3
 import threading
 from collections.abc import Callable
 from contextlib import asynccontextmanager, closing
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -19,6 +20,7 @@ from pypdf import PdfReader
 
 from . import __version__
 from . import collection as coll
+from . import refresh as rf
 from .analysis import MAX_GAP_TEXT, build_packet, gap_prompt, proposal_prompt
 from .auth import (
     check_password_policy,
@@ -79,6 +81,9 @@ from .library import (
     LibraryQuery,
     backfill_candidates,
     backfill_view,
+    citations_stale,
+    coverage,
+    current_year,
     library_key_set,
     local_unapplied,
     new_backfill_payload,
@@ -89,6 +94,7 @@ from .library import (
     run_backfill_job,
     save_local_run,
     search_library,
+    stale_cutoff,
 )
 from .manuals import (
     add_to_run,
@@ -123,6 +129,7 @@ from .models import (
     language_name,
     normalize_document_types,
 )
+from .network import velocity
 from .pages import INDEX_NOTES, clear_pages, page_list, page_text, search_pages
 from .planner import (
     PLANNER_NOTE,
@@ -235,6 +242,13 @@ class FoundationFetch(BaseModel):
     min_cocite: int = Field(default=3, ge=1, le=1000)
     # OpenAlex requests (each looks up to 50 works by ID).
     max_requests: int = Field(default=2, ge=1, le=10)
+
+
+class RefreshRequest(BaseModel):
+    # Requests this refresh may send in all: search pages for new papers plus ID lookups
+    # (50 works each) for stale citation counts.
+    max_requests: int = Field(default=30, ge=1, le=rf.MAX_REFRESH_REQUESTS)
+    citations: bool = True
 
 
 class DownloadRequest(BaseModel):
@@ -407,6 +421,13 @@ def create_app(
             if stop.wait(settings.job_resume_interval):
                 return
 
+    def run_refreshes() -> list[int]:
+        """Queued automatic refreshes, and refreshes interrupted by a restart."""
+        return rf.run_waiting_refreshes(settings.database_path, make_connector,
+                                        settings.search_max_results,
+                                        settings.citations_max_age_days,
+                                        settings.job_stale_seconds)
+
     def backfill_loop(stop: threading.Event) -> None:
         """Continue interrupted backfill jobs (a thread of its own: they can run for minutes)."""
         while True:
@@ -418,6 +439,21 @@ def create_app(
             if stop.wait(settings.job_resume_interval):
                 return
 
+    def refresh_loop(stop: threading.Event) -> None:
+        """Queue automatic refreshes when BAYAN_AUTO_REFRESH_DAYS is set, run them, and
+        continue interrupted refreshes (their own thread, so backfills are not held up)."""
+        while True:
+            try:
+                if settings.auto_refresh_days > 0:
+                    with closing(connect(settings.database_path)) as conn:
+                        rf.queue_auto_refreshes(conn, settings.auto_refresh_days,
+                                                settings.auto_refresh_max_requests)
+                run_refreshes()
+            except Exception as exc:
+                log.warning("refresh pass failed: %s", type(exc).__name__)
+            if stop.wait(settings.job_resume_interval):
+                return
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         init_db(settings.database_path)
@@ -425,7 +461,8 @@ def create_app(
         workers = []
         if settings.job_resume_interval > 0:
             for target, name in ((resume_loop, "bayan-job-resume"),
-                                 (backfill_loop, "bayan-backfill-resume")):
+                                 (backfill_loop, "bayan-backfill-resume"),
+                                 (refresh_loop, "bayan-refresh")):
                 workers.append(threading.Thread(target=target, args=(stop,), daemon=True,
                                                 name=name))
                 workers[-1].start()
@@ -780,7 +817,8 @@ def create_app(
     @app.get("/api/collections/{cid}/stats")
     def collection_stats(cid: int, user: User, conn: Conn, top: int = 10) -> dict:
         owned_collection(conn, cid, user["id"])
-        return coll.stats(conn, cid, user["id"], max(1, min(top, 100)))
+        return coll.stats(conn, cid, user["id"], max(1, min(top, 100)),
+                          stale_cutoff(settings.citations_max_age_days))
 
     @app.get("/api/collections/{cid}/milestones")
     def collection_milestones(cid: int, user: User, conn: Conn, min_cocite: int = 3,
@@ -790,7 +828,8 @@ def create_app(
                 and 1 <= key_routes <= 20):
             raise HTTPException(422, "min_cocite 1-1000, recent 1-20, top 1-500, "
                                      "key_routes 1-20")
-        return coll.milestones(conn, cid, user["id"], min_cocite, recent, top, key_routes)
+        return coll.milestones(conn, cid, user["id"], min_cocite, recent, top, key_routes,
+                               stale_cutoff(settings.citations_max_age_days))
 
     @app.post("/api/collections/{cid}/foundations")
     def collection_foundations(cid: int, body: FoundationFetch, user: User,
@@ -816,6 +855,75 @@ def create_app(
             conn.execute("INSERT INTO lookup_attempts(user_id, requests) VALUES(?,?)",
                          (user["id"], progress["requests_made"]))
             conn.commit()
+
+    @app.post("/api/collections/{cid}/refresh", status_code=202)
+    def collection_refresh(cid: int, body: RefreshRequest, background: BackgroundTasks,
+                           user: User, conn: Conn) -> dict:
+        """New papers since the last refresh, and stale citation counts, as a background job."""
+        conn.execute("BEGIN IMMEDIATE")  # one refresh per collection at a time
+        try:
+            owned_collection(conn, cid, user["id"])
+            running = rf.open_refresh(conn, cid)
+            if running is not None:
+                raise HTTPException(409, f"A refresh is already running (job {running['id']})")
+            used = rf.requests_reserved(conn, user["id"])
+            if used + body.max_requests > settings.refresh_requests_per_hour:
+                raise HTTPException(
+                    429, f"Refresh limit: {settings.refresh_requests_per_hour} requests per hour"
+                    f" ({used} already started). Try a smaller max_requests or later.")
+            job = rf.queue_refresh(conn, cid, user["id"], body.max_requests, body.citations)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        background.add_task(rf.run_refresh_job, settings.database_path, job, make_connector,
+                            settings.search_max_results, settings.citations_max_age_days)
+        row = conn.execute("SELECT * FROM collection_refreshes WHERE job_id = ?",
+                           (job,)).fetchone()
+        return rf.refresh_view(row)
+
+    @app.get("/api/collections/{cid}/refreshes")
+    def collection_refreshes(cid: int, user: User, conn: Conn) -> dict:
+        row = owned_collection(conn, cid, user["id"])
+        rows = conn.execute("SELECT * FROM collection_refreshes WHERE collection_id = ?"
+                            " ORDER BY id DESC", (cid,)).fetchall()
+        return {"collection_id": cid, "last_refreshed_at": row["last_refreshed_at"],
+                "refreshes": [rf.refresh_view(r) for r in rows]}
+
+    @app.get("/api/collections/{cid}/new")
+    def collection_new(cid: int, user: User, conn: Conn, since: str,
+                       limit: int = 50, offset: int = 0) -> dict:
+        """Papers added to the collection since a date, fastest gaining citations first."""
+        owned_collection(conn, cid, user["id"])
+        try:
+            start = datetime.fromisoformat(since.strip().replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(422, "since must be a date (YYYY-MM-DD) or a date and time"
+                                ) from None
+        if not (1 <= limit <= 500 and offset >= 0):
+            raise HTTPException(422, "limit 1-500, offset 0 or more")
+        if start.tzinfo is not None:
+            start = start.astimezone(UTC).replace(tzinfo=None)
+        params = {"cid": cid, "since": start.strftime("%Y-%m-%d %H:%M:%S"),
+                  "limit": limit, "offset": offset}
+        frm = ("FROM collection_papers cp JOIN papers p ON p.source = cp.source"
+               " AND p.id = cp.paper_id WHERE cp.collection_id = :cid"
+               " AND julianday(cp.added_at) >= julianday(:since)")
+        found = conn.execute(f"SELECT p.*, cp.added_at AS added_at, cp.origin AS origin {frm}",
+                             params).fetchall()
+        year_now = current_year()
+        speed = {(r["source"], r["id"]): velocity(r["citations"], r["year"], year_now)
+                 for r in found}
+        found.sort(key=lambda r: (speed[(r["source"], r["id"])] is None,
+                                  -(speed[(r["source"], r["id"])] or 0), r["title"] or ""))
+        rows = found[offset:offset + limit]
+        papers = decorate(rows, {})
+        for d, r in zip(papers, rows, strict=True):
+            d.update(added_at=r["added_at"], origin=r["origin"],
+                     velocity=speed[(r["source"], r["id"])],
+                     added_by_refresh=r["origin"] == "refresh")
+        return {"since": params["since"], "papers": papers, "total": len(found),
+                "coverage": coverage(conn, user["id"], coll.collection_keys(cid))}
 
     @app.post("/api/library/backfill", status_code=202)
     def start_backfill(body: BackfillRequest, background: BackgroundTasks, user: User,
@@ -870,9 +978,11 @@ def create_app(
         geo_codes = set(geo.get("expanded_countries") or [])
         before = ({tuple(k) for k in summary["library_before"]}
                   if "library_before" in summary else None)
+        cutoff = stale_cutoff(settings.citations_max_age_days)
         out = []
         for p in rows:
             d = paper_row_to_dict(p)
+            d["citations_stale"] = citations_stale(p, cutoff)
             match = matches.get((d["source"], d["id"]))
             d["doi_source"] = "crossref_lookup" if match else ""
             d["doi_match_score"] = match["score"] if match else None

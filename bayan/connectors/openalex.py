@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator
 import httpx
 
 from ..models import Paper, SearchProfile
-from .base import ConnectorError, retry_wait
+from .base import ConnectorError, RequestBudget, retry_wait
 
 BASE_URL = "https://api.openalex.org/works"
 TOPICS_URL = "https://api.openalex.org/topics"
@@ -187,18 +187,57 @@ class OpenAlexConnector:
         self._per_page = per_page
         # Plain-language notes for the run summary (for example a paging limit that was hit).
         self.warnings: list[str] = []
+        # Set by a job with a request budget (M32): retries are counted against it.
+        self.budget: RequestBudget | None = None
+        # True when a search stopped before its last page (no key: first page only).
+        self.truncated = False
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
+        yield from self._pages(profile)
+
+    # Date filters a refresh (M32) sends: records published since, then records added to
+    # OpenAlex since (an older work indexed late). Filters in one request are ANDed, so the
+    # two run as separate passes; the refresh removes duplicates.
+    SINCE_FILTERS = ("from_publication_date", "from_created_date")
+
+    def search_since(self, profile: SearchProfile, since: str,
+                     budget: RequestBudget) -> Iterator[Paper]:
+        """`profile` restricted to records published or created on or after `since`
+        (YYYY-MM-DD). Each page, and each retry, takes one request from `budget`; none is
+        sent past it."""
+        self.budget = budget
+        for name in self.SINCE_FILTERS:
+            try:
+                yield from self._pages(profile, f"{name}:{since}", budget)
+            except ConnectorError as exc:
+                # A filter OpenAlex refuses for this key (HTTP 400/401/403) is reported, and the
+                # other pass still counts; anything else stops the refresh.
+                if name == "from_created_date" and any(
+                        f"HTTP {c}" in str(exc) for c in (400, 401, 403)):
+                    self.warnings.append(
+                        "OpenAlex refused the created-date filter (from_created_date), so only "
+                        "records published since the last refresh were looked for.")
+                    continue
+                raise
+            if budget.exhausted:
+                return
+
+    def _pages(self, profile: SearchProfile, extra_filter: str = "",
+               budget: RequestBudget | None = None) -> Iterator[Paper]:
         cursor: str | None = "*"
         first_page = True
         text = search_text(profile.query or "")
         if text != (profile.query or "").strip():
-            self.warnings.append(
-                f"OpenAlex searched for '{text}': its default search does not accept the "
-                "wildcards * and ?, and it already matches word endings.")
+            note = (f"OpenAlex searched for '{text}': its default search does not accept the "
+                    "wildcards * and ?, and it already matches word endings.")
+            if note not in self.warnings:
+                self.warnings.append(note)
         while cursor:
+            if budget is not None and not budget.take():
+                return
+            filter_ = build_filter(profile)
             params = {
-                "filter": build_filter(profile),
+                "filter": f"{filter_},{extra_filter}" if extra_filter else filter_,
                 "per-page": self._per_page,
                 "cursor": cursor,
                 "select": SELECT,
@@ -216,6 +255,7 @@ class OpenAlexConnector:
             except ConnectorError as exc:
                 # OpenAlex needs a free API key to page past the first page of results.
                 if not first_page and not self._api_key and "HTTP 401" in str(exc):
+                    self.truncated = True
                     self.warnings.append(
                         f"OpenAlex returned only its first {self._per_page} results. Paging "
                         "further needs a free OpenAlex API key (set OPENALEX_API_KEY).")
@@ -268,6 +308,10 @@ class OpenAlexConnector:
                 if status not in (429, 500, 502, 503, 504):
                     break
             if attempt < self._max_attempts:
+                # A retry is another paid request: a job with a budget counts it too.
+                if self.budget is not None and not self.budget.take():
+                    raise ConnectorError(f"OpenAlex request failed: {error}; the request "
+                                         "budget leaves no room for a retry")
                 retry_after = response.headers.get("Retry-After") if status else None
                 try:
                     delay = retry_wait(retry_after, attempt, "OpenAlex", error)

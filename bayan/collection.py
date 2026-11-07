@@ -10,7 +10,7 @@ import math
 import sqlite3
 from collections import Counter
 
-from .library import coverage, current_year, library_keys
+from .library import citations_stale, coverage, current_year, library_keys
 from .models import USER_SOURCE, Paper
 from .network import build_graph, local_citations, main_paths, recent_velocity, velocity
 from .retrieval import doi_key
@@ -111,8 +111,9 @@ def _papers(conn: sqlite3.Connection, collection_id: int, user_id: int) -> list[
         " ON p.source = k.source AND p.id = k.paper_id", {"user": user_id}).fetchall()
 
 
-def _brief(row: sqlite3.Row | dict, year_now: int, **extra) -> dict:
+def _brief(row: sqlite3.Row | dict, year_now: int, stale_before: str, **extra) -> dict:
     return {"source": row["source"], "id": row["id"], "title": row["title"] or "",
+            "citations_stale": citations_stale(row, stale_before),
             "year": row["year"], "doi": row["doi"] or "", "venue": row["venue"] or "",
             "openalex_id": row["openalex_id"] or "", "citations": row["citations"] or 0,
             "velocity": velocity(row["citations"], row["year"], year_now), **extra}
@@ -147,7 +148,8 @@ def _references(conn: sqlite3.Connection, wids: list[str]) -> list[tuple[str, st
     return out
 
 
-def stats(conn: sqlite3.Connection, collection_id: int, user_id: int, top: int = 10) -> dict:
+def stats(conn: sqlite3.Connection, collection_id: int, user_id: int, top: int = 10,
+          stale_before: str = "") -> dict:
     records = _papers(conn, collection_id, user_id)
     rows = works(records)
     year_now = current_year()
@@ -156,8 +158,8 @@ def stats(conn: sqlite3.Connection, collection_id: int, user_id: int, top: int =
                                       _references(conn, list(nodes))))
     by_year = Counter(str(r["year"]) if r["year"] is not None else "unknown" for r in rows)
     venues = Counter(r["venue"] for r in rows if r["venue"])
-    briefs = [_brief(r, year_now, local_citations=lcs.get(r["openalex_id"] or "", 0))
-              for r in rows]
+    briefs = [_brief(r, year_now, stale_before,
+                     local_citations=lcs.get(r["openalex_id"] or "", 0)) for r in rows]
     return {
         "papers": len(rows),  # works: records of the same work from several libraries once
         "records": len(records),
@@ -203,7 +205,8 @@ def foundation_ids(conn: sqlite3.Connection, wids: list[str], min_cocite: int,
 
 
 def milestones(conn: sqlite3.Connection, collection_id: int, user_id: int, min_cocite: int = 3,
-               recent: int = 3, top: int = 25, key_routes: int = 3) -> dict:
+               recent: int = 3, top: int = 25, key_routes: int = 3,
+               stale_before: str = "") -> dict:
     rows = _papers(conn, collection_id, user_id)
     year_now = current_year()
     nodes = _nodes(rows)
@@ -216,7 +219,8 @@ def milestones(conn: sqlite3.Connection, collection_id: int, user_id: int, min_c
         r = nodes[w]
         rv = recent_velocity(json.loads(r["counts_by_year"]) if r["counts_by_year"] else None,
                              year_now, recent)
-        return _brief(r, year_now, local_citations=lcs[w], recent_velocity=rv, **extra)
+        return _brief(r, year_now, stale_before, local_citations=lcs[w], recent_velocity=rv,
+                      **extra)
 
     # Top 5% by LCS (at least one work), ties included; a work nobody here cites is not one.
     ranked = sorted((w for w in nodes if lcs[w] > 0), key=lambda w: (-lcs[w], w))
