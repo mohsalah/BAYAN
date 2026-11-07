@@ -48,6 +48,8 @@ def library_keys() -> str:
         "SELECT rp.source AS source, rp.paper_id AS paper_id FROM run_papers rp"
         " JOIN search_runs r ON r.id = rp.run_id WHERE r.user_id = :user"
         f" UNION SELECT '{USER_SOURCE}', m.paper_id FROM manuals m WHERE m.user_id = :user"
+        " UNION SELECT cp.source, cp.paper_id FROM collection_papers cp"
+        " JOIN collections c ON c.id = cp.collection_id WHERE c.user_id = :user"
     )
 
 
@@ -241,6 +243,8 @@ def resume_stale_backfills(db_path: Path, connector: Callable[[], WorkLookup],
 LOCAL_SORTS = ("relevance", "citations", "velocity", "local_citations")
 COVERAGE_NOTE = ("Local library only: papers you have already searched. Run a remote search "
                  "before treating anything as new or missing.")
+FETCHED_NOTE = (" {n} of these papers were fetched by ID as foundations of a collection (cited"
+                " by its papers), not found by one of your searches.")
 _QTOKEN = re.compile(r'"([^"]*)"|(\()|(\))|([^\s()"]+)')
 _FTS_OPERATORS = {"AND": "AND", "OR": "OR", "NOT": "NOT"}
 
@@ -320,6 +324,12 @@ class LibraryQuery(BaseModel):
         return self
 
 
+class ExportQuery(LibraryQuery):
+    """A library query for an export, which may list a whole collection."""
+
+    limit: int = Field(default=5000, ge=1, le=5000)
+
+
 def current_year() -> int:
     return date.today().year
 
@@ -386,7 +396,7 @@ def search_library(conn: sqlite3.Connection, user_id: int, query: LibraryQuery,
         rank = "bm25(paper_search)"
     else:
         frm = "FROM papers p JOIN lib ON lib.source = p.source AND lib.paper_id = p.id"
-        where, rank = [], "0"
+        where, rank = [], "NULL"  # a constant: newest first decides
     where += _where(query, params)
     cond = (" WHERE " + " AND ".join(where)) if where else ""
     velocity = ("CASE WHEN p.year IS NULL THEN NULL ELSE COALESCE(p.citations, 0) * 1.0 /"
@@ -419,9 +429,20 @@ def coverage(conn: sqlite3.Connection, user_id: int, keys_sql: str | None = None
     runs = conn.execute("SELECT id, created_at FROM search_runs WHERE user_id = ?"
                         " AND json_extract(summary, '$.origin') IS NOT 'local_library'"
                         " ORDER BY id", (user_id,)).fetchall()
+    # Works fetched by ID (collection foundations) were not found by any search of yours.
+    by_id = conn.execute(
+        f"SELECT COUNT(*) FROM (SELECT DISTINCT source, paper_id FROM ({keys})) k"
+        " WHERE EXISTS (SELECT 1 FROM collection_papers cp JOIN collections c"
+        " ON c.id = cp.collection_id WHERE c.user_id = :user AND cp.origin = 'foundation'"
+        " AND cp.source = k.source AND cp.paper_id = k.paper_id)"
+        " AND NOT EXISTS (SELECT 1 FROM run_papers rp JOIN search_runs r ON r.id = rp.run_id"
+        " WHERE r.user_id = :user AND rp.source = k.source AND rp.paper_id = k.paper_id)",
+        {"user": user_id}).fetchone()[0]
     return {"scope": "local_library", "papers": row[0], "runs": [r["id"] for r in runs],
+            "fetched_by_id": by_id,
             "libraries": libraries, "years": [row[1], row[2]],
-            "last_refreshed": runs[-1]["created_at"] if runs else None, "note": COVERAGE_NOTE}
+            "last_refreshed": runs[-1]["created_at"] if runs else None,
+            "note": COVERAGE_NOTE + (FETCHED_NOTE.format(n=by_id) if by_id else "")}
 
 
 def compact_runs(cov: dict) -> dict:

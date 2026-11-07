@@ -241,3 +241,9 @@ def test_local_hits_are_capped_at_the_papers_wanted(env):
     remote(env, "x", [paper(i, f"Reactor {i}") for i in range(1, 6)])
     body = remote(env, "reactor", [], mode="local_then_remote", quota_total=2)
     assert body["summary"]["local_hits"] == 2
+
+
+def test_relevance_without_words_lists_newest_first(env):
+    sign_in(env, "a@example.org")
+    remote(env, "x", [paper(1, "Old", year=2001), paper(2, "New", year=2021)])
+    assert titles(local(env)) == ["New", "Old"]

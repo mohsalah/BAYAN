@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, ValidationError
 from pypdf import PdfReader
 
 from . import __version__
+from . import collection as coll
 from .analysis import MAX_GAP_TEXT, build_packet, gap_prompt, proposal_prompt
 from .auth import (
     check_password_policy,
@@ -47,6 +48,7 @@ from .connectors import (
     OpenAlexConnector,
 )
 from .connectors.base import Connector
+from .connectors.openalex import LOOKUP_BATCH
 from .db import connect, init_db
 from .doctypes import type_key, type_report
 from .downloads import (
@@ -73,6 +75,7 @@ from .libraries import LIBRARIES, key_publishers
 from .library import (
     BACKFILL_KIND,
     MAX_BACKFILL_REQUESTS,
+    ExportQuery,
     LibraryQuery,
     backfill_candidates,
     backfill_view,
@@ -200,6 +203,38 @@ class LibraryRunRequest(BaseModel):
     languages: list[str] = Field(default_factory=list)
     sort: Literal["relevance", "citations", "velocity", "local_citations"] = "relevance"
     limit: int = Field(default=50, ge=1, le=500)
+
+
+class CollectionCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    # Optional: start from this run (its papers and its search profile).
+    from_run: int | None = None
+
+
+class CollectionPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class CollectionRun(BaseModel):
+    run_id: int
+
+
+class CollectionPapers(BaseModel):
+    add: list[PaperRef] = Field(default_factory=list, max_length=500)
+    remove: list[PaperRef] = Field(default_factory=list, max_length=500)
+
+
+class CollectionExport(LibraryRunRequest):
+    format: Literal["csv", "xlsx"] = "csv"
+    limit: int = Field(default=5000, ge=1, le=5000)
+
+
+class FoundationFetch(BaseModel):
+    min_cocite: int = Field(default=3, ge=1, le=1000)
+    # OpenAlex requests (each looks up to 50 works by ID).
+    max_requests: int = Field(default=2, ge=1, le=10)
 
 
 class DownloadRequest(BaseModel):
@@ -617,6 +652,170 @@ def create_app(
             "document_types": body.types, "languages": body.languages, "sort": body.sort}})
         return save_local_run(conn, user["id"], request, query,
                               search_library(conn, user["id"], query), [])
+
+    # ---------------- collections (M31) ----------------
+    def owned_collection(conn: sqlite3.Connection, cid: int, user_id: int) -> sqlite3.Row:
+        row = coll.owned(conn, cid, user_id)
+        if row is None:
+            raise HTTPException(404, "Collection not found")
+        return row
+
+    def run_query(body: LibraryRunRequest, kind: type[LibraryQuery] = LibraryQuery
+                  ) -> LibraryQuery:
+        try:
+            return kind(q=body.query, year_from=body.year_from, year_to=body.year_to,
+                        types=body.types, languages=body.languages, sort=body.sort,
+                        limit=body.limit)
+        except ValidationError as exc:
+            raise HTTPException(422, exc.errors(include_url=False, include_context=False)
+                                ) from None
+
+    @app.post("/api/collections", status_code=201)
+    def create_collection(body: CollectionCreate, user: User, conn: Conn) -> dict:
+        run = owned_run(conn, body.from_run, user["id"]) if body.from_run is not None else None
+        try:  # one transaction: no empty collection is left behind if adding the run fails
+            cur = conn.execute("INSERT INTO collections(user_id, name, description)"
+                               " VALUES(?,?,?)",
+                               (user["id"], body.name.strip(), body.description.strip()))
+            if run is not None:
+                coll.add_run(conn, coll.owned(conn, cur.lastrowid, user["id"]), run,
+                             commit=False)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        return coll.view(conn, coll.owned(conn, cur.lastrowid, user["id"]))
+
+    @app.get("/api/collections")
+    def list_collections(user: User, conn: Conn) -> list[dict]:
+        rows = conn.execute("SELECT * FROM collections WHERE user_id = ? ORDER BY id",
+                            (user["id"],)).fetchall()
+        return [coll.view(conn, r) for r in rows]
+
+    @app.get("/api/collections/{cid}")
+    def get_collection(cid: int, user: User, conn: Conn) -> dict:
+        return coll.view(conn, owned_collection(conn, cid, user["id"]))
+
+    @app.patch("/api/collections/{cid}")
+    def edit_collection(cid: int, body: CollectionPatch, user: User, conn: Conn) -> dict:
+        owned_collection(conn, cid, user["id"])
+        if body.name is not None:
+            conn.execute("UPDATE collections SET name = ? WHERE id = ?", (body.name.strip(), cid))
+        if body.description is not None:
+            conn.execute("UPDATE collections SET description = ? WHERE id = ?",
+                         (body.description.strip(), cid))
+        conn.commit()
+        return coll.view(conn, owned_collection(conn, cid, user["id"]))
+
+    @app.delete("/api/collections/{cid}")
+    def delete_collection(cid: int, user: User, conn: Conn) -> dict:
+        owned_collection(conn, cid, user["id"])
+        conn.execute("DELETE FROM collections WHERE id = ?", (cid,))
+        conn.commit()
+        return {"deleted": cid}
+
+    @app.post("/api/collections/{cid}/runs")
+    def collection_add_run(cid: int, body: CollectionRun, user: User, conn: Conn) -> dict:
+        row = owned_collection(conn, cid, user["id"])
+        return coll.add_run(conn, row, owned_run(conn, body.run_id, user["id"]))
+
+    @app.post("/api/collections/{cid}/papers")
+    def collection_papers_edit(cid: int, body: CollectionPapers, user: User,
+                               conn: Conn) -> dict:
+        owned_collection(conn, cid, user["id"])
+        result = coll.edit_papers(conn, cid, user["id"], [(r.source, r.id) for r in body.add],
+                                  [(r.source, r.id) for r in body.remove])
+        if result is None:
+            raise HTTPException(404, "One or more papers are not in your library")
+        return result
+
+    @app.get("/api/collections/{cid}/papers")
+    def collection_papers(cid: int, user: User, conn: Conn, q: str = "",
+                          year_from: int | None = None, year_to: int | None = None,
+                          types: str = "", languages: str = "", sort: str = "relevance",
+                          limit: int = 50, offset: int = 0) -> dict:
+        owned_collection(conn, cid, user["id"])
+        query = library_query(q=q, year_from=year_from, year_to=year_to,
+                              types=[t for t in types.split(",") if t],
+                              languages=[c for c in languages.split(",") if c],
+                              sort=sort, limit=limit, offset=offset)
+        result = search_library(conn, user["id"], query, coll.collection_keys(cid))
+        return {"papers": decorate(result["rows"], {}), "total": result["total"],
+                "by_year": result["by_year"], "query": query.model_dump(),
+                "coverage": result["coverage"]}
+
+    @app.post("/api/collections/{cid}/export")
+    def collection_export(cid: int, body: CollectionExport, user: User, conn: Conn) -> Response:
+        row = owned_collection(conn, cid, user["id"])
+        result = search_library(conn, user["id"], run_query(body, ExportQuery),
+                                coll.collection_keys(cid))
+        papers = decorate(result["rows"], {})
+        if body.format == "xlsx":
+            content = to_xlsx(papers, CATEGORY_LABELS, {
+                "id": f"collection {cid}: {row['name']}",
+                "request": {"profile": json.loads(row["profile"]) if row["profile"] else {},
+                            "libraries": json.loads(row["libraries"] or "[]")},
+                "summary": {"found": result["total"], "coverage": result["coverage"]}})
+            media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else:
+            content, media = to_csv(papers, CATEGORY_LABELS), "text/csv; charset=utf-8"
+        name = f"bayan-collection-{cid}.{body.format}"
+        return Response(content, media_type=media,
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.post("/api/collections/{cid}/runs/new", status_code=201)
+    def collection_new_run(cid: int, body: LibraryRunRequest, user: User, conn: Conn) -> dict:
+        """A run made from the collection (or a filtered part), for reader, downloads, concepts."""
+        row = owned_collection(conn, cid, user["id"])
+        check_local_budget(conn, user["id"])
+        query = run_query(body)
+        request = local_request({"profile": {
+            "query": body.query, "year_from": body.year_from, "year_to": body.year_to,
+            "document_types": body.types, "languages": body.languages, "sort": body.sort},
+            "collection_id": cid, "collection_name": row["name"]})
+        return save_local_run(conn, user["id"], request, query,
+                              search_library(conn, user["id"], query, coll.collection_keys(cid)),
+                              [])
+
+    @app.get("/api/collections/{cid}/stats")
+    def collection_stats(cid: int, user: User, conn: Conn, top: int = 10) -> dict:
+        owned_collection(conn, cid, user["id"])
+        return coll.stats(conn, cid, user["id"], max(1, min(top, 100)))
+
+    @app.get("/api/collections/{cid}/milestones")
+    def collection_milestones(cid: int, user: User, conn: Conn, min_cocite: int = 3,
+                              recent: int = 3, top: int = 25, key_routes: int = 3) -> dict:
+        owned_collection(conn, cid, user["id"])
+        if not (1 <= min_cocite <= 1000 and 1 <= recent <= 20 and 1 <= top <= 500
+                and 1 <= key_routes <= 20):
+            raise HTTPException(422, "min_cocite 1-1000, recent 1-20, top 1-500, "
+                                     "key_routes 1-20")
+        return coll.milestones(conn, cid, user["id"], min_cocite, recent, top, key_routes)
+
+    @app.post("/api/collections/{cid}/foundations")
+    def collection_foundations(cid: int, body: FoundationFetch, user: User,
+                               conn: Conn) -> dict:
+        """Fetch foundation works (by ID) into the library and the collection."""
+        owned_collection(conn, cid, user["id"])
+        used = conn.execute(
+            "SELECT COALESCE(SUM(requests), 0) FROM lookup_attempts WHERE user_id = ?"
+            " AND created_at > datetime('now', '-1 hour')", (user["id"],)).fetchone()[0]
+        left = settings.lookups_per_hour - used
+        if left <= 0:
+            raise HTTPException(429, f"OpenAlex lookup limit reached: {settings.lookups_per_hour}"
+                                     " requests per hour. Try again later.")
+        progress = {"requests_made": 0}
+        try:
+            return coll.add_foundations(conn, cid, user["id"], lookup_connector(),
+                                        body.min_cocite, min(body.max_requests, left),
+                                        LOOKUP_BATCH, progress)
+        except ConnectorError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        finally:
+            # Every request sent counts, also when one failed.
+            conn.execute("INSERT INTO lookup_attempts(user_id, requests) VALUES(?,?)",
+                         (user["id"], progress["requests_made"]))
+            conn.commit()
 
     @app.post("/api/library/backfill", status_code=202)
     def start_backfill(body: BackfillRequest, background: BackgroundTasks, user: User,

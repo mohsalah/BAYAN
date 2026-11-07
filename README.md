@@ -450,6 +450,51 @@ run is marked *Local* or *New*; the search card has a "Search my library first" 
 | `GET /api/library/search?q=..&year_from=&year_to=&types=a,b&languages=en,fr&sort=..&limit=50&offset=0` | Your matching papers, `total`, `by_year` and `coverage`. Each paper has `velocity` and `local_citations`. |
 | `POST /api/library/runs` `{"query", "year_from", "year_to", "types", "languages", "sort", "limit"}` | Save a local search as a run (`origin: local_library`). Download, reader, concepts, export and gap packets work on it unchanged. |
 
+## Collections and milestones (M31)
+
+A **collection** is one corpus per research track (for example "Geant4 criticality validation"
+or "CANDU lattice physics"), built once and grown over time. Its papers join your library, so the
+local search and the backfill cover them. Collections are owner-only: anyone else gets 404.
+Adding the same run or paper twice changes nothing. A paper you remove stays out when its run is
+added again (adding it by hand brings it back). Counts in `stats` are per work: records of the
+same work from several libraries (same OpenAlex ID or DOI) count once (`records` gives the rows). A collection made from (or first given) a
+remote run keeps that run's search profile and libraries, for the incremental refresh (M32).
+
+**Milestones** are computed deterministically from the stored references (M29) only:
+
+| Measure | Meaning |
+| --- | --- |
+| LCS | Local citation score: how many collection works cite the work. |
+| GCS | Global citations, as the library reported them. |
+| Velocity / recent velocity | Citations per year since publication / mean yearly citations over the last `recent` full years (`counts_by_year`). |
+| Main path | Search-path count (SPC) on the citation graph (Hummon & Doreian; Batagelj), key-route search from the top `key_routes` SPC edges, always following the highest-SPC neighbour (ties: lower W-id). Every route is returned in order. Cycles are removed by ordering works by (year, W-id); dropped edges are counted. |
+| Milestones | Works on a main path or in the top 5% by LCS rank (ties included; a work nobody in the collection cites is never one), each with `why`. |
+| Foundations | Works outside the collection cited by at least `min_cocite` collection works (by W-id; titles only for works already in your library). "Fetch foundations" looks them up by ID and adds them, marked `foundation`. |
+| Frontier | Works from the last `recent` calendar years, this one included (`recent=3` in 2026: 2024–2026), ranked by max(recent velocity, velocity), with the milestones each cites. |
+
+Fetched foundations join your library but were not found by a search of yours, so `coverage`
+counts them (`fetched_by_id`) and its note says so. Foundation lookups share an hourly limit,
+`BAYAN_LOOKUPS_PER_HOUR` (default 20 requests). Every answer carries `coverage` and
+`references_coverage` (the share of papers whose references
+are stored). Below 80% a note suggests running the backfill. A work missing from a collection is
+never treated as a gap.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/collections` `{"name", "description", "from_run"}` · `GET /api/collections` | Create (optionally from a run) and list. |
+| `GET / PATCH / DELETE /api/collections/{id}` | Read, rename or describe, delete. |
+| `POST /api/collections/{id}/runs` `{"run_id"}` | Add a run's papers. |
+| `POST /api/collections/{id}/papers` `{"add": [...], "remove": [...]}` | Add papers from your library, or remove papers. |
+| `GET /api/collections/{id}/papers?…` | Same filters and orders as the library search. |
+| `POST /api/collections/{id}/export` `{"format": "csv"\|"xlsx", filters…}` | Export (with the OpenAlex ID column). |
+| `POST /api/collections/{id}/runs/new` `{filters…}` | A run from the collection (or part of it) for the reader, downloads and concepts. |
+| `GET /api/collections/{id}/stats?top=10` | Counts per year, top venues, top cited, top velocity, top local citations, references share. |
+| `GET /api/collections/{id}/milestones?min_cocite=3&recent=3&top=25&key_routes=3` | LCS, main paths, milestones, frontier, foundations. |
+| `POST /api/collections/{id}/foundations` `{"min_cocite": 3, "max_requests": 2}` | Fetch foundation works by ID (50 per request, at most 10 requests). |
+
+The page has a Collections card: create one from the current search, add the current search,
+and show counts or milestones with the main-path chain.
+
 ## Run locally
 
 ```bash
