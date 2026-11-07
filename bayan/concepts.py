@@ -168,7 +168,7 @@ def _cache_key(version: str, system: str, model: str, prompt: str) -> str:
     return hashlib.sha256(f"{version}\n{model}\n{system}\n{prompt}".encode()).hexdigest()
 
 
-def _call(conn: sqlite3.Connection, client: ReaderClient, user_id: int, version: str,
+def cached_call(conn: sqlite3.Connection, client: ReaderClient, user_id: int, version: str,
           system: str, schema: dict, prompt: str, fresh: bool = False) -> tuple[dict, bool]:
     """(model output, cached). Cached answers cost nothing and record no usage."""
     key = _cache_key(version, system, client.model, prompt)
@@ -249,7 +249,7 @@ def extract_paper(conn: sqlite3.Connection, client: ReaderClient, user_id: int, 
     cached_parts = 0
     try:
         for i, body in enumerate(parts, 1):
-            data, cached = _call(conn, client, user_id, PROMPT_VERSION, SYSTEM_PROMPT,
+            data, cached = cached_call(conn, client, user_id, PROMPT_VERSION, SYSTEM_PROMPT,
                                  OUTPUT_SCHEMA,
                                  build_prompt(paper["title"] or "", body, i, len(parts)))
             cached_parts += cached
@@ -489,7 +489,7 @@ def normalize(conn: sqlite3.Connection, client: ReaderClient, user_id: int, run_
     if len(sent) < 2:
         return {"groups": 0, "merged": 0, "sent": len(sent), "total": len(nodes),
                 "cached": False}
-    data, cached = _call(conn, client, user_id, NORMALIZE_VERSION, NORMALIZE_PROMPT,
+    data, cached = cached_call(conn, client, user_id, NORMALIZE_VERSION, NORMALIZE_PROMPT,
                          NORMALIZE_SCHEMA, normalize_prompt(sent), fresh)
     blocked = {k for k, (_, origin) in _merges(conn, user_id, run_id).items()
                if origin == USER_SPLIT}
@@ -516,5 +516,5 @@ def normalize(conn: sqlite3.Connection, client: ReaderClient, user_id: int, run_
 
 
 __all__ = ["ABSTRACT", "CONCEPT_REJECTS", "CONCEPT_TYPES", "FULL_TEXT", "TYPE_LABELS",
-           "build_nodes", "check_concepts", "concept_key", "extract_paper", "merge_nodes",
-           "normalize", "result_record", "run_concept_job", "split_member"]
+           "build_nodes", "cached_call", "check_concepts", "concept_key", "extract_paper",
+           "merge_nodes", "normalize", "result_record", "run_concept_job", "split_member"]

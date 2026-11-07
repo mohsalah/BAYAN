@@ -24,7 +24,7 @@ PROPOSAL_SECTIONS = ("source-linked gap", "research question or hypothesis", "ob
                      "success criteria")
 
 
-def _paper_block(index: int, paper: dict) -> str:
+def paper_block(index: int, paper: dict) -> str:
     abstract = (paper.get("abstract") or "").strip()
     if abstract:
         text = abstract[:ABSTRACT_CHARS] + ("..." if len(abstract) > ABSTRACT_CHARS else "")
@@ -76,7 +76,7 @@ def _coverage(packet: dict) -> str:
 def gap_prompt(packet: dict, papers: list[dict], gap_count: int, question: str) -> str:
     plural = "s" if gap_count != 1 else ""
     area = question.strip() or "the research area covered by the papers below"
-    blocks = "\n\n".join(_paper_block(i, p) for i, p in enumerate(papers[:MAX_PAPERS], start=1))
+    blocks = "\n\n".join(paper_block(i, p) for i, p in enumerate(papers[:MAX_PAPERS], start=1))
     return (
         f"Task: propose up to {gap_count} candidate research gap{plural} for: {area}\n\n"
         f"{GAP_RULES}\n\n{_coverage(packet)}\n\nPapers:\n\n{blocks}\n"
@@ -87,7 +87,7 @@ def proposal_prompt(packet: dict, papers: list[dict], count: int, gap_text: str,
                     question: str) -> str:
     plural = "s" if count != 1 else ""
     area = question.strip() or "the research area covered by the papers below"
-    blocks = "\n\n".join(_paper_block(i, p) for i, p in enumerate(papers[:MAX_PAPERS], start=1))
+    blocks = "\n\n".join(paper_block(i, p) for i, p in enumerate(papers[:MAX_PAPERS], start=1))
     sections = "; ".join(PROPOSAL_SECTIONS)
     return (
         f"Task: draft {count} distinct research proposal{plural} for: {area}\n\n"

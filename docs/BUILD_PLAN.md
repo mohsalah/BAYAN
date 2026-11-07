@@ -142,6 +142,20 @@ Additional tables for this version: `paper_selections` (user, paper, requested_a
 - **Interactive view:** nodes sized by number of supporting papers, coloured by concept type or by cluster; click a node or edge to see the papers, pages and quotes; filter by year, language, relation; drag, pin, merge or split nodes; the user edits the map and the edits are kept. Export as PNG, SVG, JSON and Markdown outline.
 - **Gap hints from the map (candidates only):** isolated nodes, weakly linked clusters, `contradicts` edges with no resolving paper, concept pairs studied separately but never together in the chosen set, and methods validated on only one system. Each hint is shown with its evidence and the limit that the map covers only the chosen papers, so "never studied together" means "not together in this set" until the broader search is done. Built in M19 (`mapgaps.py`, `GET /api/concepts/gaps`) on the co-occurrence graph; the `contradicts` hint waits for the relation edges of M18.
 
+### 6c. Idea proposer and proposal drafts (M10, after SciPIP)
+
+The proposal writer follows the pipeline of SciPIP (Wang et al. 2024, arXiv:2410.23166, MIT licence), adapted to the rules above. Every step is a separate, cached model call or deterministic code, and the record of each step is kept:
+
+1. **Entities:** the model lists up to 8 key noun phrases from the researcher's background text (a gap from M9/M19 or a problem statement).
+2. **Brainstorm (optional):** 3-4 ideas from the background alone. They are labelled *ungrounded*: they never become proposals by themselves, they only widen the search terms and feed the integration step.
+3. **Retrieval (deterministic):** from the run's own papers: the papers the user ticked (always, first), then papers whose indexed title, abstract, keywords or topic match an entity, then papers whose verified concept mentions (M17) match an entity. Each paper records which signals matched. Citation co-occurrence, SciPIP's third signal, is reported as *not available* because reference lists are not stored. At most 40 papers.
+4. **Inspirations:** for each of the top papers (default 12) the model is given that paper's verified reader evidence (M8 methods, data, validation quotes with pages) or, failing that, its abstract (labelled), and asked what from it could address the background. It may answer *not usable*. Every inspiration carries its paper reference.
+5. **Ideas:** the model combines the inspirations into 3-4 ideas, each citing its papers as [P1], [P2]...
+6. **Integration:** the model merges the ideas with the brainstorm into at most the requested number of distinct, feasible ideas, each still citing papers. Citations are then checked in code: unknown references are removed, and an idea left with no supporting paper from the chosen set is *dropped* and listed with the reason, never shown as a result.
+7. **Proposals:** each kept idea is expanded into a draft with the sections of section 6 (question/hypothesis, objectives, methods, comparators, validation, uncertainty, reproducibility, resources, risks, deliverables, success criteria) and three research questions, citing papers, with explicit assumptions and a list of what must be verified. Citations are checked again. A proposal is a *draft (unverified candidate)*.
+
+Limits: `BAYAN_IDEA_RUNS_PER_HOUR` runs per user (default 3); each run makes at most 1 + 1 + 12 + 1 + 1 + 5 model calls; cached calls are free.
+
 ### 6b. Trend research gaps for the area
 
 - **Method:** from the whole retrieved corpus for the area and period (not only the chosen papers), compute publication volume per year, emerging and declining concepts/keywords, citation velocity, new method-system pairings, and growth by language and country. Counts come from the database, not from the model.
