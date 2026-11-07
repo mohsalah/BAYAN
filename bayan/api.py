@@ -8,16 +8,19 @@ import sqlite3
 import threading
 from collections.abc import Callable
 from contextlib import asynccontextmanager, closing
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from pypdf import PdfReader
 
 from . import __version__
+from . import collection as coll
+from . import refresh as rf
 from .analysis import MAX_GAP_TEXT, build_packet, gap_prompt, proposal_prompt
 from .auth import (
     check_password_policy,
@@ -47,6 +50,7 @@ from .connectors import (
     OpenAlexConnector,
 )
 from .connectors.base import Connector
+from .connectors.openalex import LOOKUP_BATCH
 from .db import connect, init_db
 from .doctypes import type_key, type_report
 from .downloads import (
@@ -72,6 +76,28 @@ from .export import safe_cell, to_csv, to_xlsx
 from .ideas import NOTE as IDEA_NOTE
 from .ideas import idea_record, run_idea_job
 from .libraries import LIBRARIES, key_publishers
+from .library import (
+    BACKFILL_KIND,
+    MAX_BACKFILL_REQUESTS,
+    ExportQuery,
+    LibraryQuery,
+    backfill_candidates,
+    backfill_view,
+    citations_stale,
+    coverage,
+    current_year,
+    library_key_set,
+    local_unapplied,
+    new_backfill_payload,
+    open_backfill,
+    put_local_first,
+    query_from_profile,
+    resume_stale_backfills,
+    run_backfill_job,
+    save_local_run,
+    search_library,
+    stale_cutoff,
+)
 from .manuals import (
     add_to_run,
     clean_title,
@@ -107,6 +133,7 @@ from .models import (
     language_name,
     normalize_document_types,
 )
+from .network import velocity
 from .pages import INDEX_NOTES, clear_pages, page_list, page_text, search_pages
 from .planner import (
     PLANNER_NOTE,
@@ -170,6 +197,62 @@ class Credentials(BaseModel):
 class PaperRef(BaseModel):
     source: str
     id: str
+
+
+class BackfillRequest(BaseModel):
+    # OpenAlex requests this job may send (each looks up to 50 works by ID or DOI).
+    max_requests: int = Field(default=20, ge=1, le=MAX_BACKFILL_REQUESTS)
+
+
+class LibraryRunRequest(BaseModel):
+    """A local-library search to save as a run (same filters as GET /api/library/search)."""
+
+    query: str = Field(default="", max_length=1000)
+    year_from: int | None = None
+    year_to: int | None = None
+    types: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    sort: Literal["relevance", "citations", "velocity", "local_citations"] = "relevance"
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+class CollectionCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    # Optional: start from this run (its papers and its search profile).
+    from_run: int | None = None
+
+
+class CollectionPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class CollectionRun(BaseModel):
+    run_id: int
+
+
+class CollectionPapers(BaseModel):
+    add: list[PaperRef] = Field(default_factory=list, max_length=500)
+    remove: list[PaperRef] = Field(default_factory=list, max_length=500)
+
+
+class CollectionExport(LibraryRunRequest):
+    format: Literal["csv", "xlsx"] = "csv"
+    limit: int = Field(default=5000, ge=1, le=5000)
+
+
+class FoundationFetch(BaseModel):
+    min_cocite: int = Field(default=3, ge=1, le=1000)
+    # OpenAlex requests (each looks up to 50 works by ID).
+    max_requests: int = Field(default=2, ge=1, le=10)
+
+
+class RefreshRequest(BaseModel):
+    # Requests this refresh may send in all: search pages for new papers plus ID lookups
+    # (50 works each) for stale citation counts.
+    max_requests: int = Field(default=30, ge=1, le=rf.MAX_REFRESH_REQUESTS)
+    citations: bool = True
 
 
 class DownloadRequest(BaseModel):
@@ -337,6 +420,13 @@ def create_app(
                                  contact_email=settings.contact_email)
     make_connector = connector_factory or default_connector_factory(settings)
 
+    def lookup_connector():
+        """The OpenAlex connector used to look works up by ID (backfill)."""
+        conn = make_connector("openalex")
+        if not hasattr(conn, "lookup"):
+            raise HTTPException(503, "OpenAlex lookups are not available")
+        return conn
+
     def resume_loop(stop: threading.Event) -> None:
         """Continue interrupted download jobs and clear their leftover `.part` files."""
         while True:
@@ -348,18 +438,54 @@ def create_app(
             if stop.wait(settings.job_resume_interval):
                 return
 
+    def run_refreshes() -> list[int]:
+        """Queued automatic refreshes, and refreshes interrupted by a restart."""
+        return rf.run_waiting_refreshes(settings.database_path, make_connector,
+                                        settings.search_max_results,
+                                        settings.citations_max_age_days,
+                                        settings.job_stale_seconds)
+
+    def backfill_loop(stop: threading.Event) -> None:
+        """Continue interrupted backfill jobs (a thread of its own: they can run for minutes)."""
+        while True:
+            try:
+                resume_stale_backfills(settings.database_path, lookup_connector,
+                                       settings.job_stale_seconds)
+            except Exception as exc:
+                log.warning("backfill resume pass failed: %s", type(exc).__name__)
+            if stop.wait(settings.job_resume_interval):
+                return
+
+    def refresh_loop(stop: threading.Event) -> None:
+        """Queue automatic refreshes when BAYAN_AUTO_REFRESH_DAYS is set, run them, and
+        continue interrupted refreshes (their own thread, so backfills are not held up)."""
+        while True:
+            try:
+                if settings.auto_refresh_days > 0:
+                    with closing(connect(settings.database_path)) as conn:
+                        rf.queue_auto_refreshes(conn, settings.auto_refresh_days,
+                                                settings.auto_refresh_max_requests)
+                run_refreshes()
+            except Exception as exc:
+                log.warning("refresh pass failed: %s", type(exc).__name__)
+            if stop.wait(settings.job_resume_interval):
+                return
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         init_db(settings.database_path)
         stop = threading.Event()
-        worker = None
+        workers = []
         if settings.job_resume_interval > 0:
-            worker = threading.Thread(target=resume_loop, args=(stop,), daemon=True,
-                                      name="bayan-job-resume")
-            worker.start()
+            for target, name in ((resume_loop, "bayan-job-resume"),
+                                 (backfill_loop, "bayan-backfill-resume"),
+                                 (refresh_loop, "bayan-refresh")):
+                workers.append(threading.Thread(target=target, args=(stop,), daemon=True,
+                                                name=name))
+                workers[-1].start()
         yield
         stop.set()
-        if worker is not None:
+        for worker in workers:
             worker.join(timeout=5)
 
     app = FastAPI(title="BAYAN", version=__version__, lifespan=lifespan)
@@ -488,21 +614,371 @@ def create_app(
             raise HTTPException(
                 422, f"quota_total is limited to {settings.search_max_results} per search"
             )
+        profile = body.profile
+        wanted = body.quota_total or settings.search_max_results
+        if body.mode == "local":
+            # Nothing is sent to any library, so the remote search budget is not used.
+            check_local_budget(conn, user["id"])
+            query = query_from_profile(profile, wanted)
+            return save_local_run(conn, user["id"], local_request(body.model_dump(mode="json")),
+                                  query, search_library(conn, user["id"], query),
+                                  local_unapplied(profile))
         recent = conn.execute(
             "SELECT COUNT(*) FROM search_runs WHERE user_id = ?"
-            " AND created_at > datetime('now', '-1 hour')",
+            " AND created_at > datetime('now', '-1 hour')"
+            " AND json_extract(summary, '$.origin') IS NOT 'local_library'",
             (user["id"],),
         ).fetchone()[0]
         if recent >= settings.searches_per_hour:
             raise HTTPException(429, "Search limit reached for this hour; try again later")
         try:
             connectors = [make_connector(lib_id) for lib_id in body.libraries]
-            return run_search(
+            if body.mode == "local_then_remote":
+                before = library_key_set(conn, user["id"])
+                # At most as many local hits as papers wanted; they are listed in addition to
+                # the remote papers (whose per-year quotas are unchanged) and counted apart.
+                local = search_library(conn, user["id"], query_from_profile(profile, wanted))
+            result = run_search(
                 conn, user["id"], body, connectors, settings.search_max_results,
                 doi_lookup=make_connector("crossref"), doi_budget=settings.doi_lookup_budget,
+                doi_seconds=settings.doi_lookup_seconds,
             )
+            if body.mode == "local_then_remote":
+                try:
+                    result = put_local_first(conn, result["id"], local["rows"], before,
+                                             local["coverage"], local_unapplied(profile))
+                except Exception:
+                    # Never leave a half-merged run behind.
+                    conn.rollback()
+                    conn.execute("DELETE FROM search_runs WHERE id = ?", (result["id"],))
+                    conn.commit()
+                    raise
+            return result
         except ConnectorError as exc:
             raise HTTPException(502, str(exc)) from exc
+
+    def check_local_budget(conn: sqlite3.Connection, user_id: int) -> None:
+        recent = conn.execute(
+            "SELECT COUNT(*) FROM search_runs WHERE user_id = ?"
+            " AND created_at > datetime('now', '-1 hour')"
+            " AND json_extract(summary, '$.origin') = 'local_library'", (user_id,)).fetchone()[0]
+        if recent >= settings.local_searches_per_hour:
+            raise HTTPException(429, "Local search limit reached for this hour; try again later")
+
+    def local_request(request: dict) -> dict:
+        """A local run's stored request: no library was searched, so none is listed (the
+        libraries chosen on the form are kept apart, for the record)."""
+        return {**request, "mode": "local", "libraries": [],
+                "libraries_requested": request.get("libraries", [])}
+
+    def library_query(**fields) -> LibraryQuery:
+        try:
+            return LibraryQuery(**fields)
+        except ValidationError as exc:
+            raise HTTPException(422, exc.errors(include_url=False, include_context=False)
+                                ) from None
+
+    @app.get("/api/library/search")
+    def library_search(user: User, conn: Conn, q: str = "", year_from: int | None = None,
+                       year_to: int | None = None, types: str = "", languages: str = "",
+                       sort: str = "relevance", limit: int = 50, offset: int = 0) -> dict:
+        """Search the papers you already have. Covers only what you searched before."""
+        query = library_query(q=q, year_from=year_from, year_to=year_to,
+                              types=[t for t in types.split(",") if t],
+                              languages=[c for c in languages.split(",") if c],
+                              sort=sort, limit=limit, offset=offset)
+        result = search_library(conn, user["id"], query)
+        papers = decorate(result["rows"], {})
+        for d in papers:
+            d["library_status"] = "local"
+        return {"papers": papers, "total": result["total"], "by_year": result["by_year"],
+                "query": query.model_dump(), "coverage": result["coverage"]}
+
+    @app.post("/api/library/runs", status_code=201)
+    def library_run(body: LibraryRunRequest, user: User, conn: Conn) -> dict:
+        """Save a local search as a run (download, reader, concepts and export work on it)."""
+        query = library_query(q=body.query, year_from=body.year_from, year_to=body.year_to,
+                              types=body.types, languages=body.languages, sort=body.sort,
+                              limit=body.limit)
+        check_local_budget(conn, user["id"])
+        request = local_request({"profile": {
+            "query": body.query, "year_from": body.year_from, "year_to": body.year_to,
+            "document_types": body.types, "languages": body.languages, "sort": body.sort}})
+        return save_local_run(conn, user["id"], request, query,
+                              search_library(conn, user["id"], query), [])
+
+    # ---------------- collections (M31) ----------------
+    def owned_collection(conn: sqlite3.Connection, cid: int, user_id: int) -> sqlite3.Row:
+        row = coll.owned(conn, cid, user_id)
+        if row is None:
+            raise HTTPException(404, "Collection not found")
+        return row
+
+    def run_query(body: LibraryRunRequest, kind: type[LibraryQuery] = LibraryQuery
+                  ) -> LibraryQuery:
+        try:
+            return kind(q=body.query, year_from=body.year_from, year_to=body.year_to,
+                        types=body.types, languages=body.languages, sort=body.sort,
+                        limit=body.limit)
+        except ValidationError as exc:
+            raise HTTPException(422, exc.errors(include_url=False, include_context=False)
+                                ) from None
+
+    @app.post("/api/collections", status_code=201)
+    def create_collection(body: CollectionCreate, user: User, conn: Conn) -> dict:
+        run = owned_run(conn, body.from_run, user["id"]) if body.from_run is not None else None
+        try:  # one transaction: no empty collection is left behind if adding the run fails
+            cur = conn.execute("INSERT INTO collections(user_id, name, description)"
+                               " VALUES(?,?,?)",
+                               (user["id"], body.name.strip(), body.description.strip()))
+            if run is not None:
+                coll.add_run(conn, coll.owned(conn, cur.lastrowid, user["id"]), run,
+                             commit=False)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        return coll.view(conn, coll.owned(conn, cur.lastrowid, user["id"]))
+
+    @app.get("/api/collections")
+    def list_collections(user: User, conn: Conn) -> list[dict]:
+        rows = conn.execute("SELECT * FROM collections WHERE user_id = ? ORDER BY id",
+                            (user["id"],)).fetchall()
+        return [coll.view(conn, r) for r in rows]
+
+    @app.get("/api/collections/{cid}")
+    def get_collection(cid: int, user: User, conn: Conn) -> dict:
+        return coll.view(conn, owned_collection(conn, cid, user["id"]))
+
+    @app.patch("/api/collections/{cid}")
+    def edit_collection(cid: int, body: CollectionPatch, user: User, conn: Conn) -> dict:
+        owned_collection(conn, cid, user["id"])
+        if body.name is not None:
+            conn.execute("UPDATE collections SET name = ? WHERE id = ?", (body.name.strip(), cid))
+        if body.description is not None:
+            conn.execute("UPDATE collections SET description = ? WHERE id = ?",
+                         (body.description.strip(), cid))
+        conn.commit()
+        return coll.view(conn, owned_collection(conn, cid, user["id"]))
+
+    @app.delete("/api/collections/{cid}")
+    def delete_collection(cid: int, user: User, conn: Conn) -> dict:
+        owned_collection(conn, cid, user["id"])
+        conn.execute("DELETE FROM collections WHERE id = ?", (cid,))
+        conn.commit()
+        return {"deleted": cid}
+
+    @app.post("/api/collections/{cid}/runs")
+    def collection_add_run(cid: int, body: CollectionRun, user: User, conn: Conn) -> dict:
+        row = owned_collection(conn, cid, user["id"])
+        return coll.add_run(conn, row, owned_run(conn, body.run_id, user["id"]))
+
+    @app.post("/api/collections/{cid}/papers")
+    def collection_papers_edit(cid: int, body: CollectionPapers, user: User,
+                               conn: Conn) -> dict:
+        owned_collection(conn, cid, user["id"])
+        result = coll.edit_papers(conn, cid, user["id"], [(r.source, r.id) for r in body.add],
+                                  [(r.source, r.id) for r in body.remove])
+        if result is None:
+            raise HTTPException(404, "One or more papers are not in your library")
+        return result
+
+    @app.get("/api/collections/{cid}/papers")
+    def collection_papers(cid: int, user: User, conn: Conn, q: str = "",
+                          year_from: int | None = None, year_to: int | None = None,
+                          types: str = "", languages: str = "", sort: str = "relevance",
+                          limit: int = 50, offset: int = 0) -> dict:
+        owned_collection(conn, cid, user["id"])
+        query = library_query(q=q, year_from=year_from, year_to=year_to,
+                              types=[t for t in types.split(",") if t],
+                              languages=[c for c in languages.split(",") if c],
+                              sort=sort, limit=limit, offset=offset)
+        result = search_library(conn, user["id"], query, coll.collection_keys(cid))
+        return {"papers": decorate(result["rows"], {}), "total": result["total"],
+                "by_year": result["by_year"], "query": query.model_dump(),
+                "coverage": result["coverage"]}
+
+    @app.post("/api/collections/{cid}/export")
+    def collection_export(cid: int, body: CollectionExport, user: User, conn: Conn) -> Response:
+        row = owned_collection(conn, cid, user["id"])
+        result = search_library(conn, user["id"], run_query(body, ExportQuery),
+                                coll.collection_keys(cid))
+        papers = decorate(result["rows"], {})
+        if body.format == "xlsx":
+            content = to_xlsx(papers, CATEGORY_LABELS, {
+                "id": f"collection {cid}: {row['name']}",
+                "request": {"profile": json.loads(row["profile"]) if row["profile"] else {},
+                            "libraries": json.loads(row["libraries"] or "[]")},
+                "summary": {"found": result["total"], "coverage": result["coverage"]}})
+            media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else:
+            content, media = to_csv(papers, CATEGORY_LABELS), "text/csv; charset=utf-8"
+        name = f"bayan-collection-{cid}.{body.format}"
+        return Response(content, media_type=media,
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.post("/api/collections/{cid}/runs/new", status_code=201)
+    def collection_new_run(cid: int, body: LibraryRunRequest, user: User, conn: Conn) -> dict:
+        """A run made from the collection (or a filtered part), for reader, downloads, concepts."""
+        row = owned_collection(conn, cid, user["id"])
+        check_local_budget(conn, user["id"])
+        query = run_query(body)
+        request = local_request({"profile": {
+            "query": body.query, "year_from": body.year_from, "year_to": body.year_to,
+            "document_types": body.types, "languages": body.languages, "sort": body.sort},
+            "collection_id": cid, "collection_name": row["name"]})
+        return save_local_run(conn, user["id"], request, query,
+                              search_library(conn, user["id"], query, coll.collection_keys(cid)),
+                              [])
+
+    @app.get("/api/collections/{cid}/stats")
+    def collection_stats(cid: int, user: User, conn: Conn, top: int = 10) -> dict:
+        owned_collection(conn, cid, user["id"])
+        return coll.stats(conn, cid, user["id"], max(1, min(top, 100)),
+                          stale_cutoff(settings.citations_max_age_days))
+
+    @app.get("/api/collections/{cid}/milestones")
+    def collection_milestones(cid: int, user: User, conn: Conn, min_cocite: int = 3,
+                              recent: int = 3, top: int = 25, key_routes: int = 3) -> dict:
+        owned_collection(conn, cid, user["id"])
+        if not (1 <= min_cocite <= 1000 and 1 <= recent <= 20 and 1 <= top <= 500
+                and 1 <= key_routes <= 20):
+            raise HTTPException(422, "min_cocite 1-1000, recent 1-20, top 1-500, "
+                                     "key_routes 1-20")
+        return coll.milestones(conn, cid, user["id"], min_cocite, recent, top, key_routes,
+                               stale_cutoff(settings.citations_max_age_days))
+
+    @app.post("/api/collections/{cid}/foundations")
+    def collection_foundations(cid: int, body: FoundationFetch, user: User,
+                               conn: Conn) -> dict:
+        """Fetch foundation works (by ID) into the library and the collection."""
+        owned_collection(conn, cid, user["id"])
+        used = conn.execute(
+            "SELECT COALESCE(SUM(requests), 0) FROM lookup_attempts WHERE user_id = ?"
+            " AND created_at > datetime('now', '-1 hour')", (user["id"],)).fetchone()[0]
+        left = settings.lookups_per_hour - used
+        if left <= 0:
+            raise HTTPException(429, f"OpenAlex lookup limit reached: {settings.lookups_per_hour}"
+                                     " requests per hour. Try again later.")
+        progress = {"requests_made": 0}
+        try:
+            return coll.add_foundations(conn, cid, user["id"], lookup_connector(),
+                                        body.min_cocite, min(body.max_requests, left),
+                                        LOOKUP_BATCH, progress)
+        except ConnectorError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        finally:
+            # Every request sent counts, also when one failed.
+            conn.execute("INSERT INTO lookup_attempts(user_id, requests) VALUES(?,?)",
+                         (user["id"], progress["requests_made"]))
+            conn.commit()
+
+    @app.post("/api/collections/{cid}/refresh", status_code=202)
+    def collection_refresh(cid: int, body: RefreshRequest, background: BackgroundTasks,
+                           user: User, conn: Conn) -> dict:
+        """New papers since the last refresh, and stale citation counts, as a background job."""
+        conn.execute("BEGIN IMMEDIATE")  # one refresh per collection at a time
+        try:
+            owned_collection(conn, cid, user["id"])
+            running = rf.open_refresh(conn, cid)
+            if running is not None:
+                raise HTTPException(409, f"A refresh is already running (job {running['id']})")
+            used = rf.requests_reserved(conn, user["id"])
+            if used + body.max_requests > settings.refresh_requests_per_hour:
+                raise HTTPException(
+                    429, f"Refresh limit: {settings.refresh_requests_per_hour} requests per hour"
+                    f" ({used} already started). Try a smaller max_requests or later.")
+            job = rf.queue_refresh(conn, cid, user["id"], body.max_requests, body.citations)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        background.add_task(rf.run_refresh_job, settings.database_path, job, make_connector,
+                            settings.search_max_results, settings.citations_max_age_days)
+        row = conn.execute("SELECT * FROM collection_refreshes WHERE job_id = ?",
+                           (job,)).fetchone()
+        return rf.refresh_view(row)
+
+    @app.get("/api/collections/{cid}/refreshes")
+    def collection_refreshes(cid: int, user: User, conn: Conn) -> dict:
+        row = owned_collection(conn, cid, user["id"])
+        rows = conn.execute("SELECT * FROM collection_refreshes WHERE collection_id = ?"
+                            " ORDER BY id DESC", (cid,)).fetchall()
+        return {"collection_id": cid, "last_refreshed_at": row["last_refreshed_at"],
+                "refreshes": [rf.refresh_view(r) for r in rows]}
+
+    @app.get("/api/collections/{cid}/new")
+    def collection_new(cid: int, user: User, conn: Conn, since: str,
+                       limit: int = 50, offset: int = 0) -> dict:
+        """Papers added to the collection since a date, fastest gaining citations first."""
+        owned_collection(conn, cid, user["id"])
+        try:
+            start = datetime.fromisoformat(since.strip().replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(422, "since must be a date (YYYY-MM-DD) or a date and time"
+                                ) from None
+        if not (1 <= limit <= 500 and offset >= 0):
+            raise HTTPException(422, "limit 1-500, offset 0 or more")
+        if start.tzinfo is not None:
+            start = start.astimezone(UTC).replace(tzinfo=None)
+        params = {"cid": cid, "since": start.strftime("%Y-%m-%d %H:%M:%S"),
+                  "limit": limit, "offset": offset}
+        frm = ("FROM collection_papers cp JOIN papers p ON p.source = cp.source"
+               " AND p.id = cp.paper_id WHERE cp.collection_id = :cid"
+               " AND julianday(cp.added_at) >= julianday(:since)")
+        found = conn.execute(f"SELECT p.*, cp.added_at AS added_at, cp.origin AS origin {frm}",
+                             params).fetchall()
+        year_now = current_year()
+        speed = {(r["source"], r["id"]): velocity(r["citations"], r["year"], year_now)
+                 for r in found}
+        found.sort(key=lambda r: (speed[(r["source"], r["id"])] is None,
+                                  -(speed[(r["source"], r["id"])] or 0), r["title"] or ""))
+        rows = found[offset:offset + limit]
+        papers = decorate(rows, {})
+        for d, r in zip(papers, rows, strict=True):
+            d.update(added_at=r["added_at"], origin=r["origin"],
+                     velocity=speed[(r["source"], r["id"])],
+                     added_by_refresh=r["origin"] == "refresh")
+        return {"since": params["since"], "papers": papers, "total": len(found),
+                "coverage": coverage(conn, user["id"], coll.collection_keys(cid))}
+
+    @app.post("/api/library/backfill", status_code=202)
+    def start_backfill(body: BackfillRequest, background: BackgroundTasks, user: User,
+                       conn: Conn) -> dict:
+        """Store references and yearly citations for library papers saved without them."""
+        # Hold the write lock from the check to the insert, so two requests at once cannot
+        # both start a job.
+        conn.execute("BEGIN IMMEDIATE")
+        running = open_backfill(conn, user["id"])
+        if running is not None:
+            conn.rollback()
+            raise HTTPException(409, f"A backfill is already running (job {running['id']})")
+        by_id, by_doi, _ = backfill_candidates(conn, user["id"])
+        if not by_id and not by_doi:
+            conn.rollback()
+            return backfill_view(conn, None, user["id"])
+        try:
+            connector = lookup_connector()
+        except HTTPException:
+            conn.rollback()
+            raise
+        cur = conn.execute(
+            "INSERT INTO jobs(kind, payload, status) VALUES(?, ?, 'pending')",
+            (BACKFILL_KIND, json.dumps(new_backfill_payload(user["id"], body.max_requests))))
+        conn.commit()
+        background.add_task(run_backfill_job, settings.database_path, cur.lastrowid, connector)
+        job = conn.execute("SELECT id, payload, status, error FROM jobs WHERE id = ?",
+                           (cur.lastrowid,)).fetchone()
+        return backfill_view(conn, job, user["id"])
+
+    @app.get("/api/library/backfill/jobs/{job_id}")
+    def backfill_job(job_id: int, user: User, conn: Conn) -> dict:
+        job = conn.execute("SELECT id, kind, payload, status, error FROM jobs WHERE id = ?",
+                           (job_id,)).fetchone()
+        if (job is None or job["kind"] != BACKFILL_KIND
+                or json.loads(job["payload"]).get("user_id") != user["id"]):
+            raise HTTPException(404, "Job not found")
+        return backfill_view(conn, job, user["id"])
 
     @app.get("/api/runs")
     def runs(user: User, conn: Conn) -> list[dict]:
@@ -517,9 +993,13 @@ def create_app(
         matches = {(m["source"], m["id"]): m for m in summary.get("doi_matches", [])}
         geo = summary.get("geography") or {}
         geo_codes = set(geo.get("expanded_countries") or [])
+        before = ({tuple(k) for k in summary["library_before"]}
+                  if "library_before" in summary else None)
+        cutoff = stale_cutoff(settings.citations_max_age_days)
         out = []
         for p in rows:
             d = paper_row_to_dict(p)
+            d["citations_stale"] = citations_stale(p, cutoff)
             match = matches.get((d["source"], d["id"]))
             d["doi_source"] = "crossref_lookup" if match else ""
             d["doi_match_score"] = match["score"] if match else None
@@ -532,6 +1012,9 @@ def create_app(
                                if geo_codes else "")
             d["type_label"] = ("Manual (user-supplied)" if d["type_key"] == "manual"
                                else d["category_label"])
+            # Local / New badge for runs that recorded what was already in the library.
+            d["library_status"] = ("" if before is None else
+                                   "local" if (d["source"], d["id"]) in before else "new")
             out.append(d)
         return out
 

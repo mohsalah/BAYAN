@@ -20,7 +20,9 @@ COLUMNS: list[tuple[str, str, int]] = [
     ("language_name", "Language", 16),
     ("countries", "Affiliation countries", 18), ("region_names", "Region", 26),
     ("geo_label", "Geography match", 18), ("source", "Library", 12),
-    ("citations", "Citations", 10), ("access", "Open copy", 18), ("oa_url", "Open-copy link", 36),
+    ("citations", "Citations", 10), ("citations_updated_at", "Citations updated", 20),
+    ("openalex_id", "OpenAlex ID", 14), ("references_label", "References (count)", 12),
+    ("access", "Open copy", 18), ("oa_url", "Open-copy link", 36),
     ("landing_url", "Source page", 36), ("keywords", "Keywords", 30),
     ("abstract_status", "Abstract", 14), ("abstract", "Abstract text", 90),
 ]
@@ -48,6 +50,10 @@ def flatten(paper: dict, category_labels: dict[str, str]) -> dict:
     row["geo_label"] = GEO_LABELS.get(paper.get("geo_status", ""), "not filtered")
     row["keywords"] = "; ".join(paper.get("keywords") or [])
     row["doi"] = paper.get("doi") or ""
+    row["openalex_id"] = paper.get("openalex_id") or ""
+    row["citations_updated_at"] = paper.get("citations_updated_at") or ""
+    refs = paper.get("references_count")
+    row["references_label"] = "not stored" if refs is None else refs
     row["document_kind"] = paper.get("document_kind") or ""
     row["origin"] = "user-supplied" if paper.get("user_supplied") else "library search"
     row["access"] = ACCESS_LABELS.get(paper.get("access", ""), paper.get("access", ""))
@@ -115,6 +121,7 @@ def to_xlsx(papers: list[dict], category_labels: dict[str, str], run: dict) -> b
         ("Papers found by the run", summary.get("found", "")),
         ("Filters a library could not apply", json.dumps(summary.get("unapplied_filters", {}))),
         ("Year shortfalls (not padded)", json.dumps(summary.get("shortfalls", {}))),
+        ("Coverage", (summary.get("coverage") or {}).get("note", "")),
         ("Note", "Reference types come from source metadata; 'Peer-reviewed' is not verified "
                  "peer review. An open-copy link is not proof that a valid PDF is available."),
     ]

@@ -185,3 +185,4 @@ def test_connector_warnings_appear_in_run_summary(setup):
     fake.warnings = ["OpenAlex returned only its first 200 results."]
     register(client)
     assert search(client).json()["summary"]["warnings"] == fake.warnings
+

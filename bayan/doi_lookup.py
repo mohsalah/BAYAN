@@ -1,11 +1,14 @@
 """Automatic Crossref DOI lookup for papers found elsewhere without a DOI.
 
-Deterministic code, sequential requests, a per-run budget and a cache (including "no match").
+Deterministic code, sequential requests, a per-run budget (a count and a time limit) and a
+cache (including "no match").
 A Crossref failure is counted and never fails the run. A DOI is only ever filled in when the
 paper has none, and only after the connector's confidence checks passed.
 """
 
 import sqlite3
+import time
+from collections.abc import Callable
 from typing import Protocol
 
 from .connectors.base import ConnectorError
@@ -16,7 +19,8 @@ DOI_SOURCE = "crossref_lookup"
 
 
 class DoiLooker(Protocol):
-    def lookup_doi(self, title: str, first_author: str, year: int) -> DoiMatch | None: ...
+    def lookup_doi(self, title: str, first_author: str, year: int,
+                   time_limit: float | None = None) -> DoiMatch | None: ...
 
 
 def cache_key(paper: Paper) -> str:
@@ -25,12 +29,19 @@ def cache_key(paper: Paper) -> str:
 
 
 class DoiLookup:
-    def __init__(self, conn: sqlite3.Connection, looker: DoiLooker, budget: int) -> None:
+    def __init__(self, conn: sqlite3.Connection, looker: DoiLooker, budget: int,
+                 seconds: float | None = None,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self._conn = conn
         self._looker = looker
         self._remaining = max(budget, 0)
+        # `seconds` caps the total time a run waits on Crossref; each lookup gets only what is
+        # left, so a slow request cannot overrun it.
+        self._seconds = seconds
+        self._clock = clock
+        self._spent = 0.0
         self.counts = {"attempted": 0, "matched": 0, "no_match": 0, "failed": 0,
-                       "skipped_over_budget": 0, "cache_hits": 0}
+                       "skipped_over_budget": 0, "skipped_over_time": 0, "cache_hits": 0}
 
     def __call__(self, paper: Paper) -> None:
         """Fill `paper.doi` in place if it has none and Crossref has a confident match."""
@@ -48,13 +59,24 @@ class DoiLookup:
         if self._remaining <= 0:
             self.counts["skipped_over_budget"] += 1
             return
+        left = self._seconds - self._spent if self._seconds is not None else None
+        if left is not None and left <= 0:
+            self.counts["skipped_over_time"] += 1
+            return
         self._remaining -= 1
         self.counts["attempted"] += 1
+        started = self._clock()
         try:
-            match = self._looker.lookup_doi(paper.title, paper.first_author, paper.year)
+            if left is None:
+                match = self._looker.lookup_doi(paper.title, paper.first_author, paper.year)
+            else:
+                match = self._looker.lookup_doi(paper.title, paper.first_author, paper.year,
+                                                time_limit=left)
         except ConnectorError:
             self.counts["failed"] += 1  # not cached: a later run may succeed
             return
+        finally:
+            self._spent += self._clock() - started
         self._conn.execute(
             "INSERT OR REPLACE INTO doi_lookup_cache(cache_key, doi, score) VALUES(?,?,?)",
             (key, match.doi if match else "", match.score if match else None),
