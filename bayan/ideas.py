@@ -4,8 +4,8 @@ From a researcher's background text (a gap, a problem statement) and the run's o
 
 1. entities: the model names the key noun phrases of the background;
 2. brainstorm (optional): ideas from the background alone, labelled ungrounded;
-3. retrieve (deterministic): the ticked papers, then papers whose indexed text or verified
-   concept mentions match an entity, each with the signals that matched it;
+3. retrieve (deterministic): the ticked papers, then papers whose indexed text, verified
+   concept mentions or mapped topic (M26) match an entity, each with the signals that matched;
 4. inspirations: per paper, what its verified evidence (or, failing that, its abstract) could
    contribute, or "not usable";
 5. ideas: the inspirations combined into ideas, each citing its papers as [P1], [P2]...;
@@ -27,6 +27,7 @@ from .analysis import MAX_PAPERS, PROPOSAL_QUESTIONS, PROPOSAL_SECTIONS, paper_b
 from .concepts import cached_call, concept_key
 from .reader import ReaderClient, ReaderError, ReaderRefused, evidence_rows, squash
 from .textnorm import fts_query
+from .topics import UNCLASSIFIED, labels_for, latest_map
 
 log = logging.getLogger("bayan.ideas")
 
@@ -47,7 +48,10 @@ EVIDENCE_DIMENSIONS = ("methods", "data", "validation")
 DROP_REASON = "no supporting paper from the chosen set"
 SIGNALS = {"selected": "ticked by the researcher",
            "keyword": "the indexed title, abstract, keywords or topic match an entity",
-           "concept": "a verified concept mention (M17) matches an entity"}
+           "concept": "a verified concept mention (M17) matches an entity",
+           "topic": "the paper's mapped topic (M26) is named in the background or matches an "
+                    "entity"}
+MIN_TOPIC_MATCH = 4  # characters an entity needs before it may match inside a topic name
 UNAVAILABLE = {"co_citation": "citation co-occurrence is not available: reference lists are "
                               "not stored"}
 NOTE = ("Ideas and proposals are drafts built only from the papers listed in the retrieval "
@@ -149,8 +153,7 @@ def _materials(paper: dict) -> str:
 
 
 def inspiration_prompt(background: str, paper: dict) -> str:
-    head = (f"[{paper['ref']}] {paper['title'] or '(untitled)'} "
-            f"({paper['first_author'] or 'unknown author'}, {paper['year'] or 'n.d.'})")
+    head = _paper_line(paper)
     return (f"Task: read the materials of paper {head} and say what from it could help address "
             f"the research background: a method, a data set, a validation approach, a result, "
             f"a limitation worth closing. Give at most {MAX_INSPIRATIONS} inspirations, each in "
@@ -161,14 +164,31 @@ def inspiration_prompt(background: str, paper: dict) -> str:
             f"{_tagged('materials', head + chr(10) + _materials(paper))}")
 
 
+def topic_text(paper: dict) -> str:
+    """"main > sub" for a paper the topic mapping placed, else ""."""
+    main, sub = paper.get("topic_main") or "", paper.get("topic_sub") or ""
+    if not main or main == UNCLASSIFIED:
+        return ""
+    return main + (f" > {sub}" if sub else "")
+
+
+def topic_label(paper: dict) -> str:
+    text = topic_text(paper)
+    return f" · topic: {text}" if text else ""
+
+
 def _paper_line(paper: dict) -> str:
     return (f"[{paper['ref']}] {paper['title'] or '(untitled)'} "
-            f"({paper['first_author'] or 'unknown author'}, {paper['year'] or 'n.d.'})")
+            f"({paper['first_author'] or 'unknown author'}, {paper['year'] or 'n.d.'})"
+            f"{topic_label(paper)}")
 
 
 def ideas_prompt(background: str, inspirations: list[dict], papers: dict[str, dict]) -> str:
     blocks = []
-    for item in inspirations:
+    # grouped by mapped topic when the run has a topic mapping, so related papers sit together
+    order = sorted(inspirations, key=lambda i: (topic_text(papers[i["ref"]]) == "",
+                                                topic_text(papers[i["ref"]])))
+    for item in order:
         lines = "\n".join(f"- {text}" for text in item["inspirations"])
         blocks.append(f"{_paper_line(papers[item['ref']])}\n{lines}")
     return (f"Task: combine the inspirations below into 3 to {MAX_BRAINSTORM} different research "
@@ -203,7 +223,9 @@ def integrate_prompt(background: str, ideas: list[dict], brainstorm: list[dict] 
 
 
 def proposal_prompt(background: str, idea: dict, papers: list[dict]) -> str:
-    blocks = "\n\n".join(paper_block(i, p) for i, p in enumerate(papers, start=1))
+    blocks = "\n\n".join(paper_block(i, p) + (f"\n    Mapped topic: {topic_text(p)}"
+                                                if topic_text(p) else "")
+                         for i, p in enumerate(papers, start=1))
     sections = "; ".join(SECTIONS)
     idea_text = (f"**{idea['title']}**\n{idea['summary']}\n"
                  f"Papers: {', '.join(idea['papers']) or 'none'}")
@@ -305,10 +327,33 @@ def _clean_proposal(data: dict, idea: dict, valid: set[str]) -> dict:
 
 # --------------------------------------------------------------------------- retrieval
 
+def _plain(text: str) -> str:
+    return " ".join(squash(text or "").lower().split())
+
+
+def _topic_hits(topics: dict[Ref, dict], background: str,
+                entities: list[str]) -> list[tuple[Ref, str]]:
+    """(paper, topic name) for papers whose mapped topic is named in the background, or whose
+    topic name contains an entity (or the other way round)."""
+    bg = _plain(background)
+    ents = [e for e in (_plain(x) for x in entities) if len(e) >= MIN_TOPIC_MATCH]
+    out = []
+    for ref, label in topics.items():
+        for name in [label["main"], label["sub"], *label["related"]]:
+            n = _plain(name)
+            if not n or name == UNCLASSIFIED:
+                continue
+            if (len(n) >= MIN_TOPIC_MATCH and n in bg) or any(e in n or n in e for e in ents):
+                out.append((ref, name))
+    return out
+
+
 def retrieve(conn: sqlite3.Connection, user_id: int, run_id: int, selected: list[Ref],
-             entities: list[str], limit: int = MAX_RETRIEVED) -> list[dict]:
-    """The run's papers that the ticked set, the index or verified concepts link to the
-    entities, ticked papers first, then by number of matched entities, then by run rank."""
+             entities: list[str], limit: int = MAX_RETRIEVED,
+             topics: dict[Ref, dict] | None = None, background: str = "") -> list[dict]:
+    """The run's papers that the ticked set, the index, verified concepts or the topic mapping
+    link to the entities, ticked papers first, then by number of matches, then by run rank."""
+    topics = topics or {}
     rows = conn.execute(
         "SELECT p.*, rp.rank FROM run_papers rp JOIN papers p ON p.source = rp.source"
         " AND p.id = rp.paper_id WHERE rp.run_id = ? ORDER BY rp.rank", (run_id,)).fetchall()
@@ -337,6 +382,8 @@ def retrieve(conn: sqlite3.Connection, user_id: int, run_id: int, selected: list
                                   " WHERE user_id = ? AND concept_key = ? AND verified = 1",
                                   (user_id, key)):
                 hit((r["source"], r["paper_id"]), "concept", entity)
+    for ref, name in _topic_hits(topics, background, entities):
+        hit(ref, "topic", name)
 
     chosen = list(dict.fromkeys(r for r in selected if r in by_ref))
     rest = sorted((r for r in hits if r not in chosen),
@@ -352,7 +399,9 @@ def retrieve(conn: sqlite3.Connection, user_id: int, run_id: int, selected: list
                 else "abstract"
         else:
             material = "abstract" if abstract else "none"
+        label = topics.get(ref) or {}
         out.append({"ref": f"P{i}", "source": row["source"], "id": row["id"],
+                    "topic_main": label.get("main", ""), "topic_sub": label.get("sub", ""),
                     "title": row["title"] or "", "doi": row["doi"] or "", "year": row["year"],
                     "first_author": row["first_author"] or "", "venue": row["venue"] or "",
                     "language": row["language"] or "", "native_type": row["native_type"] or "",
@@ -411,13 +460,16 @@ def _pipeline(run: _Run, payload: dict, inspiration_papers: int) -> dict:
     else:
         run.record("brainstorm", "skipped", "not requested")
 
-    papers = retrieve(conn, run.user_id, payload["run_id"], selected, entities)
+    topics = labels_for(latest_map(conn, run.user_id, payload["run_id"], done_only=True))
+    papers = retrieve(conn, run.user_id, payload["run_id"], selected, entities,
+                      topics=topics, background=background)
     by_ref = {p["ref"]: p for p in papers}
     valid = set(by_ref)
     coverage = {"papers": len(papers),
                 "full_text": sum(p["material"] == "full_text" for p in papers),
                 "abstract": sum(p["material"] == "abstract" for p in papers),
-                "metadata_only": sum(p["material"] == "none" for p in papers)}
+                "metadata_only": sum(p["material"] == "none" for p in papers),
+                "topic_mapped": sum(bool(topic_text(p)) for p in papers)}
     run.record("retrieve", "done", f"{len(papers)} papers ({len(selected)} ticked)")
 
     inspirations = []
@@ -475,7 +527,8 @@ def _pipeline(run: _Run, payload: dict, inspiration_papers: int) -> dict:
                       "selected": len(selected), "papers": [
                           {k: p[k] for k in ("ref", "source", "id", "title", "doi", "year",
                                              "first_author", "signals", "entities",
-                                             "material")} for p in papers]},
+                                             "material", "topic_main", "topic_sub")}
+                          for p in papers]},
         "coverage": coverage, "inspirations": inspirations, "initial_ideas": initial,
         "ideas": ideas, "dropped": dropped, "proposals": proposals,
     }

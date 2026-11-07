@@ -254,6 +254,42 @@ proposals), `GET /api/ideas?run_id=` (previous runs). Limits: `BAYAN_IDEA_RUNS_P
 cached per prompt, so running the same input again costs nothing. Without `ANTHROPIC_API_KEY`
 the endpoints answer 503.
 
+## Topic mapping of the papers (M26)
+
+The result card has an **Organise the papers by topic** section.
+
+- **Library topics.** Chips count the topic each library reported for a paper, one per paper,
+  in the library's own words. Clicking one filters the table. No model is needed.
+- **Your topics of interest.** Enter up to 10 topics or minor research areas, one per line.
+  They are always kept unchanged as headings; one the model leaves out is added back and marked.
+- **Suggest topics.** The model proposes 4-10 main topics with 2-6 subtopics each, built for
+  your research area from the papers' titles, library topics and keywords. Untick what you do
+  not want before mapping.
+- **Map the papers.** Choose all collected papers or only the ticked ones. Each paper gets one
+  main topic, one subtopic and up to two related subtopics, with a phrase copied from its title
+  or abstract. Code checks every answer; a paper that fails a check is listed as unclassified
+  with the reason. Counts show every topic, including zeros.
+
+What the mapping feeds:
+
+- the table filter, a topic label on each row, and three export columns: "Main topic",
+  "Subtopic" and "Related subtopics";
+- topic gap hints, `thin_topic` and `topics_never_together`, shown in the section and returned
+  by `GET /api/concepts/gaps` as `topic_hints`. They are unverified candidates for the chosen
+  set only;
+- the idea proposer: a fourth retrieval signal, `topic`, for papers whose mapped topic is named
+  in the background or matches a key term, and each paper's topic in the model prompts;
+- **Develop this** on a topic: it ticks that topic's papers and fills the gap text, so the gap
+  and proposal tools start from that topic.
+
+API: `POST /api/topics/suggest` (`run_id`, `scope` `all` or `selected`, `papers`,
+`own_topics`; answers with the structure), `POST /api/topics` (the same fields plus an optional
+`taxonomy` chosen from the suggestion; 202 with the mapping id), `GET /api/topics/{id}` (status,
+steps, result and hints), `GET /api/topics?run_id=` (the latest mapping in full and earlier
+ones). Limits: `BAYAN_TOPIC_RUNS_PER_HOUR` (10), at most 500 papers per mapping, model
+`BAYAN_MODEL_TOPICS`, effort `BAYAN_TOPICS_EFFORT`. Calls are cached per prompt. Without
+`ANTHROPIC_API_KEY` the model endpoints answer 503.
+
 ## Document-type filter and manuals (M21)
 
 **Counts per type.** `GET /api/runs/{id}` returns `type_report`: one row for every reference

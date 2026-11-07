@@ -187,7 +187,7 @@ def test_pipeline_retrieves_grounds_and_drafts(env):
     assert list(prop["sections"]) == list(SECTIONS)
     assert prop["questions"] == ["Q1 [P1]?", "Q2?", "Q3?"]
     assert prop["assumptions"] and prop["to_verify"]
-    assert res["coverage"] == {"papers": 4, "full_text": 0, "abstract": 4, "metadata_only": 0}
+    assert res["coverage"] == {"papers": 4, "full_text": 0, "abstract": 4, "metadata_only": 0, "topic_mapped": 0}
     assert rec["calls"] == 1 + 1 + 4 + 1 + 1 + 2 and rec["cached_calls"] == 0
     assert "unverified" in rec["result"]["note"]
 
