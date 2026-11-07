@@ -121,6 +121,7 @@ def to_xlsx(papers: list[dict], category_labels: dict[str, str], run: dict) -> b
         ("Papers found by the run", summary.get("found", "")),
         ("Filters a library could not apply", json.dumps(summary.get("unapplied_filters", {}))),
         ("Year shortfalls (not padded)", json.dumps(summary.get("shortfalls", {}))),
+        ("Coverage", (summary.get("coverage") or {}).get("note", "")),
         ("Note", "Reference types come from source metadata; 'Peer-reviewed' is not verified "
                  "peer review. An open-copy link is not proof that a valid PDF is available."),
     ]

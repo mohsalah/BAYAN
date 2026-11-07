@@ -26,6 +26,9 @@ class SearchRequest(BaseModel):
     # Optional per-year quotas over the chosen period. Without it, the first N results are kept.
     quota_total: int | None = Field(default=None, ge=1)
     weighting: Literal["equal", "recent"] = "equal"
+    # remote: search the libraries (default). local: search only the papers you already have.
+    # local_then_remote: local hits first, then the remote search, with new/known counts.
+    mode: Literal["remote", "local", "local_then_remote"] = "remote"
 
 
 def quota_weights(profile: SearchProfile, weighting: str) -> dict[int, int]:

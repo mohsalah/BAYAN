@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from pypdf import PdfReader
 
 from . import __version__
@@ -73,12 +73,19 @@ from .libraries import LIBRARIES, key_publishers
 from .library import (
     BACKFILL_KIND,
     MAX_BACKFILL_REQUESTS,
+    LibraryQuery,
     backfill_candidates,
     backfill_view,
+    library_key_set,
+    local_unapplied,
     new_backfill_payload,
     open_backfill,
+    put_local_first,
+    query_from_profile,
     resume_stale_backfills,
     run_backfill_job,
+    save_local_run,
+    search_library,
 )
 from .manuals import (
     add_to_run,
@@ -181,6 +188,18 @@ class PaperRef(BaseModel):
 class BackfillRequest(BaseModel):
     # OpenAlex requests this job may send (each looks up to 50 works by ID or DOI).
     max_requests: int = Field(default=20, ge=1, le=MAX_BACKFILL_REQUESTS)
+
+
+class LibraryRunRequest(BaseModel):
+    """A local-library search to save as a run (same filters as GET /api/library/search)."""
+
+    query: str = Field(default="", max_length=1000)
+    year_from: int | None = None
+    year_to: int | None = None
+    types: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    sort: Literal["relevance", "citations", "velocity", "local_citations"] = "relevance"
+    limit: int = Field(default=50, ge=1, le=500)
 
 
 class DownloadRequest(BaseModel):
@@ -506,22 +525,98 @@ def create_app(
             raise HTTPException(
                 422, f"quota_total is limited to {settings.search_max_results} per search"
             )
+        profile = body.profile
+        wanted = body.quota_total or settings.search_max_results
+        if body.mode == "local":
+            # Nothing is sent to any library, so the remote search budget is not used.
+            check_local_budget(conn, user["id"])
+            query = query_from_profile(profile, wanted)
+            return save_local_run(conn, user["id"], local_request(body.model_dump(mode="json")),
+                                  query, search_library(conn, user["id"], query),
+                                  local_unapplied(profile))
         recent = conn.execute(
             "SELECT COUNT(*) FROM search_runs WHERE user_id = ?"
-            " AND created_at > datetime('now', '-1 hour')",
+            " AND created_at > datetime('now', '-1 hour')"
+            " AND json_extract(summary, '$.origin') IS NOT 'local_library'",
             (user["id"],),
         ).fetchone()[0]
         if recent >= settings.searches_per_hour:
             raise HTTPException(429, "Search limit reached for this hour; try again later")
         try:
             connectors = [make_connector(lib_id) for lib_id in body.libraries]
-            return run_search(
+            if body.mode == "local_then_remote":
+                before = library_key_set(conn, user["id"])
+                # At most as many local hits as papers wanted; they are listed in addition to
+                # the remote papers (whose per-year quotas are unchanged) and counted apart.
+                local = search_library(conn, user["id"], query_from_profile(profile, wanted))
+            result = run_search(
                 conn, user["id"], body, connectors, settings.search_max_results,
                 doi_lookup=make_connector("crossref"), doi_budget=settings.doi_lookup_budget,
                 doi_seconds=settings.doi_lookup_seconds,
             )
+            if body.mode == "local_then_remote":
+                try:
+                    result = put_local_first(conn, result["id"], local["rows"], before,
+                                             local["coverage"], local_unapplied(profile))
+                except Exception:
+                    # Never leave a half-merged run behind.
+                    conn.rollback()
+                    conn.execute("DELETE FROM search_runs WHERE id = ?", (result["id"],))
+                    conn.commit()
+                    raise
+            return result
         except ConnectorError as exc:
             raise HTTPException(502, str(exc)) from exc
+
+    def check_local_budget(conn: sqlite3.Connection, user_id: int) -> None:
+        recent = conn.execute(
+            "SELECT COUNT(*) FROM search_runs WHERE user_id = ?"
+            " AND created_at > datetime('now', '-1 hour')"
+            " AND json_extract(summary, '$.origin') = 'local_library'", (user_id,)).fetchone()[0]
+        if recent >= settings.local_searches_per_hour:
+            raise HTTPException(429, "Local search limit reached for this hour; try again later")
+
+    def local_request(request: dict) -> dict:
+        """A local run's stored request: no library was searched, so none is listed (the
+        libraries chosen on the form are kept apart, for the record)."""
+        return {**request, "mode": "local", "libraries": [],
+                "libraries_requested": request.get("libraries", [])}
+
+    def library_query(**fields) -> LibraryQuery:
+        try:
+            return LibraryQuery(**fields)
+        except ValidationError as exc:
+            raise HTTPException(422, exc.errors(include_url=False, include_context=False)
+                                ) from None
+
+    @app.get("/api/library/search")
+    def library_search(user: User, conn: Conn, q: str = "", year_from: int | None = None,
+                       year_to: int | None = None, types: str = "", languages: str = "",
+                       sort: str = "relevance", limit: int = 50, offset: int = 0) -> dict:
+        """Search the papers you already have. Covers only what you searched before."""
+        query = library_query(q=q, year_from=year_from, year_to=year_to,
+                              types=[t for t in types.split(",") if t],
+                              languages=[c for c in languages.split(",") if c],
+                              sort=sort, limit=limit, offset=offset)
+        result = search_library(conn, user["id"], query)
+        papers = decorate(result["rows"], {})
+        for d in papers:
+            d["library_status"] = "local"
+        return {"papers": papers, "total": result["total"], "by_year": result["by_year"],
+                "query": query.model_dump(), "coverage": result["coverage"]}
+
+    @app.post("/api/library/runs", status_code=201)
+    def library_run(body: LibraryRunRequest, user: User, conn: Conn) -> dict:
+        """Save a local search as a run (download, reader, concepts and export work on it)."""
+        query = library_query(q=body.query, year_from=body.year_from, year_to=body.year_to,
+                              types=body.types, languages=body.languages, sort=body.sort,
+                              limit=body.limit)
+        check_local_budget(conn, user["id"])
+        request = local_request({"profile": {
+            "query": body.query, "year_from": body.year_from, "year_to": body.year_to,
+            "document_types": body.types, "languages": body.languages, "sort": body.sort}})
+        return save_local_run(conn, user["id"], request, query,
+                              search_library(conn, user["id"], query), [])
 
     @app.post("/api/library/backfill", status_code=202)
     def start_backfill(body: BackfillRequest, background: BackgroundTasks, user: User,
@@ -574,6 +669,8 @@ def create_app(
         matches = {(m["source"], m["id"]): m for m in summary.get("doi_matches", [])}
         geo = summary.get("geography") or {}
         geo_codes = set(geo.get("expanded_countries") or [])
+        before = ({tuple(k) for k in summary["library_before"]}
+                  if "library_before" in summary else None)
         out = []
         for p in rows:
             d = paper_row_to_dict(p)
@@ -589,6 +686,9 @@ def create_app(
                                if geo_codes else "")
             d["type_label"] = ("Manual (user-supplied)" if d["type_key"] == "manual"
                                else d["category_label"])
+            # Local / New badge for runs that recorded what was already in the library.
+            d["library_status"] = ("" if before is None else
+                                   "local" if (d["source"], d["id"]) in before else "new")
             out.append(d)
         return out
 
