@@ -21,6 +21,7 @@ class Settings:
     session_days: int = 14
     searches_per_hour: int = 20
     local_searches_per_hour: int = 120  # saved local-library runs (nothing is sent anywhere)
+    lookups_per_hour: int = 20  # OpenAlex ID lookups per user per hour (collection foundations)
     search_max_results: int = 200
     doi_lookup_budget: int = 50  # Crossref DOI lookups per run (cache hits are free)
     doi_lookup_seconds: float = 15.0  # time a run may spend waiting on those lookups
@@ -88,6 +89,7 @@ def load_settings() -> Settings:
         translate_api_key=os.environ.get("BAYAN_TRANSLATE_API_KEY") or None,
         translate_max_chars=int(os.environ.get("BAYAN_TRANSLATE_MAX_CHARS", "20000")),
         translations_per_hour=int(os.environ.get("BAYAN_TRANSLATIONS_PER_HOUR", "30")),
+        lookups_per_hour=int(os.environ.get("BAYAN_LOOKUPS_PER_HOUR", "20")),
         local_searches_per_hour=int(os.environ.get("BAYAN_LOCAL_SEARCHES_PER_HOUR", "120")),
         cookie_secure=os.environ.get("BAYAN_COOKIE_SECURE", "").lower() in ("1", "true", "yes"),
     )

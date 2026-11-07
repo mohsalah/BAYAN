@@ -371,6 +371,23 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
     <div id="uploadList" class="note"></div>
   </section>
 
+  <section class="card hidden" id="collCard" aria-labelledby="collTitle">
+    <h2 id="collTitle" data-i18n="coll.title">Collections (one per research track)</h2>
+    <p class="note" data-i18n="coll.help">A collection is a corpus you build once and grow: add searches to it, then see its counts, its milestone papers and its main citation path. Everything is computed from the papers and references you already have, so it covers only what you searched.</p>
+    <form class="row" id="collForm">
+      <label for="collName"><span data-i18n="coll.name">New collection</span><input id="collName" type="text" dir="auto" maxlength="200" style="width:260px" placeholder="e.g. CANDU lattice physics" data-i18n-ph="coll.name_ph"></label>
+      <button type="submit" data-i18n="coll.create">Create (with the current search)</button>
+    </form>
+    <div class="row hidden" id="collTools">
+      <label for="collSel"><span data-i18n="coll.pick">Collection</span><select id="collSel"></select></label>
+      <button type="button" id="collAdd" class="ghost" data-i18n="coll.add_run">Add the current search</button>
+      <button type="button" id="collStatsBtn" class="ghost" data-i18n="coll.stats">Counts</button>
+      <button type="button" id="collMilesBtn" class="ghost" data-i18n="coll.milestones">Milestones</button>
+    </div>
+    <p class="note" id="collMsg" role="status"></p>
+    <div id="collOut"></div>
+  </section>
+
   <section class="card hidden" id="runsCard">
     <h2 data-i18n="runs.title">Earlier searches</h2><div id="runs" class="note"></div>
   </section>
@@ -795,17 +812,18 @@ function fillUiLangSelect() {
   $('uiLang').value = uiLang;
 }
 function showSignedIn(email) {
-  for (const id of ['searchCard', 'runsCard', 'translateCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.remove('hidden');
+  for (const id of ['searchCard', 'runsCard', 'collCard', 'translateCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.remove('hidden');
   $('authCard').classList.add('hidden');
   $('whoEmail').textContent = email;
   loadRuns();
+  loadCollections();
   loadMembership();
   loadTranslator();
   loadPlanner();
 }
 function showSignedOut() {
   proxyTemplate = '';
-  for (const id of ['searchCard', 'resultCard', 'gapCard', 'runsCard', 'translateCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.add('hidden');
+  for (const id of ['searchCard', 'resultCard', 'gapCard', 'runsCard', 'collCard', 'translateCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.add('hidden');
   $('trOut').replaceChildren(); $('glList').replaceChildren(); $('trText').value = '';
   $('authCard').classList.remove('hidden');
 }
@@ -1326,6 +1344,73 @@ async function loadRuns() {
     }) : [document.createTextNode(t('runs.none'))]));
   } catch (e) { /* not signed in */ }
 }
+
+/* ---------- collections (M31): counts and milestones, computed from stored papers ---------- */
+const collId = () => $('collSel').value;
+async function loadCollections(select) {
+  let items = [];
+  try { items = await json('/api/collections'); } catch (e) { return; }
+  const keep = select != null ? String(select) : $('collSel').value;
+  $('collSel').replaceChildren(...items.map(c => new Option(c.name + ' (' + c.papers + ')', c.id)));
+  if (items.some(c => String(c.id) === keep)) $('collSel').value = keep;
+  $('collTools').classList.toggle('hidden', !items.length);
+}
+function collNotes(o) {
+  const out = [el('p', { class: 'warnmsg' }, t('notes.coverage'))];
+  if (o.references_coverage && o.references_coverage.note) out.push(el('p', { class: 'warnmsg' }, o.references_coverage.note));
+  return out;
+}
+function collTable(rows, why) {
+  if (!rows.length) return el('p', { class: 'note' }, t('coll.none'));
+  const head = el('tr', {}, ...['coll.col.title', 'coll.col.year', 'coll.col.lcs', 'coll.col.cites', ...(why ? ['coll.col.why'] : [])].map(k => el('th', {}, t(k))));
+  return el('table', {}, el('thead', {}, head), el('tbody', {}, ...rows.map(p => el('tr', {},
+    el('td', { dir: 'auto' }, p.title || p.openalex_id), el('td', { class: 'ltr' }, String(p.year ?? '')),
+    el('td', {}, String(p.local_citations ?? '')), el('td', {}, String(p.citations ?? '')),
+    ...(why ? [el('td', {}, (p.why || []).map(w => t('coll.why.' + w)).join('; '))] : [])))));
+}
+async function showCollStats() {
+  try {
+    $('collMsg').textContent = '';
+    const s = await json('/api/collections/' + collId() + '/stats?top=5');
+    const pct = Math.round(100 * s.references_coverage.share);
+    $('collOut').replaceChildren(
+      el('div', { class: 'row' }, el('span', { class: 'chip' }, t('coll.papers') + ': ' + s.papers), el('span', { class: 'chip' }, t('coll.refs') + ': ' + pct + '%'),
+        ...Object.entries(s.by_year).map(([y, n]) => el('span', { class: 'chip' }, y + ': ' + n))),
+      ...collNotes(s), el('h3', {}, t('coll.top_cited')), collTable(s.top_cited), el('h3', {}, t('coll.top_local')), collTable(s.top_local_citations));
+  } catch (e) { $('collMsg').textContent = e.message; }
+}
+async function showCollMilestones() {
+  try {
+    $('collMsg').textContent = '';
+    const m = await json('/api/collections/' + collId() + '/milestones');
+    const paths = m.main_paths.map((route, i) => el('p', { dir: 'auto' }, el('strong', {}, t('coll.main_path', { n: i + 1 }) + ': '),
+      route.map(p => (p.year ?? '?') + ' · ' + (p.title || p.openalex_id)).join('  →  ')));
+    $('collOut').replaceChildren(...collNotes(m), ...paths,
+      el('h3', {}, t('coll.milestones_h')), collTable(m.milestones, true),
+      el('h3', {}, t('coll.frontier_h')), collTable(m.frontier),
+      el('p', { class: 'note' }, t('coll.foundations', { n: m.foundations.length, k: m.parameters.min_cocite })));
+  } catch (e) { $('collMsg').textContent = e.message; }
+}
+$('collForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const name = $('collName').value.trim();
+  if (!name) return;
+  try {
+    const c = await post('/api/collections', { name, ...(run ? { from_run: run.id } : {}) });
+    $('collName').value = ''; $('collMsg').textContent = t('coll.created', { n: c.papers });
+    await loadCollections(c.id);
+  } catch (e) { $('collMsg').textContent = e.message; }
+});
+$('collAdd').onclick = async () => {
+  if (!run) { $('collMsg').textContent = t('coll.norun'); return; }
+  try {
+    const r = await post('/api/collections/' + collId() + '/runs', { run_id: run.id });
+    $('collMsg').textContent = t('coll.added', r); await loadCollections();
+  } catch (e) { $('collMsg').textContent = e.message; }
+};
+$('collSel').onchange = () => { $('collOut').replaceChildren(); $('collMsg').textContent = ''; };
+$('collStatsBtn').onclick = showCollStats;
+$('collMilesBtn').onclick = showCollMilestones;
 
 /* ---------- manuals (added by URL or upload; never searched) ---------- */
 function titleEditor(paperId, current, done) {

@@ -25,6 +25,30 @@ CREATE TABLE IF NOT EXISTS paper_references(
   citing TEXT NOT NULL, cited TEXT NOT NULL, PRIMARY KEY(citing, cited)
 );
 CREATE INDEX IF NOT EXISTS paper_references_cited ON paper_references(cited);
+-- Collections (M31): one corpus per research track, owner-only.
+CREATE TABLE IF NOT EXISTS collections(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', profile TEXT, libraries TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP, last_refreshed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS collections_user ON collections(user_id);
+CREATE TABLE IF NOT EXISTS collection_papers(
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, paper_id TEXT NOT NULL, added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  added_from_run INTEGER, origin TEXT NOT NULL DEFAULT 'run',
+  PRIMARY KEY(collection_id, source, paper_id)
+);
+-- Papers the owner removed from a collection: adding a run again does not bring them back.
+CREATE TABLE IF NOT EXISTS collection_removed(
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, paper_id TEXT NOT NULL, removed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(collection_id, source, paper_id)
+);
+-- OpenAlex lookups a user asked for directly (foundations), for the hourly limit.
+CREATE TABLE IF NOT EXISTS lookup_attempts(
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  requests INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS paper_search USING fts5(
   source UNINDEXED, id UNINDEXED, title, abstract, keywords, topic
 );
