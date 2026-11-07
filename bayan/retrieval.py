@@ -16,8 +16,16 @@ class CollectResult:
     shortfalls: dict[int, tuple[int, int]] = field(default_factory=dict)
 
 
+def doi_key(doi: str | None) -> str:
+    """A DOI as compared for "same work": trimmed, without a resolver prefix, lower case."""
+    d = (doi or "").strip().lower()
+    for prefix in ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "doi:"):
+        d = d.removeprefix(prefix)
+    return d
+
+
 def _key(paper: Paper) -> str:
-    return f"doi:{paper.doi.lower()}" if paper.doi else f"{paper.source}:{paper.id}"
+    return f"doi:{doi_key(paper.doi)}" if doi_key(paper.doi) else f"{paper.source}:{paper.id}"
 
 
 def merge_into(base: Paper, other: Paper) -> None:

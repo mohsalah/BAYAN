@@ -12,15 +12,27 @@ import re
 import sqlite3
 from collections.abc import Callable
 from contextlib import closing
+from datetime import date
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
+
+from pydantic import BaseModel, Field, model_validator
 
 from .connectors.base import ConnectorError
 from .connectors.openalex import LOOKUP_BATCH
 from .db import connect, now_iso
 from .downloads import claim_job, set_job
-from .models import USER_SOURCE, Paper
+from .models import (
+    MANUAL_KIND,
+    QUERY_MAX_LENGTH,
+    UNKNOWN_LANGUAGE,
+    USER_SOURCE,
+    Paper,
+    SearchProfile,
+)
+from .retrieval import doi_key
 from .search import store_references
+from .textnorm import fts_query, tokenize
 
 log = logging.getLogger(__name__)
 
@@ -221,3 +233,306 @@ def resume_stale_backfills(db_path: Path, connector: Callable[[], WorkLookup],
         run_backfill_job(db_path, job_id, lookup, claimed=True)
         resumed.append(job_id)
     return resumed
+
+
+# ---------------------------------------------------------------------------------------------
+# M30: search the local library first.
+
+LOCAL_SORTS = ("relevance", "citations", "velocity", "local_citations")
+COVERAGE_NOTE = ("Local library only: papers you have already searched. Run a remote search "
+                 "before treating anything as new or missing.")
+_QTOKEN = re.compile(r'"([^"]*)"|(\()|(\))|([^\s()"]+)')
+_FTS_OPERATORS = {"AND": "AND", "OR": "OR", "NOT": "NOT"}
+
+
+def _fts_term(text: str) -> str | None:
+    """One user term or phrase as an FTS5 phrase of normalised tokens, or None if it has none."""
+    tokens = tokenize(text)
+    if not tokens:
+        return None
+    return '"' + " ".join(t.replace('"', '""') for t in tokens) + '"'
+
+
+def library_match(text: str) -> str:
+    """The user's words as an FTS5 MATCH expression, normalised like the stored text.
+
+    Supports AND/OR/NOT, parentheses and "quoted phrases"; adjacent terms are joined with AND.
+    Where a term is due, AND/OR/NOT is read as a word (as in "Operations Research (OR)").
+    Anything that is not a well-formed query falls back to "every word" (fts_query). Returns
+    "" when there are no words.
+    """
+    out: list[str] = []
+    depth, expect_term = 0, True
+    for phrase, opening, closer, word in _QTOKEN.findall(text or ""):
+        if word in _FTS_OPERATORS and not expect_term:
+            out.append(_FTS_OPERATORS[word])
+            expect_term = True
+            continue
+        if word == "NOT" and out and out[-1] == "AND":
+            # "a AND NOT b": FTS5's NOT already means "and not".
+            out[-1] = "NOT"
+            continue
+        if word in ("AND", "OR") and out and out[-1] in ("AND", "OR", "NOT"):
+            return fts_query(text)  # two operators in a row: not well formed
+        if closer:
+            depth -= 1
+            if depth < 0 or expect_term:
+                return fts_query(text)
+            out.append(")")
+            continue
+        if opening:
+            if not expect_term:
+                out.append("AND")
+            depth += 1
+            out.append("(")
+            continue
+        term = _fts_term(phrase or word)
+        if term is None:
+            continue
+        if not expect_term:
+            out.append("AND")
+        out.append(term)
+        expect_term = False
+    if depth or expect_term or not out:
+        return fts_query(text)
+    return " ".join(out)
+
+
+class LibraryQuery(BaseModel):
+    """Filters and order of a local-library search (the same for runs and collections)."""
+
+    q: str = Field(default="", max_length=QUERY_MAX_LENGTH)
+    year_from: int | None = Field(default=None, ge=1500, le=2100)
+    year_to: int | None = Field(default=None, ge=1500, le=2100)
+    # Reference types (the five categories) and "manual".
+    types: list[str] = Field(default_factory=list)
+    # Language codes as stored; "unknown" = no language reported.
+    languages: list[str] = Field(default_factory=list)
+    sort: Literal["relevance", "citations", "velocity", "local_citations"] = "relevance"
+    limit: int = Field(default=50, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _years_in_order(self) -> "LibraryQuery":
+        if (self.year_from is not None and self.year_to is not None
+                and self.year_from > self.year_to):
+            raise ValueError("year_from must not be after year_to")
+        return self
+
+
+def current_year() -> int:
+    return date.today().year
+
+
+def _where(query: LibraryQuery, params: dict) -> list[str]:
+    where = []
+    if query.year_from is not None:
+        where.append("p.year >= :year_from")
+        params["year_from"] = query.year_from
+    if query.year_to is not None:
+        where.append("p.year <= :year_to")
+        params["year_to"] = query.year_to
+    if query.types:
+        cats = [t for t in query.types if t != MANUAL_KIND]
+        parts = []
+        if cats:
+            names = ",".join(f":type{i}" for i in range(len(cats)))
+            parts.append(f"(COALESCE(p.category, 'other') IN ({names}) AND"
+                         " COALESCE(p.document_kind, '') != :manual_kind)")
+            params.update({f"type{i}": c for i, c in enumerate(cats)})
+        if MANUAL_KIND in query.types:
+            parts.append("p.document_kind = :manual_kind")
+        params["manual_kind"] = MANUAL_KIND
+        where.append("(" + " OR ".join(parts) + ")")
+    if query.languages:
+        codes = [c for c in query.languages if c != UNKNOWN_LANGUAGE]
+        parts = []
+        if codes:
+            names = ",".join(f":lang{i}" for i in range(len(codes)))
+            parts.append(f"LOWER(COALESCE(p.language, '')) IN ({names})")
+            params.update({f"lang{i}": c.lower() for i, c in enumerate(codes)})
+        if UNKNOWN_LANGUAGE in query.languages:
+            parts.append("COALESCE(p.language, '') = ''")
+        where.append("(" + " OR ".join(parts) + ")")
+    return where
+
+
+ORDER = {
+    # Text match first (bm25: lower is better); without words, newest first.
+    "relevance": "{rank}, p.year DESC, p.title",
+    "citations": "COALESCE(p.citations, 0) DESC, p.year DESC, p.title",
+    "velocity": "velocity IS NULL, velocity DESC, p.title",
+    "local_citations": "local_citations DESC, COALESCE(p.citations, 0) DESC, p.title",
+}
+
+
+def search_library(conn: sqlite3.Connection, user_id: int, query: LibraryQuery,
+                   keys_sql: str | None = None) -> dict:
+    """Papers of the user's library matching `query`, with total, counts per year, velocity
+    and local citations. `keys_sql` narrows the set (a collection); it must use `:user`."""
+    params: dict = {"user": user_id, "year_now": current_year()}
+    match = library_match(query.q)
+    keys = keys_sql or library_keys()
+    base = (f"WITH lib AS (SELECT DISTINCT source, paper_id FROM ({keys})),"
+            " libw AS (SELECT DISTINCT p.openalex_id AS w FROM papers p JOIN lib"
+            " ON lib.source = p.source AND lib.paper_id = p.id"
+            " WHERE p.openalex_id IS NOT NULL AND p.openalex_id != '')")
+    if match:
+        frm = ("FROM paper_search JOIN papers p ON p.source = paper_search.source"
+               " AND p.id = paper_search.id JOIN lib ON lib.source = p.source"
+               " AND lib.paper_id = p.id")
+        where = ["paper_search MATCH :match"]
+        params["match"] = match
+        rank = "bm25(paper_search)"
+    else:
+        frm = "FROM papers p JOIN lib ON lib.source = p.source AND lib.paper_id = p.id"
+        where, rank = [], "0"
+    where += _where(query, params)
+    cond = (" WHERE " + " AND ".join(where)) if where else ""
+    velocity = ("CASE WHEN p.year IS NULL THEN NULL ELSE COALESCE(p.citations, 0) * 1.0 /"
+                " MAX(1, :year_now - p.year + 1) END")
+    local = ("(SELECT COUNT(DISTINCT pr.citing) FROM paper_references pr WHERE"
+             " pr.cited = p.openalex_id AND pr.citing != p.openalex_id"
+             " AND pr.citing IN (SELECT w FROM libw))")
+    order = ORDER[query.sort].format(rank=rank)
+    params.update(limit=query.limit, offset=query.offset)
+    rows = conn.execute(
+        f"{base} SELECT p.*, {velocity} AS velocity, {local} AS local_citations {frm}{cond}"
+        f" ORDER BY {order} LIMIT :limit OFFSET :offset", params).fetchall()
+    total = conn.execute(f"{base} SELECT COUNT(*) {frm}{cond}", params).fetchone()[0]
+    by_year = {str(r[0]) if r[0] is not None else "unknown": r[1] for r in conn.execute(
+        f"{base} SELECT p.year, COUNT(*) {frm}{cond} GROUP BY p.year ORDER BY p.year", params)}
+    return {"rows": rows, "total": total, "by_year": by_year, "match": match,
+            "coverage": coverage(conn, user_id, keys)}
+
+
+def coverage(conn: sqlite3.Connection, user_id: int, keys_sql: str | None = None) -> dict:
+    """What a local answer is based on. Every local response carries it. Stored run summaries
+    keep its run list as a count and the latest ID (compact_runs), so they stay small."""
+    keys = keys_sql or library_keys()
+    row = conn.execute(
+        f"SELECT COUNT(*), MIN(p.year), MAX(p.year) FROM (SELECT DISTINCT source, paper_id"
+        f" FROM ({keys})) k JOIN papers p ON p.source = k.source AND p.id = k.paper_id",
+        {"user": user_id}).fetchone()
+    libraries = [r[0] for r in conn.execute(
+        f"SELECT DISTINCT source FROM ({keys}) ORDER BY source", {"user": user_id})]
+    runs = conn.execute("SELECT id, created_at FROM search_runs WHERE user_id = ?"
+                        " AND json_extract(summary, '$.origin') IS NOT 'local_library'"
+                        " ORDER BY id", (user_id,)).fetchall()
+    return {"scope": "local_library", "papers": row[0], "runs": [r["id"] for r in runs],
+            "libraries": libraries, "years": [row[1], row[2]],
+            "last_refreshed": runs[-1]["created_at"] if runs else None, "note": COVERAGE_NOTE}
+
+
+def compact_runs(cov: dict) -> dict:
+    """The run list of a coverage object as a count and the latest ID (stored summaries)."""
+    runs = cov["runs"]
+    if isinstance(runs, dict):
+        return runs
+    return {"count": len(runs), "latest": runs[-1] if runs else None}
+
+
+def library_key_set(conn: sqlite3.Connection, user_id: int) -> set[tuple[str, str]]:
+    """Every (source, id) in the user's library, and every W-id and DOI in it, as of now."""
+    rows = conn.execute(
+        f"SELECT p.source, p.id, p.openalex_id, p.doi FROM ({library_keys()}) k"
+        " JOIN papers p ON p.source = k.source AND p.id = k.paper_id", {"user": user_id})
+    out: set[tuple[str, str]] = set()
+    for r in rows:
+        out.add((r["source"], r["id"]))
+        if r["openalex_id"]:
+            out.add(("openalex_id", r["openalex_id"]))
+        if doi_key(r["doi"]):
+            out.add(("doi", doi_key(r["doi"])))
+    return out
+
+
+def in_library(paper: dict | Paper, keys: set[tuple[str, str]]) -> bool:
+    """Whether a paper (any library's record of it) was in the library: by ID, W-id or DOI."""
+    get = paper.get if isinstance(paper, dict) else lambda k, d="": getattr(paper, k, d)
+    return ((get("source", ""), get("id", "")) in keys
+            or bool(get("openalex_id", "")) and ("openalex_id", get("openalex_id", "")) in keys
+            or bool(doi_key(get("doi", ""))) and ("doi", doi_key(get("doi", ""))) in keys)
+
+
+# Profile settings a local search cannot apply (the stored papers carry no topic IDs per search,
+# and per-language text is a remote-search setting). Reported, never guessed.
+def local_unapplied(profile: SearchProfile) -> list[str]:
+    out = []
+    if profile.topics:
+        out.append("topics")
+    if profile.geo_countries:
+        out.append("countries")
+    if profile.queries_by_language:
+        out.append("queries_by_language")
+    return out
+
+
+def query_from_profile(profile: SearchProfile, limit: int) -> LibraryQuery:
+    # Search languages choose the text sent to libraries; many libraries cannot filter by
+    # language, so the stored papers of such a run have other or no language. The local search
+    # therefore matches papers of any language (as the remote run kept them).
+    return LibraryQuery(q=profile.query, year_from=profile.year_from, year_to=profile.year_to,
+                        types=list(profile.document_types), sort=profile.sort, limit=limit)
+
+
+def _key(row: sqlite3.Row | dict) -> tuple[str, str]:
+    return (row["source"], row["id"])
+
+
+def save_local_run(conn: sqlite3.Connection, user_id: int, request: dict, query: LibraryQuery,
+                   result: dict, unapplied: list[str]) -> dict:
+    """Store a local search as a normal run (origin local_library), so downloads, the reader,
+    concepts, export and gap packets work on it unchanged."""
+    rows = result["rows"]
+    summary = {
+        "origin": "local_library", "mode": "local", "found": len(rows),
+        "total_matches": result["total"], "by_year": result["by_year"], "sort": query.sort,
+        "local_query": query.model_dump(), "match": result["match"],
+        "unapplied_filters": {"local_library": unapplied},
+        "libraries": sorted({r["source"] for r in rows}),
+        "local_hits": len(rows), "remote_new": 0, "remote_known": 0,
+        "library_before": [list(_key(r)) for r in rows],
+        "coverage": {**result["coverage"], "runs": compact_runs(result["coverage"])},
+    }
+    cur = conn.execute("INSERT INTO search_runs(user_id, request, summary) VALUES(?,?,?)",
+                       (user_id, json.dumps(request), json.dumps(summary)))
+    conn.executemany("INSERT OR IGNORE INTO run_papers(run_id, source, paper_id, rank)"
+                     " VALUES(?,?,?,?)",
+                     [(cur.lastrowid, r["source"], r["id"], i) for i, r in enumerate(rows)])
+    conn.commit()
+    return {"id": cur.lastrowid, "summary": summary}
+
+
+def put_local_first(conn: sqlite3.Connection, run_id: int, local_rows: list[sqlite3.Row],
+                    before: set[tuple[str, str]], coverage_: dict,
+                    unapplied: list[str]) -> dict:
+    """Reorder a remote run: local hits first, then the remote papers not among them, and
+    count the remote papers that were already in the library (by ID, W-id or DOI)."""
+    remote = conn.execute(
+        "SELECT p.* FROM run_papers rp JOIN papers p ON p.source = rp.source"
+        " AND p.id = rp.paper_id WHERE rp.run_id = ? ORDER BY rp.rank", (run_id,)).fetchall()
+    local_keys = {_key(r) for r in local_rows}
+    rest = [r for r in remote if _key(r) not in local_keys]
+    known = [r for r in rest if in_library(dict(r), before)]
+    conn.execute("DELETE FROM run_papers WHERE run_id = ?", (run_id,))
+    conn.executemany("INSERT INTO run_papers(run_id, source, paper_id, rank) VALUES(?,?,?,?)",
+                     [(run_id, r["source"], r["id"], i)
+                      for i, r in enumerate([*local_rows, *rest])])
+    summary = json.loads(conn.execute("SELECT summary FROM search_runs WHERE id = ?",
+                                      (run_id,)).fetchone()["summary"])
+    summary.update({
+        "mode": "local_then_remote",
+        "local_hits": len(local_rows),
+        "remote_new": len(rest) - len(known),
+        "remote_known": len(known),
+        # Remote papers already found locally are counted once, as local hits.
+        "remote_also_local": len(remote) - len(rest),
+        "library_before": [list(_key(r)) for r in [*local_rows, *known]],
+        "found": len(local_rows) + len(rest),
+        "coverage": {**coverage_, "runs": compact_runs(coverage_)},
+    })
+    summary.setdefault("unapplied_filters", {})["local_library"] = unapplied
+    conn.execute("UPDATE search_runs SET summary = ? WHERE id = ?", (json.dumps(summary), run_id))
+    conn.commit()
+    return {"id": run_id, "summary": summary}

@@ -407,6 +407,49 @@ PMC), its citation count is replaced by OpenAlex's.
 **Export.** CSV and Excel gain *Citations updated*, *OpenAlex ID* and *References (count)*
 (`not stored` when the list was never fetched).
 
+## Search the local library first (M30)
+
+Your **library** is every paper you reached through your own runs and manuals (collections join
+it in M31). `papers` is shared between users, but every local query goes through your own runs and
+manuals, so you never see another user's papers, runs or searches.
+
+**Search.** The local search uses the `paper_search` full-text table with the same normalisation
+as stored text (case and accents folded, Arabic marks removed, Chinese split into character
+pairs). It accepts `AND`, `OR`, `NOT` (also `AND NOT`), `"quoted phrases"` and parentheses;
+words side by side must all match. A query that is not well formed falls back to "every word".
+`year_from` after `year_to` is refused (422). Orders:
+
+| `sort` | Meaning |
+| --- | --- |
+| `relevance` | Best text match (`bm25`); without words, newest first. |
+| `citations` | Citation count as the library reported it. |
+| `velocity` | Citations ÷ (current year − publication year + 1). Papers without a year come last. |
+| `local_citations` | How many papers in your library cite it (from the M29 references). |
+
+**Coverage.** Every local answer carries `coverage`: `{"scope": "local_library", "papers", "runs",
+"libraries", "years", "last_refreshed", "note"}`. The note says the answer covers only papers you
+have already searched. A paper missing from your library is never evidence that it does not exist
+or that a gap exists.
+
+**Modes on `POST /api/search`** (`mode`): `remote` (default, unchanged), `local` (no library is
+asked and the hourly search limit is not used), or `local_then_remote` (local hits first, then the
+remote search). The run summary reports `local_hits`, `remote_new` (not in your library before),
+`remote_known` (already there, matched by ID, OpenAlex ID or DOI) and `remote_also_local` (remote
+results that were already among the local hits, listed once). Settings a local search cannot
+apply (topics, countries, per-language text) are listed in `unapplied_filters.local_library`.
+Search languages choose the words sent to libraries, so the local part matches papers of any
+language (many libraries cannot filter by language). Local hits are capped at the papers wanted
+(`quota_total`, else the run limit) and listed in addition to the remote papers, whose per-year
+quotas are unchanged. A local run stores `libraries: []` (the libraries on the form are kept as
+`libraries_requested`) and its `coverage.runs` as a count and the latest run. Saved local runs
+have their own hourly limit, `BAYAN_LOCAL_SEARCHES_PER_HOUR` (default 120). Each result of such a
+run is marked *Local* or *New*; the search card has a "Search my library first" switch.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/library/search?q=..&year_from=&year_to=&types=a,b&languages=en,fr&sort=..&limit=50&offset=0` | Your matching papers, `total`, `by_year` and `coverage`. Each paper has `velocity` and `local_citations`. |
+| `POST /api/library/runs` `{"query", "year_from", "year_to", "types", "languages", "sort", "limit"}` | Save a local search as a run (`origin: local_library`). Download, reader, concepts, export and gap packets work on it unchanged. |
+
 ## Run locally
 
 ```bash
