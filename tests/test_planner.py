@@ -144,6 +144,21 @@ def test_openalex_topic_search_request_and_parsing():
     (MAIN, '((all:"molten salt reactor" OR all:MSR) AND '
            '(all:"neutron transport" OR all:neutronics))'),
     ("fission NOT fusion", "(all:fission ANDNOT all:fusion)"),
+    # a group after a term (titles with an acronym in brackets) gave "(AND all:SAR)", HTTP 400
+    ("Synthetic Aperture Radar (SAR) imaging",
+     "(all:Synthetic AND all:Aperture AND all:Radar AND (all:SAR) AND all:imaging)"),
+    ("quagga mussels ( Dreissena bugensis )",
+     '(all:quagga AND all:mussels AND (all:Dreissena AND all:bugensis))'),
+    # a hyphenated word (also with U+2010) stays one phrase
+    ("Version 2 (MERRA-2)", '(all:Version AND all:2 AND (all:"MERRA 2"))'),
+    ("Metal\u2010Organic Frameworks", '(all:"Metal Organic" AND all:Frameworks)'),
+    # an acronym spelled like an operator is a word where a term is due
+    ("Operations Research (OR) methods",
+     "(all:Operations AND all:Research AND (all:OR) AND all:methods)"),
+    ('molten "" salt', "(all:molten AND all:salt)"),  # empty phrase skipped
+    # empty group or an operator with nothing after it: fall back, never send "()" or "( OR"
+    ("reactor ()", "(all:reactor)"),
+    ("reactor (fuel OR)", "(all:reactor AND all:fuel AND all:OR)"),
     # not well formed: falls back to every word, as before
     ("(reactor OR", "(all:reactor AND all:OR)"),
 ])

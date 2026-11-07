@@ -77,6 +77,7 @@ section.card{background:var(--card);border:1px solid var(--line);border-radius:1
 small,.small{display:block;color:var(--mute);line-height:1.6;font-size:13px}
 a{color:var(--link)}
 label{display:inline-flex;flex-direction:column;gap:7px;font-size:13px;color:var(--mute)}
+label.check{flex-direction:row;align-items:center;gap:8px;color:var(--ink);align-self:end;padding-bottom:9px}
 input,select,button,textarea{font:inherit;color:var(--ink)}
 input[type=text],input[type=email],input[type=password],input[type=number],select,textarea{
   padding:10px;border:1px solid var(--field-line);border-radius:5px;background:var(--field)}
@@ -124,6 +125,7 @@ button.chip{background:var(--card);cursor:pointer;font:inherit;font-size:12px;co
 button.chip[aria-pressed=true]{border-color:var(--accent);color:var(--accent);font-weight:600}
 button.chip.zero{color:var(--mute);border-style:dashed}
 .typereport{margin:6px 0;padding-inline-start:18px;font-size:14px}.typereport li.zero{color:var(--mute)}
+.libmark{font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-inline-start:6px;white-space:nowrap;color:var(--mute)}.libmark.new{color:var(--accent);border-color:var(--accent)}
 .topicmark{font-size:11px;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:0 5px;margin-inline-start:6px}
 .topicsbox{margin:14px 0;padding-top:10px;border-top:1px solid var(--field-line)}
 .topicsbox textarea{min-height:64px}
@@ -217,6 +219,8 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
       <label><span data-i18n="search.geography">Geography</span><details class="dd" id="ddGeo"><summary id="geoSummary"></summary><div class="menu geo" id="geoMenu"></div></details></label>
       <label for="quota"><span data-i18n="search.quota">Papers wanted</span><input id="quota" type="number" min="1" max="200" style="width:110px" placeholder="optional" data-i18n-ph="search.optional"></label>
       <label for="weighting"><span data-i18n="search.weighting">Year weighting</span><select id="weighting"><option value="equal" data-i18n="search.weight.equal">Equal per year</option><option value="recent" data-i18n="search.weight.recent">Favour recent years</option></select></label>
+      <label for="sortOrder"><span data-i18n="search.sort">Order</span><select id="sortOrder"><option value="relevance" data-i18n="search.sort.relevance">Best text match</option><option value="citations" data-i18n="search.sort.citations">Most cited first</option></select></label>
+      <label for="localFirst" class="check"><input type="checkbox" id="localFirst"> <span data-i18n="search.local_first">Search my library first</span></label>
       <button type="submit" id="go" data-i18n="search.go">Search</button>
     </form>
     <fieldset class="langqueries hidden" id="langQueries">
@@ -405,6 +409,23 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
     <p class="err" id="memberErr" role="alert"></p>
     <h3 style="margin:14px 0 4px;font-size:1rem" data-i18n="member.uploads.h">My uploaded PDFs</h3>
     <div id="uploadList" class="note"></div>
+  </section>
+
+  <section class="card hidden" id="collCard" aria-labelledby="collTitle">
+    <h2 id="collTitle" data-i18n="coll.title">Collections (one per research track)</h2>
+    <p class="note" data-i18n="coll.help">A collection is a corpus you build once and grow: add searches to it, then see its counts, its milestone papers and its main citation path. Everything is computed from the papers and references you already have, so it covers only what you searched.</p>
+    <form class="row" id="collForm">
+      <label for="collName"><span data-i18n="coll.name">New collection</span><input id="collName" type="text" dir="auto" maxlength="200" style="width:260px" placeholder="e.g. CANDU lattice physics" data-i18n-ph="coll.name_ph"></label>
+      <button type="submit" data-i18n="coll.create">Create (with the current search)</button>
+    </form>
+    <div class="row hidden" id="collTools">
+      <label for="collSel"><span data-i18n="coll.pick">Collection</span><select id="collSel"></select></label>
+      <button type="button" id="collAdd" class="ghost" data-i18n="coll.add_run">Add the current search</button>
+      <button type="button" id="collStatsBtn" class="ghost" data-i18n="coll.stats">Counts</button>
+      <button type="button" id="collMilesBtn" class="ghost" data-i18n="coll.milestones">Milestones</button>
+    </div>
+    <p class="note" id="collMsg" role="status"></p>
+    <div id="collOut"></div>
   </section>
 
   <section class="card hidden" id="runsCard">
@@ -844,17 +865,18 @@ function fillUiLangSelect() {
   $('uiLang').value = uiLang;
 }
 function showSignedIn(email) {
-  for (const id of ['searchCard', 'runsCard', 'translateCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.remove('hidden');
+  for (const id of ['searchCard', 'runsCard', 'collCard', 'translateCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.remove('hidden');
   $('authCard').classList.add('hidden');
   $('whoEmail').textContent = email;
   loadRuns();
+  loadCollections();
   loadMembership();
   loadTranslator();
   loadPlanner();
 }
 function showSignedOut() {
   proxyTemplate = '';
-  for (const id of ['searchCard', 'resultCard', 'gapCard', 'runsCard', 'translateCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.add('hidden');
+  for (const id of ['searchCard', 'resultCard', 'gapCard', 'runsCard', 'collCard', 'translateCard', 'memberCard', 'logout', 'whoEmail']) $(id).classList.add('hidden');
   $('trOut').replaceChildren(); $('glList').replaceChildren(); $('trText').value = '';
   $('authCard').classList.remove('hidden');
 }
@@ -1076,6 +1098,7 @@ function paperRow(p) {
     edit.onclick = () => titleCell.replaceChildren(titleEditor(p.id, p.title, async () => { await refreshRun(); }));
     titleCell.append(' ', edit);
   }
+  if (p.library_status) titleCell.append(el('span', { class: 'libmark ' + p.library_status, title: t('row.' + p.library_status + '.help') }, t('row.' + p.library_status)));
   titleCell.append(meta, abs);
   const ta = topicAssign.get(k);
   if (ta && ta.status === 'mapped') {
@@ -1309,9 +1332,15 @@ function renderRun(r, relabel) {
   for (const w of s.warnings || []) notes.push(el('p', { class: 'warnmsg' }, w));
   const un = Object.entries(s.unapplied_filters || {}).filter(([, v]) => v.length);
   if (un.length) notes.push(el('p', { class: 'note' }, t('notes.unapplied', { list: un.map(([k, v]) => k + ' (' + v.join(', ') + ')').join('; ') })));
+  if (s.coverage) notes.push(el('p', { class: 'warnmsg' }, t('notes.coverage')));
+  if (s.mode === 'local_then_remote') notes.push(el('p', { class: 'note' }, t('notes.local_counts', { local: s.local_hits, new: s.remote_new, known: s.remote_known })));
+  if (s.sort === 'citations') notes.push(el('p', { class: 'note' }, t('notes.sort_citations')));
+  if (s.sort === 'citations' && (s.sort_unapplied || []).length) notes.push(el('p', { class: 'note' }, t('notes.sort_unapplied', { list: s.sort_unapplied.join(', ') })));
   if (s.filtered_by_type) notes.push(el('p', { class: 'note' }, t('notes.type_dropped', { n: s.filtered_by_type })));
   const d = s.doi_lookup;
   if (d && d.attempted) notes.push(el('p', { class: 'note' }, t('notes.doi', { matched: d.matched, nomatch: d.no_match, failed: d.failed, cache: d.cache_hits })));
+  const skipped = d ? (d.skipped_over_budget || 0) + (d.skipped_over_time || 0) : 0;
+  if (skipped) notes.push(el('p', { class: 'note' }, t('notes.doi_skipped', { n: skipped })));
   const sf = Object.entries(s.shortfalls || {});
   if (sf.length) notes.push(el('p', { class: 'warnmsg' }, t('notes.shortfalls', { list: sf.map(([y, v]) => y + ' ' + v.collected + '/' + v.quota).join(', ') })));
   $('notes').replaceChildren(...notes);
@@ -1356,9 +1385,11 @@ async function search() {
         document_types: getTypes(), languages,
         queries_by_language: queriesForRequest(languages, readLangBoxes()),
         topics: activeTopics.map(x => x.id),
+        sort: $('sortOrder').value,
         ...getGeo(),
       },
       libraries: getLibs(), weighting: $('weighting').value,
+      mode: $('localFirst').checked ? 'local_then_remote' : 'remote',
     };
     if (!body.libraries.length) throw new Error(t('err.libs'));
     if (!body.profile.document_types.length) throw new Error(t('err.types'));
@@ -1380,6 +1411,73 @@ async function loadRuns() {
     }) : [document.createTextNode(t('runs.none'))]));
   } catch (e) { /* not signed in */ }
 }
+
+/* ---------- collections (M31): counts and milestones, computed from stored papers ---------- */
+const collId = () => $('collSel').value;
+async function loadCollections(select) {
+  let items = [];
+  try { items = await json('/api/collections'); } catch (e) { return; }
+  const keep = select != null ? String(select) : $('collSel').value;
+  $('collSel').replaceChildren(...items.map(c => new Option(c.name + ' (' + c.papers + ')', c.id)));
+  if (items.some(c => String(c.id) === keep)) $('collSel').value = keep;
+  $('collTools').classList.toggle('hidden', !items.length);
+}
+function collNotes(o) {
+  const out = [el('p', { class: 'warnmsg' }, t('notes.coverage'))];
+  if (o.references_coverage && o.references_coverage.note) out.push(el('p', { class: 'warnmsg' }, o.references_coverage.note));
+  return out;
+}
+function collTable(rows, why) {
+  if (!rows.length) return el('p', { class: 'note' }, t('coll.none'));
+  const head = el('tr', {}, ...['coll.col.title', 'coll.col.year', 'coll.col.lcs', 'coll.col.cites', ...(why ? ['coll.col.why'] : [])].map(k => el('th', {}, t(k))));
+  return el('table', {}, el('thead', {}, head), el('tbody', {}, ...rows.map(p => el('tr', {},
+    el('td', { dir: 'auto' }, p.title || p.openalex_id), el('td', { class: 'ltr' }, String(p.year ?? '')),
+    el('td', {}, String(p.local_citations ?? '')), el('td', {}, String(p.citations ?? '')),
+    ...(why ? [el('td', {}, (p.why || []).map(w => t('coll.why.' + w)).join('; '))] : [])))));
+}
+async function showCollStats() {
+  try {
+    $('collMsg').textContent = '';
+    const s = await json('/api/collections/' + collId() + '/stats?top=5');
+    const pct = Math.round(100 * s.references_coverage.share);
+    $('collOut').replaceChildren(
+      el('div', { class: 'row' }, el('span', { class: 'chip' }, t('coll.papers') + ': ' + s.papers), el('span', { class: 'chip' }, t('coll.refs') + ': ' + pct + '%'),
+        ...Object.entries(s.by_year).map(([y, n]) => el('span', { class: 'chip' }, y + ': ' + n))),
+      ...collNotes(s), el('h3', {}, t('coll.top_cited')), collTable(s.top_cited), el('h3', {}, t('coll.top_local')), collTable(s.top_local_citations));
+  } catch (e) { $('collMsg').textContent = e.message; }
+}
+async function showCollMilestones() {
+  try {
+    $('collMsg').textContent = '';
+    const m = await json('/api/collections/' + collId() + '/milestones');
+    const paths = m.main_paths.map((route, i) => el('p', { dir: 'auto' }, el('strong', {}, t('coll.main_path', { n: i + 1 }) + ': '),
+      route.map(p => (p.year ?? '?') + ' · ' + (p.title || p.openalex_id)).join('  →  ')));
+    $('collOut').replaceChildren(...collNotes(m), ...paths,
+      el('h3', {}, t('coll.milestones_h')), collTable(m.milestones, true),
+      el('h3', {}, t('coll.frontier_h')), collTable(m.frontier),
+      el('p', { class: 'note' }, t('coll.foundations', { n: m.foundations.length, k: m.parameters.min_cocite })));
+  } catch (e) { $('collMsg').textContent = e.message; }
+}
+$('collForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const name = $('collName').value.trim();
+  if (!name) return;
+  try {
+    const c = await post('/api/collections', { name, ...(run ? { from_run: run.id } : {}) });
+    $('collName').value = ''; $('collMsg').textContent = t('coll.created', { n: c.papers });
+    await loadCollections(c.id);
+  } catch (e) { $('collMsg').textContent = e.message; }
+});
+$('collAdd').onclick = async () => {
+  if (!run) { $('collMsg').textContent = t('coll.norun'); return; }
+  try {
+    const r = await post('/api/collections/' + collId() + '/runs', { run_id: run.id });
+    $('collMsg').textContent = t('coll.added', r); await loadCollections();
+  } catch (e) { $('collMsg').textContent = e.message; }
+};
+$('collSel').onchange = () => { $('collOut').replaceChildren(); $('collMsg').textContent = ''; };
+$('collStatsBtn').onclick = showCollStats;
+$('collMilesBtn').onclick = showCollMilestones;
 
 /* ---------- manuals (added by URL or upload; never searched) ---------- */
 function titleEditor(paperId, current, done) {
@@ -1735,7 +1833,7 @@ const HELP = {
   dlPrompt: 'help.dlPrompt', dlPacket: 'help.dlPacket', openClaude: 'help.openClaude', openChatgpt: 'help.openChatgpt',
   logout: 'help.logout', login: 'help.login', register: 'help.register', query: 'help.query',
   yFrom: 'help.yFrom', yTo: 'help.yTo', geoSummary: 'help.geoSummary', quota: 'help.quota',
-  weighting: 'help.weighting', gapCount: 'help.gapCount', propCount: 'help.propCount', question: 'help.question',
+  weighting: 'help.weighting', sortOrder: 'help.sort', localFirst: 'help.local_first', gapCount: 'help.gapCount', propCount: 'help.propCount', question: 'help.question',
   gapText: 'help.gapText', themeSummary: 'theme.help', uiLang: 'ui.language.help', dlPdfs: 'help.dlPdfs',
   ideasGo: 'help.ideasGo', ideaCount: 'help.ideaCount', ideasBrainstorm: 'help.ideasBrainstorm',
   topicSuggest: 'help.topicSuggest', topicMap: 'help.topicMap', ownTopics: 'help.ownTopics', topicScope: 'help.topicScope',

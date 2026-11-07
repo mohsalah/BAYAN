@@ -106,7 +106,7 @@ def paper(i, oa_url="", doi=None, title=None):
 
 
 class Connector(FakeConnector):
-    def lookup_doi(self, title, first_author, year):
+    def lookup_doi(self, title, first_author, year, time_limit=None):
         return None
 
 

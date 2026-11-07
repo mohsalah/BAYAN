@@ -1,5 +1,6 @@
 """Settings read from the environment. Secrets never appear in repr or logs."""
 
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,8 +20,15 @@ class Settings:
     cookie_secure: bool = False
     session_days: int = 14
     searches_per_hour: int = 20
+    local_searches_per_hour: int = 120  # saved local-library runs (nothing is sent anywhere)
+    lookups_per_hour: int = 20  # OpenAlex ID lookups per user per hour (collection foundations)
     search_max_results: int = 200
+    citations_max_age_days: int = 30  # older citation counts are "stale" and refreshed (M32)
+    auto_refresh_days: int = 0  # refresh collections older than this many days; 0 = off
+    auto_refresh_max_requests: int = 20  # budget of each automatic refresh
+    refresh_requests_per_hour: int = 200  # request budgets a user may start per hour (manual)
     doi_lookup_budget: int = 50  # Crossref DOI lookups per run (cache hits are free)
+    doi_lookup_seconds: float = 15.0  # time a run may spend waiting on those lookups
     pdf_root: Path = Path("pdfs")  # pdfs/<user_id>/<source>/<paper_id>.pdf
     downloads_per_hour: int = 100  # papers a user may queue for download per hour
     download_host_delay: float = 1.0  # minimum seconds between requests to the same host
@@ -50,6 +58,18 @@ class Settings:
     topic_runs_per_hour: int = 10  # suggestions plus mappings per user per hour
 
 
+def _seconds(name: str, default: str) -> float:
+    """A number of seconds >= 0 from the environment; anything else stops startup."""
+    raw = os.environ.get(name, default)
+    try:
+        value = float(raw)
+    except ValueError:
+        value = math.nan
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"{name} must be a number of seconds, 0 or more (got {raw!r})")
+    return value
+
+
 def load_settings() -> Settings:
     load_dotenv()
     return Settings(
@@ -77,6 +97,7 @@ def load_settings() -> Settings:
         topics_effort=os.environ.get("BAYAN_TOPICS_EFFORT", "medium"),
         topic_runs_per_hour=int(os.environ.get("BAYAN_TOPIC_RUNS_PER_HOUR", "10")),
         doi_lookup_budget=int(os.environ.get("BAYAN_DOI_LOOKUP_BUDGET", "50")),
+        doi_lookup_seconds=_seconds("BAYAN_DOI_LOOKUP_SECONDS", "15"),
         pdf_root=Path(os.environ.get("BAYAN_PDF_ROOT", "pdfs")),
         downloads_per_hour=int(os.environ.get("BAYAN_DOWNLOADS_PER_HOUR", "100")),
         download_host_delay=float(os.environ.get("BAYAN_DOWNLOAD_HOST_DELAY", "1.0")),
@@ -86,5 +107,11 @@ def load_settings() -> Settings:
         translate_api_key=os.environ.get("BAYAN_TRANSLATE_API_KEY") or None,
         translate_max_chars=int(os.environ.get("BAYAN_TRANSLATE_MAX_CHARS", "20000")),
         translations_per_hour=int(os.environ.get("BAYAN_TRANSLATIONS_PER_HOUR", "30")),
+        lookups_per_hour=int(os.environ.get("BAYAN_LOOKUPS_PER_HOUR", "20")),
+        citations_max_age_days=int(os.environ.get("BAYAN_CITATIONS_MAX_AGE_DAYS", "30")),
+        auto_refresh_days=int(os.environ.get("BAYAN_AUTO_REFRESH_DAYS", "0")),
+        auto_refresh_max_requests=int(os.environ.get("BAYAN_AUTO_REFRESH_MAX_REQUESTS", "20")),
+        refresh_requests_per_hour=int(os.environ.get("BAYAN_REFRESH_REQUESTS_PER_HOUR", "200")),
+        local_searches_per_hour=int(os.environ.get("BAYAN_LOCAL_SEARCHES_PER_HOUR", "120")),
         cookie_secure=os.environ.get("BAYAN_COOKIE_SECURE", "").lower() in ("1", "true", "yes"),
     )
