@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from .connectors.base import FILTERS, Connector
 from .db import now_iso
 from .doi_lookup import DoiLooker, DoiLookup
-from .models import DOCUMENT_TYPES, USER_SOURCE, Paper, SearchProfile, language_key
+from .models import DOCUMENT_TYPES, MAX_AUTHORS, USER_SOURCE, Paper, SearchProfile, language_key
 from .quotas import allocate_quotas
 from .regions import REGIONS_VERSION
 from .retrieval import collect
@@ -331,8 +331,8 @@ def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
         "INSERT INTO papers(source, id, doi, title, abstract, year, native_type,"
         " category, category_basis, document_kind, language, venue, first_author, countries,"
         " citations, is_oa, oa_url, landing_url, keywords, topic, openalex_id, counts_by_year,"
-        " citations_updated_at, references_count)"
-        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        " citations_updated_at, references_count, authors)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         " ON CONFLICT(source, id) DO UPDATE SET doi = excluded.doi, title = excluded.title,"
         " abstract = excluded.abstract, year = excluded.year,"
         " native_type = excluded.native_type, category = excluded.category,"
@@ -346,14 +346,17 @@ def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
         " counts_by_year = COALESCE(excluded.counts_by_year, papers.counts_by_year),"
         " citations_updated_at = COALESCE(excluded.citations_updated_at,"
         " papers.citations_updated_at),"
-        " references_count = COALESCE(excluded.references_count, papers.references_count)",
+        " references_count = COALESCE(excluded.references_count, papers.references_count),"
+        # A record that lists no authors keeps the authors stored from an earlier one.
+        " authors = CASE WHEN excluded.authors = '[]' THEN papers.authors"
+        " ELSE excluded.authors END",
         (p.source, p.id, p.doi, p.title, p.abstract, p.year, p.native_type, p.category,
          p.category_basis, p.document_kind or None, p.language, p.venue, p.first_author,
          json.dumps(p.countries), p.citations, int(p.is_oa), p.oa_url, p.landing_url,
          json.dumps(p.keywords), p.topic, openalex_id or None,
          json.dumps(p.counts_by_year) if p.counts_by_year is not None else None,
          now_iso() if p.source in CITATION_LIBRARIES else None,
-         known_refs),
+         known_refs, json.dumps(p.authors[:MAX_AUTHORS], ensure_ascii=False)),
     )
     if openalex_id:
         if refs is not None:
@@ -385,6 +388,9 @@ def paper_row_to_dict(row: sqlite3.Row) -> dict:
     d = dict(row)
     d["countries"] = json.loads(d["countries"] or "[]")
     d["keywords"] = json.loads(d["keywords"] or "[]")
+    # Rows stored before the author list existed only have the first author.
+    d["authors"] = json.loads(d.get("authors") or "[]") or (
+        [d["first_author"]] if d.get("first_author") else [])
     d["is_oa"] = bool(d["is_oa"])
     # Rows stored before categories existed only have the old `document_type` column.
     legacy = d.pop("document_type", None) or ""

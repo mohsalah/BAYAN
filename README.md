@@ -290,6 +290,24 @@ ones). Limits: `BAYAN_TOPIC_RUNS_PER_HOUR` (10), at most 500 papers per mapping,
 `BAYAN_MODEL_TOPICS`, effort `BAYAN_TOPICS_EFFORT`. Calls are cached per prompt. Without
 `ANTHROPIC_API_KEY` the model endpoints answer 503.
 
+## References for Zotero, Mendeley and EndNote (BibTeX and RIS)
+
+Next to Excel and CSV, the Export box has **Copy BibTeX**, **Export BibTeX** (`.bib`) and
+**Export RIS** (`.ris`), for the ticked papers, the filtered view or all results.
+
+- **Copy BibTeX** puts the references on the clipboard. In Zotero choose *File › Import from
+  Clipboard*; in Mendeley, JabRef or LaTeX paste them into a `.bib` file. When the browser blocks
+  the clipboard (for example on plain `http`), the text is shown selected so it can be copied by
+  hand.
+- Entries carry every author the library listed (stored since this change; older saved results
+  have the first author only), title, year, venue, DOI, link, language, keywords, abstract and a
+  note with the BAYAN record ID. A field the record does not have is left out, never guessed.
+- Entry types follow the record: article, inproceedings, incollection, book, phdthesis,
+  techreport or misc. Keys look like `lopez2021neutron`, ASCII only, made unique with a, b, c.
+- Text stays UTF-8 (Arabic, Chinese and accents import as they are). Characters with a meaning
+  in BibTeX (`& % $ # _ { } ~ ^ \`) are escaped so one odd title cannot break the file.
+- API: `POST /api/runs/{id}/export` with `"format": "bibtex"` or `"ris"`.
+
 ## Document-type filter and manuals (M21)
 
 **Counts per type.** `GET /api/runs/{id}` returns `type_report`: one row for every reference

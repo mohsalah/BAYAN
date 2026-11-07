@@ -257,7 +257,7 @@ COLUMNS_ADDED = {
     "papers": (("category", "TEXT"), ("native_type", "TEXT"), ("category_basis", "TEXT"),
                ("document_kind", "TEXT"), ("openalex_id", "TEXT"), ("counts_by_year", "TEXT"),
                ("citations_updated_at", "TEXT"), ("references_count", "INTEGER"),
-               ("openalex_status", "TEXT")),
+               ("openalex_status", "TEXT"), ("authors", "TEXT")),
     "downloads": (("page_count", "INTEGER"), ("pages_with_text", "INTEGER"),
                   ("index_status", "TEXT")),
 }

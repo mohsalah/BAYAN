@@ -52,6 +52,8 @@ def parse_entry(entry: ET.Element) -> Paper:
         category_basis=basis,
         venue=_text(entry, "x:journal_ref"),
         first_author=_text(entry, "a:author/a:name"),
+        authors=[" ".join((n.text or "").split()) for n in entry.findall("a:author/a:name", NS)
+                 if (n.text or "").strip()],
         is_oa=True,
         oa_url=pdf,
         landing_url=f"https://arxiv.org/abs/{arxiv_id}",
