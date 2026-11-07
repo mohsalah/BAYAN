@@ -12,7 +12,7 @@ import re
 import sqlite3
 from collections.abc import Callable
 from contextlib import closing
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -235,6 +235,20 @@ def resume_stale_backfills(db_path: Path, connector: Callable[[], WorkLookup],
         run_backfill_job(db_path, job_id, lookup, claimed=True)
         resumed.append(job_id)
     return resumed
+
+
+def stale_cutoff(max_age_days: int) -> str:
+    """Citation counts written before this time (now_iso format) are stale (M32)."""
+    return (datetime.now(UTC) - timedelta(days=max_age_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def citations_stale(paper: sqlite3.Row | dict, cutoff: str) -> bool:
+    """True when the citation count was never checked or was checked before `cutoff`. Papers
+    you added yourself carry no count to refresh and are never stale."""
+    if paper["source"] == USER_SOURCE:
+        return False
+    updated = paper["citations_updated_at"]
+    return not updated or updated < cutoff
 
 
 # ---------------------------------------------------------------------------------------------

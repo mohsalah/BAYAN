@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator
 import httpx
 
 from ..models import Paper, SearchProfile
-from .base import get_with_retry, user_agent
+from .base import RequestBudget, get_with_retry, user_agent
 
 BASE_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 # Europe PMC `LANG` values for the six supported languages.
@@ -15,8 +15,12 @@ LANG_CODES = {"en": "eng", "ar": "ara", "fr": "fre", "zh": "chi", "de": "ger", "
 LANG_BACK = {v: k for k, v in LANG_CODES.items()}
 
 
-def build_query(profile: SearchProfile) -> str:
+def build_query(profile: SearchProfile, since: str | None = None) -> str:
     parts = [f"(PUB_YEAR:[{profile.year_from} TO {profile.year_to}])"]
+    if since:
+        # A refresh (M32): first published, or added to Europe PMC, on or after `since`.
+        parts.append(f"(FIRST_PDATE:[{since} TO 3000-12-31] OR "
+                     f"CREATION_DATE:[{since} TO 3000-12-31])")
     if profile.query:
         parts.insert(0, f"({profile.query})")
     if profile.languages:
@@ -116,12 +120,24 @@ class EuropePMCConnector:
         self._page_size = page_size
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
+        yield from self._pages(profile)
+
+    def search_since(self, profile: SearchProfile, since: str,
+                     budget: RequestBudget) -> Iterator[Paper]:
+        """Records first published or created on or after `since` (YYYY-MM-DD); each page
+        takes one request from `budget`."""
+        yield from self._pages(profile, since, budget)
+
+    def _pages(self, profile: SearchProfile, since: str | None = None,
+               budget: RequestBudget | None = None) -> Iterator[Paper]:
         if not can_return(profile):
             return
         cursor = "*"
         while True:
-            params = {"query": build_query(profile), "format": "json", "resultType": "core",
-                      "pageSize": self._page_size, "cursorMark": cursor}
+            if budget is not None and not budget.take():
+                return
+            params = {"query": build_query(profile, since), "format": "json",
+                      "resultType": "core", "pageSize": self._page_size, "cursorMark": cursor}
             response = get_with_retry(
                 self._client, BASE_URL, params, "Europe PMC", self._sleep, self._max_attempts,
                 headers={"User-Agent": user_agent(self._email)},

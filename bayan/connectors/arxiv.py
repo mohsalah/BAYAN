@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterator
 import httpx
 
 from ..models import Paper, SearchProfile
-from .base import ConnectorError, get_with_retry, user_agent
+from .base import ConnectorError, RequestBudget, get_with_retry, user_agent
 
 BASE_URL = "https://export.arxiv.org/api/query"
 NS = {"a": "http://www.w3.org/2005/Atom", "x": "http://arxiv.org/schemas/atom",
@@ -103,9 +103,13 @@ def boolean_query(text: str) -> str | None:
     return " ".join(out).replace("( ", "(").replace(" )", ")")
 
 
-def build_query(profile: SearchProfile) -> str:
-    # submittedDate is the date of the first version.
-    parts = [f"submittedDate:[{profile.year_from}01010000 TO {profile.year_to}12312359]"]
+def build_query(profile: SearchProfile, since: str | None = None) -> str:
+    # submittedDate is the date of the first version. A refresh (M32) starts at `since`
+    # (YYYY-MM-DD) when that is later than the profile's first year.
+    start = f"{profile.year_from}0101"
+    if since and since.replace("-", "") > start:
+        start = since.replace("-", "")
+    parts = [f"submittedDate:[{start}0000 TO {profile.year_to}12312359]"]
     query = boolean_query(profile.query)
     if query is None:
         words = re.findall(r"\w+", profile.query)
@@ -140,11 +144,23 @@ class ArxivConnector:
         self._page_delay = page_delay
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
+        yield from self._pages(profile)
+
+    def search_since(self, profile: SearchProfile, since: str,
+                     budget: RequestBudget) -> Iterator[Paper]:
+        """Preprints first submitted on or after `since` (YYYY-MM-DD); each page takes one
+        request from `budget`."""
+        yield from self._pages(profile, since, budget)
+
+    def _pages(self, profile: SearchProfile, since: str | None = None,
+               budget: RequestBudget | None = None) -> Iterator[Paper]:
         if not wants_preprints(profile):
             return
         start = 0
         while True:
-            params = {"search_query": build_query(profile), "start": start,
+            if budget is not None and not budget.take():
+                return
+            params = {"search_query": build_query(profile, since), "start": start,
                       "max_results": self._page_size, "sortBy": "relevance"}
             if start:
                 self._sleep(self._page_delay)

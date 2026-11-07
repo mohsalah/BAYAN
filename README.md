@@ -495,6 +495,53 @@ never treated as a gap.
 The page has a Collections card: create one from the current search, add the current search,
 and show counts or milestones with the main-path chain.
 
+## Incremental refresh (M32)
+
+A **refresh** keeps a collection current without searching the whole track again. It runs as a
+resumable background job with a request budget (`max_requests`) it never goes over, and it has
+two steps:
+
+1. **New papers.** The collection's stored profile is run again on its libraries, limited to
+   records published *or added to the library* since the last refresh minus a 30-day overlap
+   (the first refresh starts from the newest run the collection was built from). OpenAlex gets
+   two passes, `from_publication_date` and `from_created_date` (filters in one OpenAlex request
+   are ANDed); if OpenAlex refuses the created-date filter for your key, the run says so and
+   keeps the other pass. Europe PMC uses `FIRST_PDATE` or `CREATION_DATE`, and arXiv uses
+   `submittedDate`. A library without a date filter is skipped and listed, never searched in
+   full. The search is stored as a normal run (origin `collection_refresh`).
+   Papers already in the collection (same record, OpenAlex ID or DOI), or that you removed, are
+   not added. The rest are added with origin `refresh` (`added_by_refresh: true`), and the
+   history counts how many of them were already in your library for another track.
+   `last_refreshed_at` moves only when this step finished. If the budget or the per-search
+   limit (200 papers per search) stopped it, the next refresh starts from the same date.
+2. **Citations.** Collection papers whose citation count is older than
+   `BAYAN_CITATIONS_MAX_AGE_DAYS` (default 30), or was never checked, get their count, yearly
+   counts and references again by OpenAlex ID filter, 50 works per request (by DOI when there is
+   no OpenAlex ID). Fresh papers are not looked up.
+
+Every refresh is recorded with its start and end, `since`, new papers, citations updated,
+requests made, `shortfalls` (budget, no profile, no library with a date filter, the per-search
+limit) and `skipped` items, and its status: `done`, `partial` (finished with a shortfall) or
+`failed`. Only one refresh per collection runs at a time (409).
+
+Every paper in library, collection and run responses carries `citations_stale: true|false`
+(true when the count was never checked or is older than the maximum age; papers you added
+yourself have no count and are never stale).
+
+**Automatic refresh** is off by default. With `BAYAN_AUTO_REFRESH_DAYS=N`, the background checker
+queues a refresh (budget `BAYAN_AUTO_REFRESH_MAX_REQUESTS`, default 20) for each collection with
+a stored profile whose last refresh is older than N days and that had no refresh attempt in that
+time. Automatic refreshes spend OpenAlex credits.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/collections/{id}/refresh` `{"max_requests": 30, "citations": true}` | Start a refresh (at most 200 requests). Returns its history row. |
+| `GET /api/collections/{id}/refreshes` | Refresh history, newest first, with `last_refreshed_at`. |
+| `GET /api/collections/{id}/new?since=YYYY-MM-DD&limit=50` | Papers added since a date (UTC), fastest gaining citations first, with `added_at`, `origin` and `coverage`. |
+
+New papers found by a refresh cover only what the stored profile asks for on the collection's
+libraries; a paper that does not appear is not evidence that nothing was published.
+
 ## Run locally
 
 ```bash
