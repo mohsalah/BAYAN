@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .connectors.base import FILTERS, Connector
+from .db import now_iso
 from .doi_lookup import DoiLooker, DoiLookup
 from .models import DOCUMENT_TYPES, USER_SOURCE, Paper, SearchProfile, language_key
 from .quotas import allocate_quotas
@@ -301,17 +302,66 @@ def run_search(
     return {"id": run_id, "summary": summary}
 
 
+# Libraries whose records carry a citation count. Others report none, so storing their record
+# does not mean the count was checked (citations_updated_at stays unset).
+CITATION_LIBRARIES = frozenset({"openalex", "crossref", "europepmc"})
+
+
 def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
+    openalex_id = p.openalex_id or (p.id if p.source == "openalex" else "")
+    if not openalex_id and p.doi:
+        # Another library's record of a work already stored from OpenAlex.
+        row = conn.execute("SELECT openalex_id FROM papers WHERE doi = ? AND openalex_id"
+                           " IS NOT NULL AND openalex_id != '' LIMIT 1", (p.doi,)).fetchone()
+        openalex_id = row["openalex_id"] if row else ""
+    refs = p.referenced_works if openalex_id else None
+    # How many references are stored for this work: from this record's list, or from an
+    # earlier record of the same work (so backfill does not look it up again).
+    known_refs = len(refs) if refs is not None else None
+    if openalex_id and known_refs is None:
+        known_refs = conn.execute(
+            "SELECT MAX(references_count) FROM papers WHERE openalex_id = ?",
+            (openalex_id,)).fetchone()[0]
+    # An upsert, not a replace: a later record without OpenAlex data (no W-id, no yearly counts,
+    # no reference list) keeps what an earlier one stored.
     conn.execute(
-        "INSERT OR REPLACE INTO papers(source, id, doi, title, abstract, year, native_type,"
+        "INSERT INTO papers(source, id, doi, title, abstract, year, native_type,"
         " category, category_basis, document_kind, language, venue, first_author, countries,"
-        " citations, is_oa, oa_url, landing_url, keywords, topic)"
-        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " citations, is_oa, oa_url, landing_url, keywords, topic, openalex_id, counts_by_year,"
+        " citations_updated_at, references_count)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        " ON CONFLICT(source, id) DO UPDATE SET doi = excluded.doi, title = excluded.title,"
+        " abstract = excluded.abstract, year = excluded.year,"
+        " native_type = excluded.native_type, category = excluded.category,"
+        " category_basis = excluded.category_basis, document_kind = excluded.document_kind,"
+        " language = excluded.language, venue = excluded.venue,"
+        " first_author = excluded.first_author, countries = excluded.countries,"
+        " citations = excluded.citations, is_oa = excluded.is_oa, oa_url = excluded.oa_url,"
+        " landing_url = excluded.landing_url, keywords = excluded.keywords,"
+        " topic = excluded.topic,"
+        " openalex_id = COALESCE(excluded.openalex_id, papers.openalex_id),"
+        " counts_by_year = COALESCE(excluded.counts_by_year, papers.counts_by_year),"
+        " citations_updated_at = COALESCE(excluded.citations_updated_at,"
+        " papers.citations_updated_at),"
+        " references_count = COALESCE(excluded.references_count, papers.references_count)",
         (p.source, p.id, p.doi, p.title, p.abstract, p.year, p.native_type, p.category,
          p.category_basis, p.document_kind or None, p.language, p.venue, p.first_author,
          json.dumps(p.countries), p.citations, int(p.is_oa), p.oa_url, p.landing_url,
-         json.dumps(p.keywords), p.topic),
+         json.dumps(p.keywords), p.topic, openalex_id or None,
+         json.dumps(p.counts_by_year) if p.counts_by_year is not None else None,
+         now_iso() if p.source in CITATION_LIBRARIES else None,
+         known_refs),
     )
+    if openalex_id:
+        if refs is not None:
+            store_references(conn, openalex_id, refs)
+        if p.doi:
+            # Records of the same work from other libraries now share its W-id and its stored
+            # references; an earlier failed lookup no longer applies to them.
+            conn.execute("UPDATE papers SET openalex_id = ?, openalex_status = NULL,"
+                         " references_count = COALESCE(references_count, ?) WHERE doi = ? AND"
+                         " (openalex_id IS NULL OR openalex_id = '')",
+                         (openalex_id, known_refs, p.doi))
     conn.execute("DELETE FROM paper_search WHERE source=? AND id=?", (p.source, p.id))
     conn.execute(
         "INSERT INTO paper_search(source, id, title, abstract, keywords, topic)"
@@ -319,6 +369,13 @@ def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
         (p.source, p.id, index_text(p.title), index_text(p.abstract),
          index_text(" ".join(p.keywords)), index_text(p.topic)),
     )
+
+
+def store_references(conn: sqlite3.Connection, citing: str, cited: list[str]) -> None:
+    """Replace one work's reference rows. Only call it with a list a library supplied."""
+    conn.execute("DELETE FROM paper_references WHERE citing = ?", (citing,))
+    conn.executemany("INSERT OR IGNORE INTO paper_references(citing, cited) VALUES(?,?)",
+                     [(citing, c) for c in cited if c and c != citing])
 
 
 def paper_row_to_dict(row: sqlite3.Row) -> dict:
@@ -340,4 +397,8 @@ def paper_row_to_dict(row: sqlite3.Row) -> dict:
     d["access"] = "open_copy_listed" if d["oa_url"] else "no_open_copy_listed"
     d["abstract"] = d.get("abstract") or ""
     d["abstract_status"] = "supplied" if d["abstract"] else "not_supplied_by_source"
+    d["openalex_id"] = d.get("openalex_id") or ""
+    raw = d.get("counts_by_year")
+    d["counts_by_year"] = json.loads(raw) if raw else None
+    d.pop("openalex_status", None)
     return d

@@ -375,6 +375,38 @@ so the engine can be swapped.
 | `POST /api/translate/pdf` | `{"source", "id", "target_language", "pages"}`: pages of your validated PDF, aligned by page. |
 | `GET` / `PUT` / `DELETE /api/translate/glossary` | List, save (`source_language`, `target_language`, `source_term`, `target_term`) or remove your terms. |
 
+## Citation network and backfill (M29)
+
+First of four milestones that turn stored papers into a reusable local library (M29 to M32).
+
+**What is stored.** OpenAlex records now bring each work's reference list (`referenced_works`)
+and its citations per year (`counts_by_year`). Papers gain `openalex_id` (the W-id; also set on
+another library's record of the same work once its DOI matches an OpenAlex record),
+`counts_by_year`, `citations_updated_at` (UTC, set when a library that reports citation counts
+stores the record) and `references_count` (`NULL` = never stored, which is not the same as `0`).
+References go into `paper_references(citing, cited)`, both OpenAlex W-ids. A paper's references are
+replaced only when a library supplied a list; a later record without one never wipes them.
+
+**Backfill.** Papers stored before this milestone have no references. `POST /api/library/backfill`
+looks up the papers of your library (your runs and manuals) that lack them, 50 per OpenAlex
+request, by W-id (`openalex:W1|W2|…`) or, when there is none, by DOI (`doi:…|…`). These are ID
+lookups, not text searches. It runs as a background job that counts each request before sending
+it, so it never goes over `max_requests` (default 20, at most 200), and it resumes after a restart
+like downloads do (in a thread of its own, so it never delays the download checks). A W-id
+OpenAlex no longer lists (a merged work) is looked up once more by DOI. A paper OpenAlex does not
+have is marked and not looked up again; a paper with neither a W-id nor a usable DOI is counted as
+`no_identifier`. A record that comes back without a reference list updates the citations and
+leaves stored references alone. When backfill matches another library's record (Crossref, Europe
+PMC), its citation count is replaced by OpenAlex's.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/library/backfill` `{"max_requests": 20}` | Start the job (202). Answers 409 while one is running; `status: nothing_to_do` when nothing is left. |
+| `GET /api/library/backfill/jobs/{id}` | `status`, `requests_made`, `updated`, `not_found`, `remaining`, `no_identifier`. Owner only (404 otherwise). |
+
+**Export.** CSV and Excel gain *Citations updated*, *OpenAlex ID* and *References (count)*
+(`not stored` when the list was never fetched).
+
 ## Run locally
 
 ```bash

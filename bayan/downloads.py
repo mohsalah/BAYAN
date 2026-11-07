@@ -19,7 +19,6 @@ import uuid
 from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.parse import quote, urlencode, urljoin, urlsplit
@@ -28,7 +27,7 @@ import httpx
 from pypdf import PdfReader
 
 from .config import Settings
-from .db import connect
+from .db import connect, now_iso
 from .pages import clear_pages, index_pdf
 
 log = logging.getLogger("bayan.downloads")
@@ -445,10 +444,6 @@ def finalize_pdf(part: Path, root: Path, user_id: int, source: str, paper_id: st
 
 # --------------------------------------------------------------------------- records
 
-def now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 FIELDS = ("status", "reason", "detail", "origin", "path", "size", "sha256", "source_url",
           "final_url", "http_status", "retrieved_at", "license", "version", "identity_score",
           "identity_basis", "page_count", "pages_with_text", "index_status")
@@ -589,7 +584,8 @@ def process_paper(conn: sqlite3.Connection, fetcher: Fetcher, settings: Settings
                 http_status=last.status if last else None, retrieved_at=now_iso())
 
 
-def claim_job(conn: sqlite3.Connection, job_id: int, stale_seconds: int | None = None) -> bool:
+def claim_job(conn: sqlite3.Connection, job_id: int, stale_seconds: int | None = None,
+              kind: str = "pdf_download") -> bool:
     """Atomically mark a job running. Without `stale_seconds` only a pending job is taken;
     with it, a pending or running job whose last heartbeat is older than that (interrupted)."""
     if stale_seconds is None:
@@ -599,8 +595,8 @@ def claim_job(conn: sqlite3.Connection, job_id: int, stale_seconds: int | None =
                  " AND COALESCE(updated_at, created_at) <= datetime('now', ?)")
         args = (f"-{int(stale_seconds)} seconds",)
     cur = conn.execute("UPDATE jobs SET status = 'running', error = NULL,"
-                       " updated_at = CURRENT_TIMESTAMP WHERE id = ? AND kind = 'pdf_download'"
-                       f" AND {where}", (job_id, *args))
+                       " updated_at = CURRENT_TIMESTAMP WHERE id = ? AND kind = ?"
+                       f" AND {where}", (job_id, kind, *args))
     conn.commit()
     return cur.rowcount == 1
 
