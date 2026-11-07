@@ -187,6 +187,10 @@ class OpenAlexConnector:
         self._per_page = per_page
         # Plain-language notes for the run summary (for example a paging limit that was hit).
         self.warnings: list[str] = []
+        # Set by a job with a request budget (M32): retries are counted against it.
+        self.budget: RequestBudget | None = None
+        # True when a search stopped before its last page (no key: first page only).
+        self.truncated = False
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
         yield from self._pages(profile)
@@ -199,7 +203,9 @@ class OpenAlexConnector:
     def search_since(self, profile: SearchProfile, since: str,
                      budget: RequestBudget) -> Iterator[Paper]:
         """`profile` restricted to records published or created on or after `since`
-        (YYYY-MM-DD). Each page takes one request from `budget`; none is sent past it."""
+        (YYYY-MM-DD). Each page, and each retry, takes one request from `budget`; none is
+        sent past it."""
+        self.budget = budget
         for name in self.SINCE_FILTERS:
             try:
                 yield from self._pages(profile, f"{name}:{since}", budget)
@@ -249,6 +255,7 @@ class OpenAlexConnector:
             except ConnectorError as exc:
                 # OpenAlex needs a free API key to page past the first page of results.
                 if not first_page and not self._api_key and "HTTP 401" in str(exc):
+                    self.truncated = True
                     self.warnings.append(
                         f"OpenAlex returned only its first {self._per_page} results. Paging "
                         "further needs a free OpenAlex API key (set OPENALEX_API_KEY).")
@@ -301,6 +308,10 @@ class OpenAlexConnector:
                 if status not in (429, 500, 502, 503, 504):
                     break
             if attempt < self._max_attempts:
+                # A retry is another paid request: a job with a budget counts it too.
+                if self.budget is not None and not self.budget.take():
+                    raise ConnectorError(f"OpenAlex request failed: {error}; the request "
+                                         "budget leaves no room for a retry")
                 retry_after = response.headers.get("Retry-After") if status else None
                 try:
                     delay = retry_wait(retry_after, attempt, "OpenAlex", error)

@@ -503,7 +503,10 @@ two steps:
 
 1. **New papers.** The collection's stored profile is run again on its libraries, limited to
    records published *or added to the library* since the last refresh minus a 30-day overlap
-   (the first refresh starts from the newest run the collection was built from). OpenAlex gets
+   (the first refresh starts from the newest run the collection was built from). A profile
+   whose end year had been reached by that date is extended to this year (recorded as
+   `year_to_extended` in the run summary); one that ends earlier, a closed period, keeps its
+   end year. OpenAlex gets
    two passes, `from_publication_date` and `from_created_date` (filters in one OpenAlex request
    are ANDed); if OpenAlex refuses the created-date filter for your key, the run says so and
    keeps the other pass. Europe PMC uses `FIRST_PDATE` or `CREATION_DATE`, and arXiv uses
@@ -513,11 +516,17 @@ two steps:
    not added. The rest are added with origin `refresh` (`added_by_refresh: true`), and the
    history counts how many of them were already in your library for another track.
    `last_refreshed_at` moves only when this step finished. If the budget or the per-search
-   limit (200 papers per search) stopped it, the next refresh starts from the same date.
+   limit (`search_max_results`, 200 by default) stopped it, or a library returned only its
+   first page (OpenAlex without a key), the next refresh starts from the same date.
 2. **Citations.** Collection papers whose citation count is older than
    `BAYAN_CITATIONS_MAX_AGE_DAYS` (default 30), or was never checked, get their count, yearly
    counts and references again by OpenAlex ID filter, 50 works per request (by DOI when there is
    no OpenAlex ID). Fresh papers are not looked up.
+
+The budget counts every request sent, retries included: an OpenAlex retry that would go over it
+is not sent, and the refresh stops as failed. Manual refreshes share an hourly limit,
+`BAYAN_REFRESH_REQUESTS_PER_HOUR` (default 200 requests of budget started per hour, 429 above).
+Automatic refreshes run in their own background thread.
 
 Every refresh is recorded with its start and end, `since`, new papers, citations updated,
 requests made, `shortfalls` (budget, no profile, no library with a date filter, the per-search
@@ -529,7 +538,7 @@ Every paper in library, collection and run responses carries `citations_stale: t
 yourself have no count and are never stale).
 
 **Automatic refresh** is off by default. With `BAYAN_AUTO_REFRESH_DAYS=N`, the background checker
-queues a refresh (budget `BAYAN_AUTO_REFRESH_MAX_REQUESTS`, default 20) for each collection with
+queues a refresh (budget `BAYAN_AUTO_REFRESH_MAX_REQUESTS`, default 20, kept within 1–200) for each collection with
 a stored profile whose last refresh is older than N days and that had no refresh attempt in that
 time. Automatic refreshes spend OpenAlex credits.
 

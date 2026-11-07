@@ -26,6 +26,7 @@ class Settings:
     citations_max_age_days: int = 30  # older citation counts are "stale" and refreshed (M32)
     auto_refresh_days: int = 0  # refresh collections older than this many days; 0 = off
     auto_refresh_max_requests: int = 20  # budget of each automatic refresh
+    refresh_requests_per_hour: int = 200  # request budgets a user may start per hour (manual)
     doi_lookup_budget: int = 50  # Crossref DOI lookups per run (cache hits are free)
     doi_lookup_seconds: float = 15.0  # time a run may spend waiting on those lookups
     pdf_root: Path = Path("pdfs")  # pdfs/<user_id>/<source>/<paper_id>.pdf
@@ -96,6 +97,7 @@ def load_settings() -> Settings:
         citations_max_age_days=int(os.environ.get("BAYAN_CITATIONS_MAX_AGE_DAYS", "30")),
         auto_refresh_days=int(os.environ.get("BAYAN_AUTO_REFRESH_DAYS", "0")),
         auto_refresh_max_requests=int(os.environ.get("BAYAN_AUTO_REFRESH_MAX_REQUESTS", "20")),
+        refresh_requests_per_hour=int(os.environ.get("BAYAN_REFRESH_REQUESTS_PER_HOUR", "200")),
         local_searches_per_hour=int(os.environ.get("BAYAN_LOCAL_SEARCHES_PER_HOUR", "120")),
         cookie_secure=os.environ.get("BAYAN_COOKIE_SECURE", "").lower() in ("1", "true", "yes"),
     )

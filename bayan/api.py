@@ -8,7 +8,7 @@ import sqlite3
 import threading
 from collections.abc import Callable
 from contextlib import asynccontextmanager, closing
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -83,6 +83,7 @@ from .library import (
     backfill_view,
     citations_stale,
     coverage,
+    current_year,
     library_key_set,
     local_unapplied,
     new_backfill_payload,
@@ -128,6 +129,7 @@ from .models import (
     language_name,
     normalize_document_types,
 )
+from .network import velocity
 from .pages import INDEX_NOTES, clear_pages, page_list, page_text, search_pages
 from .planner import (
     PLANNER_NOTE,
@@ -427,14 +429,20 @@ def create_app(
                                         settings.job_stale_seconds)
 
     def backfill_loop(stop: threading.Event) -> None:
-        """Continue interrupted backfill and refresh jobs, and queue automatic refreshes when
-        BAYAN_AUTO_REFRESH_DAYS is set (a thread of its own: these can run for minutes)."""
+        """Continue interrupted backfill jobs (a thread of its own: they can run for minutes)."""
         while True:
             try:
                 resume_stale_backfills(settings.database_path, lookup_connector,
                                        settings.job_stale_seconds)
             except Exception as exc:
                 log.warning("backfill resume pass failed: %s", type(exc).__name__)
+            if stop.wait(settings.job_resume_interval):
+                return
+
+    def refresh_loop(stop: threading.Event) -> None:
+        """Queue automatic refreshes when BAYAN_AUTO_REFRESH_DAYS is set, run them, and
+        continue interrupted refreshes (their own thread, so backfills are not held up)."""
+        while True:
             try:
                 if settings.auto_refresh_days > 0:
                     with closing(connect(settings.database_path)) as conn:
@@ -453,7 +461,8 @@ def create_app(
         workers = []
         if settings.job_resume_interval > 0:
             for target, name in ((resume_loop, "bayan-job-resume"),
-                                 (backfill_loop, "bayan-backfill-resume")):
+                                 (backfill_loop, "bayan-backfill-resume"),
+                                 (refresh_loop, "bayan-refresh")):
                 workers.append(threading.Thread(target=target, args=(stop,), daemon=True,
                                                 name=name))
                 workers[-1].start()
@@ -857,6 +866,11 @@ def create_app(
             running = rf.open_refresh(conn, cid)
             if running is not None:
                 raise HTTPException(409, f"A refresh is already running (job {running['id']})")
+            used = rf.requests_reserved(conn, user["id"])
+            if used + body.max_requests > settings.refresh_requests_per_hour:
+                raise HTTPException(
+                    429, f"Refresh limit: {settings.refresh_requests_per_hour} requests per hour"
+                    f" ({used} already started). Try a smaller max_requests or later.")
             job = rf.queue_refresh(conn, cid, user["id"], body.max_requests, body.citations)
             conn.commit()
         except Exception:
@@ -890,24 +904,25 @@ def create_app(
             raise HTTPException(422, "limit 1-500, offset 0 or more")
         if start.tzinfo is not None:
             start = start.astimezone(UTC).replace(tzinfo=None)
-        params = {"user": user["id"], "since": start.strftime("%Y-%m-%d %H:%M:%S"),
-                  "year_now": date.today().year, "limit": limit, "offset": offset}
-        frm = (f"FROM ({coll.collection_keys(cid)}) k JOIN collection_papers cp"
-               f" ON cp.collection_id = {int(cid)} AND cp.source = k.source"
-               " AND cp.paper_id = k.paper_id JOIN papers p ON p.source = k.source"
-               " AND p.id = k.paper_id WHERE julianday(cp.added_at) >= julianday(:since)")
-        velocity = ("CASE WHEN p.year IS NULL THEN NULL ELSE COALESCE(p.citations, 0) * 1.0 /"
-                    " MAX(1, :year_now - p.year + 1) END")
-        rows = conn.execute(
-            f"SELECT p.*, cp.added_at AS added_at, cp.origin AS origin, {velocity} AS velocity"
-            f" {frm} ORDER BY velocity IS NULL, velocity DESC, p.title"
-            " LIMIT :limit OFFSET :offset", params).fetchall()
-        total = conn.execute(f"SELECT COUNT(*) {frm}", params).fetchone()[0]
+        params = {"cid": cid, "since": start.strftime("%Y-%m-%d %H:%M:%S"),
+                  "limit": limit, "offset": offset}
+        frm = ("FROM collection_papers cp JOIN papers p ON p.source = cp.source"
+               " AND p.id = cp.paper_id WHERE cp.collection_id = :cid"
+               " AND julianday(cp.added_at) >= julianday(:since)")
+        found = conn.execute(f"SELECT p.*, cp.added_at AS added_at, cp.origin AS origin {frm}",
+                             params).fetchall()
+        year_now = current_year()
+        speed = {(r["source"], r["id"]): velocity(r["citations"], r["year"], year_now)
+                 for r in found}
+        found.sort(key=lambda r: (speed[(r["source"], r["id"])] is None,
+                                  -(speed[(r["source"], r["id"])] or 0), r["title"] or ""))
+        rows = found[offset:offset + limit]
         papers = decorate(rows, {})
         for d, r in zip(papers, rows, strict=True):
-            d.update(added_at=r["added_at"], origin=r["origin"], velocity=r["velocity"],
+            d.update(added_at=r["added_at"], origin=r["origin"],
+                     velocity=speed[(r["source"], r["id"])],
                      added_by_refresh=r["origin"] == "refresh")
-        return {"since": params["since"], "papers": papers, "total": total,
+        return {"since": params["since"], "papers": papers, "total": len(found),
                 "coverage": coverage(conn, user["id"], coll.collection_keys(cid))}
 
     @app.post("/api/library/backfill", status_code=202)

@@ -474,12 +474,18 @@ def library_key_set(conn: sqlite3.Connection, user_id: int) -> set[tuple[str, st
         " JOIN papers p ON p.source = k.source AND p.id = k.paper_id", {"user": user_id})
     out: set[tuple[str, str]] = set()
     for r in rows:
-        out.add((r["source"], r["id"]))
-        if r["openalex_id"]:
-            out.add(("openalex_id", r["openalex_id"]))
-        if doi_key(r["doi"]):
-            out.add(("doi", doi_key(r["doi"])))
+        out |= work_keys(r)
     return out
+
+
+def work_keys(r: sqlite3.Row | dict) -> set[tuple[str, str]]:
+    """A record's identity keys: (source, id), its W-id and its DOI (see in_library)."""
+    keys = {(r["source"], r["id"])}
+    if r["openalex_id"]:
+        keys.add(("openalex_id", r["openalex_id"]))
+    if doi_key(r["doi"]):
+        keys.add(("doi", doi_key(r["doi"])))
+    return keys
 
 
 def in_library(paper: dict | Paper, keys: set[tuple[str, str]]) -> bool:

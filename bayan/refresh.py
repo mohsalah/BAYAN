@@ -33,12 +33,13 @@ from .library import (
     RETRY_DOI,
     USABLE_DOI,
     _lookup,
+    current_year,
     in_library,
     library_key_set,
     stale_cutoff,
+    work_keys,
 )
 from .models import USER_SOURCE, Paper, SearchProfile
-from .retrieval import doi_key
 from .search import SearchRequest, run_search
 
 log = logging.getLogger(__name__)
@@ -65,18 +66,23 @@ class SinceSearch:
     def warnings(self) -> list[str]:
         return getattr(self._inner, "warnings", [])
 
+    @property
+    def truncated(self) -> bool:
+        return bool(getattr(self._inner, "truncated", False))
+
     def search(self, profile: SearchProfile) -> Iterator[Paper]:
         return self._inner.search_since(profile, self._since, self._budget)
 
 
 def refresh_since(conn: sqlite3.Connection, collection: sqlite3.Row) -> str:
     """The date (YYYY-MM-DD) new records are looked for from: the last refresh, else the
-    newest run the collection was built from, else its creation; minus OVERLAP_DAYS."""
+    newest run the collection was built from (not a refresh run), else its creation; minus
+    OVERLAP_DAYS."""
     base = collection["last_refreshed_at"]
     if not base:
         base = conn.execute(
             "SELECT MAX(r.created_at) FROM collection_papers cp JOIN search_runs r"
-            " ON r.id = cp.added_from_run WHERE cp.collection_id = ?",
+            " ON r.id = cp.added_from_run WHERE cp.collection_id = ? AND cp.origin = 'run'",
             (collection["id"],)).fetchone()[0] or collection["created_at"]
     start = date.fromisoformat(str(base)[:10]) if base else date.today()
     return (start - timedelta(days=OVERLAP_DAYS)).isoformat()
@@ -136,17 +142,8 @@ def _collection_keys(conn: sqlite3.Connection, collection_id: int) -> set[tuple[
             "SELECT p.source, p.id, p.openalex_id, p.doi FROM collection_papers cp JOIN papers p"
             " ON p.source = cp.source AND p.id = cp.paper_id WHERE cp.collection_id = ?",
             (collection_id,)):
-        out |= _keys(r)
+        out |= work_keys(r)
     return out
-
-
-def _keys(r: sqlite3.Row | dict) -> set[tuple[str, str]]:
-    keys = {(r["source"], r["id"])}
-    if r["openalex_id"]:
-        keys.add(("openalex_id", r["openalex_id"]))
-    if doi_key(r["doi"]):
-        keys.add(("doi", doi_key(r["doi"])))
-    return keys
 
 
 def _new_papers(conn: sqlite3.Connection, payload: dict, collection: sqlite3.Row,
@@ -182,12 +179,20 @@ def _new_papers(conn: sqlite3.Connection, payload: dict, collection: sqlite3.Row
                     "Nothing was searched."})
         return
     before = library_key_set(conn, payload["user_id"])  # the library before this search
-    request = SearchRequest(profile=SearchProfile(**profile),
+    stored = SearchProfile(**profile)
+    # A track that reached the year of `since` was current then: it goes on to this year, or
+    # every newer paper would be filtered out. A profile that ends earlier (a closed
+    # historical period) keeps its end year.
+    if int(payload["since"][:4]) <= stored.year_to < current_year():
+        payload["year_to_extended"] = [stored.year_to, current_year()]
+        stored = stored.model_copy(update={"year_to": current_year()})
+    request = SearchRequest(profile=stored,
                             libraries=[c.name for c in connectors])
     result = run_search(conn, payload["user_id"], request, connectors, max_results)
     run_id, summary = result["id"], result["summary"]
     summary.update({"origin": "collection_refresh", "collection_id": collection["id"],
-                    "since": payload["since"]})
+                    "since": payload["since"],
+                    "year_to_extended": payload.get("year_to_extended")})
     conn.execute("UPDATE search_runs SET summary = ? WHERE id = ?", (json.dumps(summary), run_id))
     payload["run_id"] = run_id
 
@@ -210,12 +215,19 @@ def _new_papers(conn: sqlite3.Connection, payload: dict, collection: sqlite3.Row
         payload["new_papers"] += 1
         if in_library(dict(r), before):
             payload["already_in_library"] += 1  # found earlier for another track
-        inside |= _keys(r)
-    complete = not budget.exhausted and summary["stopped"] not in ("limit", "scan_limit")
+        inside |= work_keys(r)
+    truncated = [c.name for c in connectors if c.truncated]
+    complete = (not budget.exhausted and not truncated
+                and summary["stopped"] not in ("limit", "scan_limit"))
     if budget.exhausted:
         payload["shortfalls"].append({
             "step": "new_papers", "reason": "budget",
             "note": "The request budget ran out before every new record was read. The next "
+                    "refresh starts from the same date."})
+    elif truncated:
+        payload["shortfalls"].append({
+            "step": "new_papers", "reason": "truncated", "libraries": truncated,
+            "note": "A library returned only its first page (see the run's warnings). The next "
                     "refresh starts from the same date."})
     elif not complete:
         payload["shortfalls"].append({
@@ -317,6 +329,8 @@ def run_refresh_job(db_path: Path, job_id: int, factory: Callable, max_results: 
                         "step": "citations", "reason": "no_lookup",
                         "note": "OpenAlex lookups are not available here."})
                 else:
+                    if hasattr(lookup, "budget"):
+                        lookup.budget = budget  # retries count against the budget too
                     _citations(conn, job_id, payload, budget, lookup, max_age_days)
             payload["phase"] = "done"
         _save(conn, job_id, payload, status="partial" if payload["shortfalls"] else "done",
@@ -346,7 +360,8 @@ def refresh_view(row: sqlite3.Row) -> dict:
 
 def queue_auto_refreshes(conn: sqlite3.Connection, days: int, max_requests: int) -> list[int]:
     """Queue a refresh for each collection with a profile whose last refresh (or creation) is
-    older than `days` and that had no refresh attempt in that time. Off when days <= 0."""
+    older than `days` and that had no refresh attempt in that time. Off when days <= 0. The
+    budget is kept within 1..MAX_REFRESH_REQUESTS."""
     if days <= 0:
         return []
     window = f"-{int(days)} days"
@@ -357,12 +372,29 @@ def queue_auto_refreshes(conn: sqlite3.Connection, days: int, max_requests: int)
         " AND NOT EXISTS (SELECT 1 FROM collection_refreshes r WHERE r.collection_id = c.id"
         " AND julianday(r.started_at) > julianday('now', ?)) ORDER BY c.id",
         (window, window)).fetchall()
+    budget = max(1, min(max_requests, MAX_REFRESH_REQUESTS))
     jobs = []
     for r in rows:
-        if open_refresh(conn, r["id"]) is None:
-            jobs.append(queue_refresh(conn, r["id"], r["user_id"], max_requests, True, "auto"))
-    conn.commit()
+        # The same lock as POST /refresh, so a manual refresh cannot slip in between.
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            if open_refresh(conn, r["id"]) is None:
+                jobs.append(queue_refresh(conn, r["id"], r["user_id"], budget, True, "auto"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
     return jobs
+
+
+def requests_reserved(conn: sqlite3.Connection, user_id: int) -> int:
+    """Request budgets of the user's manual refreshes started in the last hour."""
+    return conn.execute(
+        "SELECT COALESCE(SUM(json_extract(j.payload, '$.max_requests')), 0)"
+        " FROM collection_refreshes r JOIN jobs j ON j.id = r.job_id"
+        " JOIN collections c ON c.id = r.collection_id WHERE c.user_id = ?"
+        " AND r.trigger = 'manual' AND julianday(r.started_at) > julianday('now', '-1 hour')",
+        (user_id,)).fetchone()[0]
 
 
 def run_waiting_refreshes(db_path: Path, factory: Callable, max_results: int,

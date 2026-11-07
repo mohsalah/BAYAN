@@ -40,12 +40,15 @@ class OpenAlexStub:
         self.known: dict[str, dict] = {}
         self.requests: list[dict] = []
         self.fail = False
+        self.first_page_only = False  # as OpenAlex without a key: later pages answer 401
 
     def __call__(self, request):
         params = dict(request.url.params)
         self.requests.append(params)
         if self.fail:
             return httpx.Response(500)
+        if self.first_page_only and params.get("cursor", "*") != "*":
+            return httpx.Response(401)
         flt = params.get("filter", "")
         if flt.startswith(("openalex:", "doi:")):
             values = flt.split(":", 1)[1].split("|")
@@ -358,3 +361,89 @@ def test_an_old_database_gets_the_refresh_table(tmp_path):
     with sqlite3.connect(path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM collection_refreshes").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+
+
+def test_a_track_that_was_current_goes_on_to_this_year(env):
+    sign_in(env, "a@example.org")
+    cid = make_collection(env)
+    with db(env) as conn:
+        profile = json.loads(conn.execute("SELECT profile FROM collections").fetchone()[0])
+        profile["year_to"] = NOW - 1  # stored last year
+        conn.execute("UPDATE collections SET profile = ?, last_refreshed_at = ?",
+                     (json.dumps(profile), f"{NOW - 1}-12-20T00:00:00Z"))
+    env.stub.requests.clear()
+    done = refresh(env, cid, citations=False)
+    assert all(f"publication_year:1990-{NOW}," in f for f in search_filters(env.stub))
+    with db(env) as conn:
+        summary = json.loads(conn.execute("SELECT summary FROM search_runs WHERE id = ?",
+                                          (done["run_id"],)).fetchone()[0])
+    assert summary["year_to_extended"] == [NOW - 1, NOW]
+
+
+def test_a_closed_period_keeps_its_end_year(env):
+    sign_in(env, "a@example.org")
+    cid = make_collection(env)
+    with db(env) as conn:
+        profile = json.loads(conn.execute("SELECT profile FROM collections").fetchone()[0])
+        profile["year_to"] = 2010
+        conn.execute("UPDATE collections SET profile = ?", (json.dumps(profile),))
+    env.stub.requests.clear()
+    refresh(env, cid, citations=False)
+    assert all("publication_year:1990-2010," in f for f in search_filters(env.stub))
+
+
+def test_a_partial_first_refresh_does_not_move_the_start(env):
+    sign_in(env, "a@example.org")
+    cid = make_collection(env)
+    with db(env) as conn:
+        conn.execute("UPDATE search_runs SET created_at = '2025-01-01 00:00:00'")
+    env.stub.pub_pages = [[wd("W3")], [wd("W4")]]
+    first = refresh(env, cid, max_requests=1, citations=False)
+    assert first["since"] == "2024-12-02" and first["new_papers"] == 1
+    assert refresh(env, cid, max_requests=1, citations=False)["since"] == "2024-12-02"
+
+
+def test_a_first_page_only_answer_does_not_count_as_finished(env):
+    sign_in(env, "a@example.org")
+    cid = make_collection(env)
+    env.stub.pub_pages = [[wd("W3")], [wd("W4")]]
+    env.stub.first_page_only = True
+    done = refresh(env, cid, citations=False)
+    assert done["shortfalls"][0]["reason"] == "truncated"
+    with db(env) as conn:
+        assert conn.execute("SELECT last_refreshed_at FROM collections").fetchone()[0] is None
+
+
+def test_retries_are_counted_against_the_budget():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(503)
+
+    oa = OpenAlexConnector(client=httpx.Client(transport=httpx.MockTransport(handler)),
+                           sleep=lambda s: None, max_attempts=5)
+    budget = RequestBudget(3)
+    with pytest.raises(Exception, match="budget"):
+        list(oa.search_since(SearchProfile(query="x"), "2026-01-01", budget))
+    assert len(calls) == 3 and budget.used == 3
+
+
+def test_manual_refreshes_have_an_hourly_limit(env):
+    sign_in(env, "a@example.org")
+    cid = make_collection(env)
+    refresh(env, cid, max_requests=150, citations=False)
+    r = env.post(f"/api/collections/{cid}/refresh", json={"max_requests": 100})
+    assert r.status_code == 429
+
+
+def test_the_auto_refresh_budget_is_kept_in_range(env):
+    sign_in(env, "a@example.org")
+    make_collection(env)
+    with db(env) as conn:
+        conn.execute("UPDATE collections SET created_at = datetime('now', '-30 days')")
+        conn.commit()
+        job = rf.queue_auto_refreshes(conn, 7, 5000)[0]
+        payload = json.loads(conn.execute("SELECT payload FROM jobs WHERE id = ?",
+                                          (job,)).fetchone()[0])
+    assert payload["max_requests"] == rf.MAX_REFRESH_REQUESTS
