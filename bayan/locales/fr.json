@@ -196,6 +196,7 @@
   "lib.membership": "(abonnement)",
   "lib.lookup": "recherche automatique de DOI",
   "lib.planned": "prévue",
+  "lib.needs": "Nécessite : {needs}",
   "lib.unavailable": "pas encore disponible",
   "manual.add": "Ajouter un manuel",
   "manual.add_to_run": "Ajouter à cette recherche",

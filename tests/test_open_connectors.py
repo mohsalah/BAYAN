@@ -334,7 +334,7 @@ def make_factory(tmp_path):
         "europepmc": sequence([(200, {"resultList": {"result": [EPMC_RECORD]}}, {})]),
     }
 
-    def factory(lib):
+    def factory(lib, user_id=None):
         conn = real(lib)
         conn._client = clients[lib]
         return conn
@@ -399,7 +399,7 @@ def test_unavailable_planned_libraries_stay_refused(tmp_path):
     with TestClient(create_app(settings, connector_factory=factory)) as client:
         client.post("/api/auth/register", json={"email": "ada@example.org",
                                                 "password": "correct horse battery"})
-        for lib in ("unpaywall", "ieee", "nrc_adams"):
+        for lib in ("unpaywall", "ieee", "nrc_adams", "semanticscholar", "scopus"):
             res = client.post("/api/search", json={"libraries": [lib], "profile": {}})
             assert res.status_code == 422
 

@@ -165,7 +165,7 @@ def test_language_queries_fall_back_to_the_main_query():
 
 def test_api_rejects_other_languages_with_a_clear_message(tmp_path):
     app = create_app(Settings(database_path=tmp_path / "t.sqlite"),
-                     connector_factory=lambda lib: Fake(lib, [], ALL))
+                     connector_factory=lambda lib, user_id=None: Fake(lib, [], ALL))
     with TestClient(app) as client:
         client.post("/api/auth/register", json={"email": "a@example.org", "password": PASSWORD})
         for profile, text in (
@@ -261,7 +261,7 @@ def paper(i, language="en", doi=None, source="openalex", **kw):
 def run_api(tmp_path, connectors, profile, libraries=None, max_results=50, extra=None):
     by_name = {c.name: c for c in connectors}
     app = create_app(Settings(database_path=tmp_path / "t.sqlite", search_max_results=max_results),
-                     connector_factory=lambda lib: by_name.get(lib, Fake(lib, [])))
+                     connector_factory=lambda lib, user_id=None: by_name.get(lib, Fake(lib, [])))
     with TestClient(app) as client:
         client.post("/api/auth/register", json={"email": "a@example.org", "password": PASSWORD})
         body = {"profile": {"query": "main", "year_from": 2020, "year_to": 2020, **profile},

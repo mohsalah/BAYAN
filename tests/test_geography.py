@@ -151,7 +151,7 @@ def paper(i, countries, source="openalex", **kw):
 def run_api(tmp_path, connectors, profile, libraries=None):
     by_name = {c.name: c for c in connectors}
     app = create_app(Settings(database_path=tmp_path / "t.sqlite", search_max_results=50),
-                     connector_factory=lambda lib: by_name.get(lib, Fake(lib, [], ALL)))
+                     connector_factory=lambda lib, user_id=None: by_name.get(lib, Fake(lib, [], ALL)))
     with TestClient(app) as client:
         client.post("/api/auth/register", json={"email": "a@example.org", "password": PASSWORD})
         body = {"profile": {"query": "r", "year_from": 2020, "year_to": 2020, **profile},
@@ -249,7 +249,7 @@ def test_invalid_geography_is_rejected_with_a_clear_message(tmp_path):
 
 def test_regions_endpoint(tmp_path):
     app = create_app(Settings(database_path=tmp_path / "t.sqlite"),
-                     connector_factory=lambda lib: Fake(lib, [], ALL))
+                     connector_factory=lambda lib, user_id=None: Fake(lib, [], ALL))
     with TestClient(app) as client:
         data = client.get("/api/regions").json()
     assert data["version"] == REGIONS_VERSION and data["bases"] == ["author_affiliation"]

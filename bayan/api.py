@@ -6,7 +6,6 @@ import json
 import logging
 import sqlite3
 import threading
-from collections.abc import Callable
 from contextlib import asynccontextmanager, closing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -55,9 +54,8 @@ from .connectors import (
     OstiConnector,
     ScopusConnector,
     SemanticScholarConnector,
-    build_connector,
 )
-from .connectors.base import Connector
+from .connectors.base import Connector, ConnectorFactory
 from .connectors.openalex import LOOKUP_BATCH
 from .db import connect, init_db
 from .doctypes import type_key, type_report
@@ -126,7 +124,7 @@ from .membership import (
     delete_key,
     delete_template,
     get_template,
-    get_user_key,
+    get_user_keys,
     key_status,
     paper_proxy_link,
     save_key,
@@ -209,9 +207,6 @@ COOKIE = "bayan_session"
 STATIC = Path(__file__).parent / "static"
 LOCALES = Path(__file__).parent / "locales"
 
-# Called as factory(library_id), or factory(library_id, user_id=...) when it takes a user
-# (see connectors.base.build_connector); test factories may take the library id only.
-ConnectorFactory = Callable[..., Connector]
 
 log = logging.getLogger("bayan.api")
 
@@ -455,10 +450,12 @@ def scopus_connector(settings: Settings, user_id: int | None) -> ScopusConnector
     """Scopus with the user's own saved key and optional institutional token."""
     if user_id is None:
         raise ConnectorError("Scopus is searched only with a signed-in user's own key")
-    key = get_user_key(user_id, "scopus", settings)
-    if not key:
+    # The factory has no request connection, so this opens one short-lived connection and
+    # reads both secrets with one query.
+    keys = get_user_keys(user_id, ["scopus", "scopus_insttoken"], settings)
+    if not keys["scopus"]:
         raise ConnectorError("Add your Scopus API key under Membership access first")
-    return ScopusConnector(key, get_user_key(user_id, "scopus_insttoken", settings))
+    return ScopusConnector(keys["scopus"], keys["scopus_insttoken"])
 
 
 def reader_key_ok(key: str | None) -> bool:
@@ -710,8 +707,12 @@ def create_app(
         if recent >= settings.searches_per_hour:
             raise HTTPException(429, "Search limit reached for this hour; try again later")
         try:
-            connectors = [build_connector(make_connector, lib_id, user["id"])
-                          for lib_id in body.libraries]
+            connectors, failed = [], {}
+            for lib_id in body.libraries:
+                try:
+                    connectors.append(make_connector(lib_id, user_id=user["id"]))
+                except ConnectorError as exc:  # e.g. no saved key: reported, others still run
+                    failed[lib_id] = str(exc)
             if body.mode == "local_then_remote":
                 before = library_key_set(conn, user["id"])
                 # At most as many local hits as papers wanted; they are listed in addition to
@@ -720,7 +721,7 @@ def create_app(
             result = run_search(
                 conn, user["id"], body, connectors, settings.search_max_results,
                 doi_lookup=make_connector("crossref"), doi_budget=settings.doi_lookup_budget,
-                doi_seconds=settings.doi_lookup_seconds,
+                doi_seconds=settings.doi_lookup_seconds, library_errors=failed,
             )
             if body.mode == "local_then_remote":
                 try:

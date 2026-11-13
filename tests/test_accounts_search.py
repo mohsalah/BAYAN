@@ -35,7 +35,7 @@ def setup(tmp_path):
     fake = FakeConnector([make_paper(i, 2020 + i % 2) for i in range(10)])
     settings = Settings(database_path=tmp_path / "t.sqlite", search_max_results=50,
                         searches_per_hour=3)
-    app = create_app(settings, connector_factory=lambda lib: fake)
+    app = create_app(settings, connector_factory=lambda lib, user_id=None: fake)
     with TestClient(app) as client:
         yield client, fake, app
 

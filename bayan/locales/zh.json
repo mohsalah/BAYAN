@@ -196,6 +196,7 @@
   "lib.membership": "（会员）",
   "lib.lookup": "自动 DOI 查找",
   "lib.planned": "计划中",
+  "lib.needs": "需要：{needs}",
   "lib.unavailable": "暂不可用",
   "manual.add": "添加手册",
   "manual.add_to_run": "添加到本次检索",

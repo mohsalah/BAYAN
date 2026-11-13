@@ -18,12 +18,12 @@ Each refresh is recorded in `collection_refreshes` with what it really did.
 import json
 import logging
 import sqlite3
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import closing
 from datetime import date, timedelta
 from pathlib import Path
 
-from .connectors.base import ConnectorError, RequestBudget, build_connector
+from .connectors.base import ConnectorError, ConnectorFactory, RequestBudget
 from .connectors.openalex import LOOKUP_BATCH
 from .db import connect, now_iso
 from .downloads import claim_job, set_job
@@ -147,7 +147,7 @@ def _collection_keys(conn: sqlite3.Connection, collection_id: int) -> set[tuple[
 
 
 def _new_papers(conn: sqlite3.Connection, payload: dict, collection: sqlite3.Row,
-                budget: RequestBudget, factory: Callable, max_results: int) -> None:
+                budget: RequestBudget, factory: ConnectorFactory, max_results: int) -> None:
     profile = json.loads(collection["profile"]) if collection["profile"] else None
     libraries = json.loads(collection["libraries"]) if collection["libraries"] else []
     if not profile or not libraries:
@@ -163,7 +163,7 @@ def _new_papers(conn: sqlite3.Connection, payload: dict, collection: sqlite3.Row
     for lib in libraries:
         try:
             # With the collection owner's id: a membership library (Scopus) uses their key.
-            inner = build_connector(factory, lib, payload["user_id"])
+            inner = factory(lib, user_id=payload["user_id"])
         except KeyError:
             without.append(lib)
             continue
@@ -223,13 +223,19 @@ def _new_papers(conn: sqlite3.Connection, payload: dict, collection: sqlite3.Row
             payload["already_in_library"] += 1  # found earlier for another track
         inside |= work_keys(r)
     truncated = [c.name for c in connectors if c.truncated]
-    complete = (not budget.exhausted and not truncated
+    failed = summary.get("library_errors") or {}
+    complete = (not budget.exhausted and not truncated and not failed
                 and summary["stopped"] not in ("limit", "scan_limit"))
     if budget.exhausted:
         payload["shortfalls"].append({
             "step": "new_papers", "reason": "budget",
             "note": "The request budget ran out before every new record was read. The next "
                     "refresh starts from the same date."})
+    elif failed:
+        payload["shortfalls"].append({
+            "step": "new_papers", "reason": "library_failed", "libraries": failed,
+            "note": "A library failed during the refresh (see the reasons). The next refresh "
+                    "starts from the same date."})
     elif truncated:
         payload["shortfalls"].append({
             "step": "new_papers", "reason": "truncated", "libraries": truncated,
@@ -300,7 +306,7 @@ def _citations(conn: sqlite3.Connection, job_id: int, payload: dict, budget: Req
         _save(conn, job_id, payload)
 
 
-def run_refresh_job(db_path: Path, job_id: int, factory: Callable, max_results: int,
+def run_refresh_job(db_path: Path, job_id: int, factory: ConnectorFactory, max_results: int,
                     max_age_days: int, claimed: bool = False) -> None:
     """Background job body. Resumable: the request count is saved before each request is
     sent, and a restarted job carries on from its phase with the budget left."""
@@ -403,7 +409,7 @@ def requests_reserved(conn: sqlite3.Connection, user_id: int) -> int:
         (user_id,)).fetchone()[0]
 
 
-def run_waiting_refreshes(db_path: Path, factory: Callable, max_results: int,
+def run_waiting_refreshes(db_path: Path, factory: ConnectorFactory, max_results: int,
                           max_age_days: int, stale_seconds: int) -> list[int]:
     """Run queued automatic refreshes and continue interrupted ones."""
     with closing(connect(db_path)) as conn:

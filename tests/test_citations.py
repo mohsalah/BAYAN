@@ -129,7 +129,7 @@ def test_export_endpoint_bibtex_and_ris(tmp_path):
               for i in range(3)]
     settings = Settings(database_path=tmp_path / "x.sqlite", job_resume_interval=0)
     with TestClient(create_app(settings,
-                               connector_factory=lambda lib: FakeConnector(papers))) as c:
+                               connector_factory=lambda lib, user_id=None: FakeConnector(papers))) as c:
         register(c)
         run_id = search(c).json()["id"]
         r = c.post(f"/api/runs/{run_id}/export", json={"format": "bibtex"})

@@ -80,7 +80,7 @@ def env(tmp_path):
     oa = OpenAlexConnector(client=httpx.Client(transport=httpx.MockTransport(handler)),
                            sleep=lambda s: None, max_attempts=1)
 
-    def factory(name):
+    def factory(name, user_id=None):
         if name == "openalex":
             return Proxy(lib, oa)
         return None

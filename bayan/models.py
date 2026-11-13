@@ -231,6 +231,9 @@ class Paper(BaseModel):
     authors: list[str] = Field(default_factory=list)
     countries: list[str] = Field(default_factory=list)
     citations: int = 0
+    # False when a library that reports citation counts left this record's count out: the 0 is
+    # then "not reported", not a checked count (see search.CITATION_LIBRARIES).
+    citations_reported: bool = True
     is_oa: bool = False
     oa_url: str = ""
     landing_url: str = ""

@@ -94,7 +94,7 @@ def env(tmp_path):
         papers = [paper(i).model_copy(update={"abstract": ABSTRACTS[f"W{i}"], "language": ""})
                   for i in range(1, 5)]
         fake = FakeIdeas() if ideas is None else ideas
-        app = create_app(settings, connector_factory=lambda lib: Connector(papers),
+        app = create_app(settings, connector_factory=lambda lib, user_id=None: Connector(papers),
                          fetcher=make_fetcher(Net()), concept_client=FakeConcepts(),
                          ideas_client=fake or None)
         tc = TestClient(app)

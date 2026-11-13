@@ -196,6 +196,7 @@
   "lib.membership": "(membership)",
   "lib.lookup": "automatic DOI lookup",
   "lib.planned": "planned",
+  "lib.needs": "Needs {needs}",
   "lib.unavailable": "not available yet",
   "manual.add": "Add a manual",
   "manual.add_to_run": "Add to this run",

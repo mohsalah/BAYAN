@@ -10,14 +10,15 @@ automatically to find the DOI of papers found elsewhere that have none (title, y
 author must all match confidently; at most 50 lookups per run, cached; the run summary reports
 `doi_lookup` counts). Unpaywall is still planned.
 
-**More search libraries.** OSTI.gov (US DOE), IAEA INIS, DOAJ, Semantic Scholar and CORE are
-open sources (none needs a key; they are not ticked by default). `SEMANTIC_SCHOLAR_API_KEY` and
-`CORE_API_KEY` are optional server keys: without them both answer under a low shared rate limit.
-Scopus (Elsevier) is a membership library: it uses the signed-in user's own Elsevier API key
-saved under Membership access (encrypted), plus an optional institutional token; Scopus also
-needs institutional access (campus network/VPN or the token). Collection refreshes skip
-libraries without a "since" date filter (all of these) and record why. NRC ADAMS is listed as
-unconfirmed (its API did not answer).
+**More search libraries.** OSTI.gov (US DOE), IAEA INIS, DOAJ and CORE are open sources (no key
+needed; not ticked by default). `CORE_API_KEY` is an optional server key that raises CORE's rate
+limit. Semantic Scholar (optional `SEMANTIC_SCHOLAR_API_KEY`) and Scopus (Elsevier) have
+connectors but stay "planned" until a live search works: Semantic Scholar answered only HTTP 429
+so far, and Scopus needs the user's own Elsevier API key (saved encrypted under Membership
+access, with an optional institutional token) plus institutional access. If one chosen library
+fails, the others' results are kept and the run summary lists the reason under
+`library_errors`. Collection refreshes skip libraries without a "since" date filter (all of
+these) and record why. NRC ADAMS is listed as unconfirmed (its API did not answer).
 
 ## Reference types
 

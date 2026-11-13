@@ -717,9 +717,9 @@ async function loadMeta() {
   getLibs = dropdown('ddLibs', 'search.libraries', libs.map(l => ({
     value: l.id, label: () => l.name + (l.tier === 'membership' ? ' ' + t('lib.membership') : ''),
     // Only preselected libraries start ticked; the others (and membership ones, which need the
-    // user's own key) are chosen by hand. `needs` is server data in English, shown on hover.
+    // user's own key) are chosen by hand. `needs` is server data (English), shown on hover.
     checked: l.status === 'available' && l.role === 'search' && !!l.preselected, disabled: l.status !== 'available' || l.role !== 'search',
-    title: l.needs ? 'Needs ' + l.needs : '',
+    title: () => l.needs ? t('lib.needs', { needs: l.needs }) : '',
     badge: () => l.role === 'lookup' ? t('lib.lookup') : l.status === 'available' ? '' : (l.status === 'unconfirmed' ? t('lib.unavailable') : t('lib.planned')),
   })), 'lib');
   // Category names and descriptions come from the server in English (they are data, not interface text).

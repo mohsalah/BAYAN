@@ -178,7 +178,7 @@ def env(tmp_path):
                         search_max_results=50, searches_per_hour=50, translate_max_chars=400,
                         translations_per_hour=6)
     engine = FakeEngine()
-    app = create_app(settings, connector_factory=lambda lib: fake, translator=engine)
+    app = create_app(settings, connector_factory=lambda lib, user_id=None: fake, translator=engine)
     with TestClient(app) as client:
         register(client)
         client.engine, client.run_id, client.app_settings = engine, search(client).json()["id"], \
@@ -361,7 +361,7 @@ def pdf_env(tmp_path):
     fake = FakeConnector([paper(1)])
     settings = Settings(database_path=tmp_path / "t.sqlite", pdf_root=tmp_path / "pdfs",
                         search_max_results=50, searches_per_hour=50, translations_per_hour=20)
-    app = create_app(settings, connector_factory=lambda lib: fake, translator=FakeEngine())
+    app = create_app(settings, connector_factory=lambda lib, user_id=None: fake, translator=FakeEngine())
     with TestClient(app) as client:
         register(client)
         search(client)

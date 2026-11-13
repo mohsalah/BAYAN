@@ -1,6 +1,8 @@
 """OSTI, INIS, DOAJ, Semantic Scholar, CORE and Scopus connectors. No live network: every
 response is a fixture shaped like the live answers observed when the connectors were written."""
 
+from contextlib import closing
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -17,7 +19,6 @@ from bayan.connectors import (
     OstiConnector,
     ScopusConnector,
     SemanticScholarConnector,
-    build_connector,
     core,
     doaj,
     inis,
@@ -25,10 +26,11 @@ from bayan.connectors import (
     scopus,
     semanticscholar,
 )
+from bayan.db import connect, init_db
 from bayan.doctypes import CAPABILITIES
 from bayan.libraries import LIBRARIES
 from bayan.models import SearchProfile
-from bayan.search import CITATION_LIBRARIES
+from bayan.search import CITATION_LIBRARIES, _store_paper
 
 # Made-up secrets for the tests; they are not credentials for anything.
 FAKE_KEY = "fake-scopus-key-0000aaaa1111bbbb"
@@ -367,7 +369,7 @@ def test_scopus_parse():
     p = scopus.parse_entry(SCOPUS_ENTRY)
     assert (p.source, p.id, p.year, p.citations) == ("scopus", "85012345678", 2017, 12)
     assert p.doi == "10.1016/j.nucengdes.2017.01" and p.category == "peer_reviewed"
-    assert p.authors == ["Lovelace A."] and p.venue == "Nuclear Engineering and Design"
+    assert p.authors == [] and p.venue == "Nuclear Engineering and Design"
     assert p.landing_url == "https://www.scopus.com/inward/record.uri?eid=2" and not p.is_oa
     assert scopus.parse_entry({**SCOPUS_ENTRY, "openaccessFlag": "true"}).is_oa
 
@@ -412,64 +414,122 @@ def test_scopus_refusal_is_explained_without_the_key(status):
     assert str(exc.value) == scopus.REFUSED and FAKE_KEY not in str(exc.value)
 
 
+def test_scopus_lists_no_author_list_and_unreported_counts_stay_unreported():
+    p = scopus.parse_entry(SCOPUS_ENTRY)
+    assert p.first_author == "Lovelace A." and p.authors == [] and p.citations_reported
+    bare = scopus.parse_entry({k: v for k, v in SCOPUS_ENTRY.items() if k != "citedby-count"})
+    assert bare.citations == 0 and not bare.citations_reported
+
+
+def test_semanticscholar_missing_count_is_not_reported():
+    p = semanticscholar.parse_record({k: v for k, v in S2_PAPER.items()
+                                      if k != "citationCount"})
+    assert p.citations == 0 and not p.citations_reported
+    assert semanticscholar.parse_record(S2_PAPER).citations_reported
+
+
+def test_semanticscholar_never_asks_past_the_first_999_results():
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        n = int(request.url.params["limit"])
+        return httpx.Response(200, json={"next": 1, "data": [S2_PAPER] * n})
+
+    conn = SemanticScholarConnector(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert len(list(conn.search(PROFILE))) == 999
+    windows = [(int(r.url.params["offset"]), int(r.url.params["limit"])) for r in seen]
+    assert all(o + n <= 999 for o, n in windows) and windows[-1] == (900, 99)
+    assert conn.truncated
+
+
+def test_unreported_count_is_stored_as_not_checked_and_keeps_the_stored_count(tmp_path):
+    init_db(tmp_path / "t.sqlite")
+    conn = connect(tmp_path / "t.sqlite")
+    _store_paper(conn, semanticscholar.parse_record(S2_PAPER))
+    first = conn.execute("SELECT citations, citations_updated_at FROM papers").fetchone()
+    assert first["citations"] == 7 and first["citations_updated_at"]
+    later = semanticscholar.parse_record({k: v for k, v in S2_PAPER.items()
+                                          if k != "citationCount"})
+    _store_paper(conn, later)
+    row = conn.execute("SELECT citations, citations_updated_at FROM papers").fetchone()
+    assert (row["citations"], row["citations_updated_at"]) == (7, first["citations_updated_at"])
+    _store_paper(conn, scopus.parse_entry(
+        {k: v for k, v in SCOPUS_ENTRY.items() if k != "citedby-count"}))
+    row = conn.execute("SELECT citations, citations_updated_at FROM papers"
+                       " WHERE source = 'scopus'").fetchone()
+    assert row["citations"] == 0 and row["citations_updated_at"] is None
+    conn.close()
+
+
 # ---------------------------------------------------------------- registry and wiring
 
-NEW = ("osti", "inis", "doaj", "semanticscholar", "core", "scopus")
+OPEN_NEW = ("osti", "inis", "doaj", "core")
 
 
 def test_registry_capabilities_and_citation_sources():
     libs = {lib["id"]: lib for lib in LIBRARIES}
-    for lib_id in NEW:
-        assert libs[lib_id]["status"] == "available" and lib_id in CAPABILITIES
-        assert not libs[lib_id].get("preselected")  # chosen by hand
-    assert libs["scopus"]["tier"] == "membership"
+    for lib_id in OPEN_NEW + ("semanticscholar", "scopus"):
+        assert lib_id in CAPABILITIES and not libs[lib_id].get("preselected")
+    assert all(libs[i]["status"] == "available" for i in OPEN_NEW)
+    # Not confirmed by a live search yet (S2 answered only 429; Scopus needs the owner's key).
+    assert libs["semanticscholar"]["status"] == "planned"
+    assert libs["scopus"]["status"] == "planned" and libs["scopus"]["tier"] == "membership"
     assert libs["nrc_adams"]["status"] == "unconfirmed"
     assert libs["elsevier"]["status"] == "planned"
     assert {"semanticscholar", "scopus"} <= CITATION_LIBRARIES
-    assert not {"osti", "inis", "doaj", "core"} & CITATION_LIBRARIES
+    assert not set(OPEN_NEW) & CITATION_LIBRARIES
 
 
 def test_default_factory_builds_the_open_connectors(tmp_path):
     settings = Settings(database_path=tmp_path / "x.sqlite", semantic_scholar_api_key=FAKE_KEY,
                         core_api_key=FAKE_TOKEN)
     make = default_connector_factory(settings)
-    assert [make(i).name for i in NEW[:5]] == list(NEW[:5])
+    names = OPEN_NEW + ("semanticscholar",)
+    assert [make(i).name for i in names] == list(names)
     assert make("semanticscholar")._api_key == FAKE_KEY and make("core")._api_key == FAKE_TOKEN
     assert FAKE_KEY not in repr(settings) and FAKE_TOKEN not in repr(settings)
+    with pytest.raises(ConnectorError, match="signed-in user"):
+        make("scopus")
 
 
-def test_build_connector_passes_the_user_only_to_factories_that_take_one():
-    calls = []
-    assert build_connector(lambda lib: calls.append(lib) or lib, "osti", 7) == "osti"
-
-    def with_user(lib, user_id=None):
-        calls.append((lib, user_id))
-        return lib
-
-    build_connector(with_user, "scopus", 7)
-    assert calls == ["osti", ("scopus", 7)]
+@pytest.fixture
+def scopus_on(monkeypatch):
+    """Scopus is 'planned' until a live test; these tests switch it on to test the wiring."""
+    lib = next(lib for lib in LIBRARIES if lib["id"] == "scopus")
+    monkeypatch.setitem(lib, "status", "available")
 
 
-def scopus_app(tmp_path, seen):
+def wired_app(tmp_path, seen, responses=None):
     settings = Settings(database_path=tmp_path / "t.sqlite", app_secret_key=SECRET,
                         search_max_results=50)
     real = default_connector_factory(settings)
+    responses = responses or {}
 
     def factory(lib, user_id=None):
         conn = real(lib, user_id=user_id)
         if lib == "scopus":
             conn._client = recorder([(200, scopus_page([SCOPUS_ENTRY], 1), {})], seen)
+        elif lib in responses:
+            conn._client = recorder(responses[lib], seen)
+            conn._sleep, conn._max_attempts = no_sleep, 1
         return conn
 
     return TestClient(create_app(settings, connector_factory=factory))
 
 
-def test_scopus_search_needs_the_users_saved_key(tmp_path):
+def register(client, email="a@example.org"):
+    client.post("/api/auth/register", json={"email": email, "password": PASSWORD})
+
+
+SEARCH = {"query": "CANDU", "year_from": 2010, "document_types": ["peer_reviewed", "proceedings"]}
+
+
+def test_scopus_alone_without_a_key_fails_and_with_the_users_key_works(tmp_path, scopus_on):
     seen = []
-    with scopus_app(tmp_path, seen) as client:
-        client.post("/api/auth/register", json={"email": "a@example.org", "password": PASSWORD})
-        body = {"libraries": ["scopus"], "profile": {"query": "CANDU", "year_from": 2010,
-                                                     "document_types": ["peer_reviewed"]}}
+    with wired_app(tmp_path, seen) as client:
+        register(client)
+        body = {"libraries": ["scopus"], "profile": SEARCH}
         res = client.post("/api/search", json=body)
         assert res.status_code == 502
         assert res.json()["detail"] == "Add your Scopus API key under Membership access first"
@@ -481,21 +541,57 @@ def test_scopus_search_needs_the_users_saved_key(tmp_path):
         res = client.post("/api/search", json=body)
         assert res.status_code == 200, res.text
         assert res.json()["summary"]["by_library"] == {"scopus": 1}
+        assert res.json()["summary"]["library_errors"] == {}
         assert seen[0].headers["x-els-apikey"] == FAKE_KEY
         assert seen[0].headers["x-els-insttoken"] == FAKE_TOKEN
         assert FAKE_KEY not in res.text
 
 
-def test_another_users_scopus_key_is_not_used(tmp_path):
+def test_planned_scopus_is_refused_but_its_keys_can_be_saved(tmp_path):
+    with wired_app(tmp_path, []) as client:
+        register(client)
+        assert client.post("/api/search", json={"libraries": ["scopus"],
+                                                "profile": SEARCH}).status_code == 422
+        assert client.put("/api/membership/scopus/key", json={"key": FAKE_KEY}).status_code == 200
+        r = client.put("/api/membership/scopus_insttoken/key", json={"key": FAKE_TOKEN})
+        assert r.status_code == 200
+
+
+def test_another_users_scopus_key_is_not_used(tmp_path, scopus_on):
     seen = []
-    with scopus_app(tmp_path, seen) as client:
-        client.post("/api/auth/register", json={"email": "a@example.org", "password": PASSWORD})
+    with wired_app(tmp_path, seen) as client:
+        register(client)
         client.put("/api/membership/scopus/key", json={"key": FAKE_KEY})
         client.post("/api/auth/logout")
-        client.post("/api/auth/register", json={"email": "b@example.org", "password": PASSWORD})
-        res = client.post("/api/search", json={"libraries": ["scopus"],
-                                               "profile": {"query": "CANDU"}})
+        register(client, "b@example.org")
+        res = client.post("/api/search", json={"libraries": ["scopus"], "profile": SEARCH})
         assert res.status_code == 502 and seen == []
+
+
+def test_one_failing_library_does_not_lose_the_others(tmp_path, scopus_on):
+    seen = []
+    osti_page = (200, [OSTI_RECORD], {"x-total-count": "1"})
+    with wired_app(tmp_path, seen, {"osti": [osti_page], "doaj": [(500, {}, {})]}) as client:
+        register(client)
+        res = client.post("/api/search", json={"libraries": ["scopus", "osti", "doaj"],
+                                               "profile": SEARCH})
+        assert res.status_code == 200, res.text
+        s = res.json()["summary"]
+        assert s["by_library"]["osti"] == 1
+        assert s["library_errors"] == {
+            "scopus": "Add your Scopus API key under Membership access first",
+            "doaj": "DOAJ request failed: HTTP 500"}
+
+
+def test_502_only_when_every_library_failed(tmp_path, scopus_on):
+    with wired_app(tmp_path, [], {"doaj": [(500, {}, {})]}) as client:
+        register(client)
+        res = client.post("/api/search", json={"libraries": ["scopus", "doaj"],
+                                               "profile": SEARCH})
+        assert res.status_code == 502
+        assert "Scopus API key" in res.json()["detail"] and "HTTP 500" in res.json()["detail"]
+    with closing(connect(tmp_path / "t.sqlite")) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM search_runs").fetchone()[0] == 0
 
 
 def test_refresh_passes_the_owner_and_records_unavailable_libraries(env):  # noqa: F811
@@ -516,3 +612,36 @@ def test_refresh_passes_the_owner_and_records_unavailable_libraries(env):  # noq
     assert done["skipped"] == {"libraries_unavailable": {
         "openalex": "Add your Scopus API key under Membership access first"}}
     assert done["shortfalls"][0]["reason"] == "no_library_with_date_filter"
+
+
+def test_refresh_with_a_failing_library_keeps_the_others_and_is_not_complete(env):  # noqa: F811
+    class Failing:
+        name, tier = "osti", "open"
+        supported_filters = frozenset({"years"})
+
+        def search_since(self, profile, since, budget):
+            raise ConnectorError("OSTI request failed: HTTP 503")
+            yield  # a generator, like the real connectors
+
+    sign_in(env, "a@example.org")
+    cid = make_collection(env)
+    with db(env) as conn:
+        conn.execute("UPDATE collections SET libraries = ? WHERE id = ?",
+                     ('["openalex", "osti"]', cid))
+        before = conn.execute("SELECT last_refreshed_at FROM collections WHERE id = ?",
+                              (cid,)).fetchone()[0]
+        job = rf.queue_refresh(conn, cid, 1, 5, False)
+        conn.commit()
+
+    def factory(lib, user_id=None):
+        return Failing() if lib == "osti" else env.factory(lib)
+
+    rf.run_refresh_job(env.db, job, factory, 50, 30)
+    done = history(env, cid)[0]
+    assert done["status"] == "partial"
+    failed = next(s for s in done["shortfalls"] if s["reason"] == "library_failed")
+    assert failed["libraries"] == {"osti": "OSTI request failed: HTTP 503"}
+    with db(env) as conn:
+        after = conn.execute("SELECT last_refreshed_at FROM collections WHERE id = ?",
+                             (cid,)).fetchone()[0]
+    assert after == before  # the next refresh starts from the same date

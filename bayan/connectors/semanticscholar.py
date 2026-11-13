@@ -13,7 +13,8 @@ BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 FIELDS = ("title,abstract,year,venue,authors,externalIds,citationCount,isOpenAccess,"
           "openAccessPdf,publicationTypes,url")
 PAGE_SIZE = 100  # the endpoint's largest `limit`
-MAX_RECORDS = 1000  # /paper/search returns at most 1,000 results per query
+# /paper/search serves only the first 1,000 results: offset + limit must stay below 1,000.
+MAX_RECORDS = 999
 JOURNAL_TYPES = ("JournalArticle", "Review")
 
 
@@ -60,6 +61,7 @@ def parse_record(record: dict) -> Paper:
         first_author=authors[0] if authors else "",
         authors=authors,
         citations=record.get("citationCount") or 0,
+        citations_reported=isinstance(record.get("citationCount"), int),
         is_oa=bool(record.get("isOpenAccess")),
         oa_url=(pdf.get("url") or "") if isinstance(pdf, dict) else "",
         landing_url=record.get("url") or "",
@@ -131,6 +133,6 @@ class SemanticScholarConnector:
                 return
             if offset >= MAX_RECORDS:
                 self.truncated = True
-                self.warnings.append(f"Semantic Scholar returns at most {MAX_RECORDS} results "
+                self.warnings.append("Semantic Scholar returns at most its first 1,000 results "
                                      "per search; narrow the search to see the rest.")
                 return

@@ -196,6 +196,7 @@
   "lib.membership": "(عضوية)",
   "lib.lookup": "بحث تلقائي عن DOI",
   "lib.planned": "مخطَّط له",
+  "lib.needs": "يتطلّب: {needs}",
   "lib.unavailable": "غير متاح بعد",
   "manual.add": "إضافة دليل",
   "manual.add_to_run": "إضافة إلى هذا البحث",

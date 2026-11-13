@@ -67,8 +67,10 @@ def parse_entry(entry: dict) -> Paper:
         category_basis=basis,
         venue=entry.get("prism:publicationName") or "",
         first_author=creator,
-        authors=[creator] if creator else [],  # the STANDARD view lists the first author only
+        # The STANDARD view names only the first author, so no author list is set: an empty
+        # list is "not given" and keeps a fuller list stored from another record.
         citations=int(cited) if cited.isdigit() else 0,
+        citations_reported=cited.isdigit(),
         is_oa=_flag(entry.get("openaccessFlag")),
         landing_url=landing,
     )

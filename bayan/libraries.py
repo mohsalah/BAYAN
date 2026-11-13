@@ -35,7 +35,8 @@ LIBRARIES: list[Library] = [
      "languages": ["en"], "access_modes": [], "role": "search", "preselected": True},
     {"id": "europepmc", "name": "Europe PMC / PubMed", "tier": "open", "status": "available",
      "languages": ["en"], "access_modes": [], "role": "search", "preselected": True},
-    {"id": "semanticscholar", "name": "Semantic Scholar", "tier": "open", "status": "available",
+    # "planned" until one live search answers (every probe so far got HTTP 429 without a key).
+    {"id": "semanticscholar", "name": "Semantic Scholar", "tier": "open", "status": "planned",
      "languages": ["en"], "access_modes": [], "role": "search"},
     {"id": "core", "name": "CORE", "tier": "open", "status": "available",
      "languages": ["en", "fr", "de", "es"], "access_modes": [], "role": "search"},
@@ -52,7 +53,9 @@ LIBRARIES: list[Library] = [
     {"id": "elsevier", "name": "Elsevier / ScienceDirect", "tier": "membership",
      "status": "planned", "languages": ["en"],
      "access_modes": ["api_key", "proxy_url", "upload"], "role": "search"},
-    {"id": "scopus", "name": "Scopus (Elsevier)", "tier": "membership", "status": "available",
+    # "planned" until a live search with the owner's own key and institutional access works;
+    # then it flips to "available". Its key and institutional token can already be saved.
+    {"id": "scopus", "name": "Scopus (Elsevier)", "tier": "membership", "status": "planned",
      "languages": ["en"], "access_modes": ["api_key", "proxy_url", "upload"], "role": "search",
      "needs": "your own Scopus API key (Membership access) and institutional access"},
     {"id": "springer", "name": "Springer Nature", "tier": "membership", "status": "planned",

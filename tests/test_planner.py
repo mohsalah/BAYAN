@@ -84,7 +84,7 @@ def env(tmp_path):
         fake = FakeReader(answer) if planner == "default" else planner
         connector = FakeConnector([make_paper(i, 2020) for i in range(3)])
         lookup = lookup or FakeLookup()
-        app = create_app(settings, connector_factory=lambda lib: connector, planner=fake,
+        app = create_app(settings, connector_factory=lambda lib, user_id=None: connector, planner=fake,
                          topic_lookup=lookup)
         client = TestClient(app)
         client.__enter__()
