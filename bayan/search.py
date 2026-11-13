@@ -306,8 +306,10 @@ def run_search(
 
 
 # Libraries whose records carry a citation count. Others report none, so storing their record
-# does not mean the count was checked (citations_updated_at stays unset).
-CITATION_LIBRARIES = frozenset({"openalex", "crossref", "europepmc"})
+# does not mean the count was checked (citations_updated_at stays unset). CORE's records have a
+# citationCount field, but it read 0 on every live record checked, so it is not trusted.
+CITATION_LIBRARIES = frozenset({"openalex", "crossref", "europepmc", "semanticscholar",
+                                "scopus"})
 
 
 def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:

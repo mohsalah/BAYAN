@@ -46,9 +46,16 @@ from .config import Settings, load_settings
 from .connectors import (
     ArxivConnector,
     ConnectorError,
+    CoreConnector,
     CrossrefConnector,
+    DoajConnector,
     EuropePMCConnector,
+    InisConnector,
     OpenAlexConnector,
+    OstiConnector,
+    ScopusConnector,
+    SemanticScholarConnector,
+    build_connector,
 )
 from .connectors.base import Connector
 from .connectors.openalex import LOOKUP_BATCH
@@ -76,7 +83,7 @@ from .downloads import (
 from .export import safe_cell, to_csv, to_xlsx
 from .ideas import NOTE as IDEA_NOTE
 from .ideas import idea_record, run_idea_job
-from .libraries import LIBRARIES, key_publishers
+from .libraries import EXTRA_KEYS, LIBRARIES, key_publishers
 from .library import (
     BACKFILL_KIND,
     MAX_BACKFILL_REQUESTS,
@@ -119,6 +126,7 @@ from .membership import (
     delete_key,
     delete_template,
     get_template,
+    get_user_key,
     key_status,
     paper_proxy_link,
     save_key,
@@ -201,7 +209,9 @@ COOKIE = "bayan_session"
 STATIC = Path(__file__).parent / "static"
 LOCALES = Path(__file__).parent / "locales"
 
-ConnectorFactory = Callable[[str], Connector]
+# Called as factory(library_id), or factory(library_id, user_id=...) when it takes a user
+# (see connectors.base.build_connector); test factories may take the library id only.
+ConnectorFactory = Callable[..., Connector]
 
 log = logging.getLogger("bayan.api")
 
@@ -409,7 +419,9 @@ CATEGORY_LABELS = {c["id"]: c["label"] for c in CATEGORY_INFO}
 
 
 def default_connector_factory(settings: Settings) -> ConnectorFactory:
-    def make(library_id: str) -> Connector:
+    def make(library_id: str, user_id: int | None = None) -> Connector:
+        """A connector for one library. `user_id` is needed only by membership libraries,
+        which use that user's own saved key."""
         if library_id == "openalex":
             return OpenAlexConnector(
                 api_key=settings.openalex_api_key, contact_email=settings.contact_email
@@ -420,9 +432,33 @@ def default_connector_factory(settings: Settings) -> ConnectorFactory:
             return ArxivConnector(contact_email=settings.contact_email)
         if library_id == "europepmc":
             return EuropePMCConnector(contact_email=settings.contact_email)
+        if library_id == "osti":
+            return OstiConnector(contact_email=settings.contact_email)
+        if library_id == "inis":
+            return InisConnector(contact_email=settings.contact_email)
+        if library_id == "doaj":
+            return DoajConnector(contact_email=settings.contact_email)
+        if library_id == "semanticscholar":
+            return SemanticScholarConnector(api_key=settings.semantic_scholar_api_key,
+                                            contact_email=settings.contact_email)
+        if library_id == "core":
+            return CoreConnector(api_key=settings.core_api_key,
+                                 contact_email=settings.contact_email)
+        if library_id == "scopus":
+            return scopus_connector(settings, user_id)
         raise KeyError(library_id)
 
     return make
+
+
+def scopus_connector(settings: Settings, user_id: int | None) -> ScopusConnector:
+    """Scopus with the user's own saved key and optional institutional token."""
+    if user_id is None:
+        raise ConnectorError("Scopus is searched only with a signed-in user's own key")
+    key = get_user_key(user_id, "scopus", settings)
+    if not key:
+        raise ConnectorError("Add your Scopus API key under Membership access first")
+    return ScopusConnector(key, get_user_key(user_id, "scopus_insttoken", settings))
 
 
 def reader_key_ok(key: str | None) -> bool:
@@ -674,7 +710,8 @@ def create_app(
         if recent >= settings.searches_per_hour:
             raise HTTPException(429, "Search limit reached for this hour; try again later")
         try:
-            connectors = [make_connector(lib_id) for lib_id in body.libraries]
+            connectors = [build_connector(make_connector, lib_id, user["id"])
+                          for lib_id in body.libraries]
             if body.mode == "local_then_remote":
                 before = library_key_set(conn, user["id"])
                 # At most as many local hits as papers wanted; they are listed in addition to
@@ -1522,7 +1559,13 @@ def create_app(
 
     # ---- Membership: encrypted keys, institutional proxy link, private uploads ----
 
-    publisher_names = {lib["id"]: lib["name"] for lib in key_publishers()}
+    # Each library's key, then its optional extra secrets (an institutional token).
+    publisher_names: dict[str, str] = {}
+    for lib in key_publishers():
+        publisher_names[lib["id"]] = lib["name"]
+        publisher_names.update({xid: label for xid, (parent, label) in EXTRA_KEYS.items()
+                                if parent == lib["id"]})
+    key_parent = {xid: parent for xid, (parent, _label) in EXTRA_KEYS.items()}
 
     def known_publisher(publisher: str) -> str:
         if publisher not in publisher_names:
@@ -1537,13 +1580,15 @@ def create_app(
             "keys_disabled_reason": problem or None,
             "publishers": [
                 {"id": pid, "name": name,
+                 **({"parent": key_parent[pid]} if pid in key_parent else {}),
                  **key_status(conn, settings.app_secret_key, user_id, pid)}
                 for pid, name in publisher_names.items()],
             "proxy": ({"template": proxy["template"], "updated_at": proxy["updated_at"],
                        "example": build_link(proxy["template"], doi=EXAMPLE_DOI)}
                       if proxy else None),
-            "note": "An email address alone gives no access. Saved keys are stored encrypted "
-                    "and no connector uses them yet.",
+            "note": "An email address alone gives no access. Saved keys are stored encrypted. "
+                    "Only Scopus uses a saved key so far (your key, plus the institutional "
+                    "token when you save one); the other keys are kept for later connectors.",
         }
 
     @app.get("/api/membership")

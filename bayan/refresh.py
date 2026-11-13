@@ -23,7 +23,7 @@ from contextlib import closing
 from datetime import date, timedelta
 from pathlib import Path
 
-from .connectors.base import ConnectorError, RequestBudget
+from .connectors.base import ConnectorError, RequestBudget, build_connector
 from .connectors.openalex import LOOKUP_BATCH
 from .db import connect, now_iso
 from .downloads import claim_job, set_job
@@ -159,12 +159,16 @@ def _new_papers(conn: sqlite3.Connection, payload: dict, collection: sqlite3.Row
     if payload["started"] is None:
         payload["started"] = now_iso()
         payload["since"] = refresh_since(conn, collection)
-    connectors, without = [], []
+    connectors, without, unavailable = [], [], {}
     for lib in libraries:
         try:
-            inner = factory(lib)
+            # With the collection owner's id: a membership library (Scopus) uses their key.
+            inner = build_connector(factory, lib, payload["user_id"])
         except KeyError:
             without.append(lib)
+            continue
+        except ConnectorError as exc:  # e.g. no saved key: skipped with the reason
+            unavailable[lib] = str(exc)
             continue
         if hasattr(inner, "search_since"):
             connectors.append(SinceSearch(inner, payload["since"], budget))
@@ -172,6 +176,8 @@ def _new_papers(conn: sqlite3.Connection, payload: dict, collection: sqlite3.Row
             without.append(lib)
     if without:
         payload["skipped"]["libraries_without_date_filter"] = without
+    if unavailable:
+        payload["skipped"]["libraries_unavailable"] = unavailable
     if not connectors:
         payload["shortfalls"].append({
             "step": "new_papers", "reason": "no_library_with_date_filter",

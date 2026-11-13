@@ -399,7 +399,7 @@ def test_unavailable_planned_libraries_stay_refused(tmp_path):
     with TestClient(create_app(settings, connector_factory=factory)) as client:
         client.post("/api/auth/register", json={"email": "ada@example.org",
                                                 "password": "correct horse battery"})
-        for lib in ("semanticscholar", "core", "unpaywall"):
+        for lib in ("unpaywall", "ieee", "nrc_adams"):
             res = client.post("/api/search", json={"libraries": [lib], "profile": {}})
             assert res.status_code == 422
 

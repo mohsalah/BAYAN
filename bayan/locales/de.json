@@ -216,7 +216,7 @@
   "manual.title": "Titel (später änderbar)",
   "manual.title_aria": "Titel des Handbuchs",
   "manual.url": "PDF-Link (http oder https)",
-  "member.help": "Eine E-Mail-Adresse allein gewährt keinen Zugang zu kostenpflichtigen Inhalten. Hier können Sie Ihre eigenen API-Schlüssel von Verlagen (auf dem Server verschlüsselt, nie wieder angezeigt) und einen institutionellen Proxy-Link speichern. Noch kein Konnektor verwendet diese Schlüssel, daher ändert das Speichern eines Schlüssels heute keine Suche und keinen Download. BAYAN meldet sich nie für Sie an, ruft nie etwas über Ihren Proxy ab und speichert nie ein Bibliothekspasswort.",
+  "member.help": "Eine E-Mail-Adresse allein gewährt keinen Zugang zu kostenpflichtigen Inhalten. Hier können Sie Ihre eigenen API-Schlüssel von Verlagen (auf dem Server verschlüsselt, nie wieder angezeigt) und einen institutionellen Proxy-Link speichern. Bisher verwendet nur Scopus einen gespeicherten Schlüssel: Ihren Scopus-API-Schlüssel, dazu das optionale institutionelle Token Ihrer Bibliothek. Die anderen Schlüssel werden für spätere Konnektoren aufbewahrt und ändern heute keine Suche und keinen Download. BAYAN meldet sich nie für Sie an, ruft nie etwas über Ihren Proxy ab und speichert nie ein Bibliothekspasswort.",
   "member.proxy.h": "Institutioneller Proxy-Link",
   "member.proxy.label": "Linkvorlage (https, mit {url} oder {doi})",
   "member.remove": "Entfernen",

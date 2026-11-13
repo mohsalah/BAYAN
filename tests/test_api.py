@@ -22,7 +22,8 @@ def test_health_libraries_languages(tmp_path):
 
 def test_only_implemented_connectors_are_available():
     available = {lib["id"] for lib in LIBRARIES if lib["status"] == "available"}
-    assert available == {"openalex", "crossref", "arxiv", "europepmc"}
+    assert available == {"openalex", "crossref", "arxiv", "europepmc", "osti", "inis", "doaj",
+                         "semanticscholar", "core", "scopus"}
 
 
 def test_settings_repr_hides_secrets(tmp_path):

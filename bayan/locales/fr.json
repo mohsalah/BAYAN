@@ -216,7 +216,7 @@
   "manual.title": "Titre (modifiable plus tard)",
   "manual.title_aria": "Titre du manuel",
   "manual.url": "Lien vers le PDF (http ou https)",
-  "member.help": "Une adresse e-mail seule ne donne aucun accès au contenu payant. Vous pouvez ici enregistrer vos propres clés API d'éditeurs (chiffrées sur le serveur, jamais réaffichées) et un lien de proxy institutionnel. Aucun connecteur n'utilise encore ces clés : enregistrer une clé ne change donc aucune recherche ni aucun téléchargement aujourd'hui. BAYAN ne se connecte jamais à votre place, ne récupère jamais rien via votre proxy et ne conserve jamais de mot de passe de bibliothèque.",
+  "member.help": "Une adresse e-mail seule ne donne aucun accès au contenu payant. Vous pouvez ici enregistrer vos propres clés API d'éditeurs (chiffrées sur le serveur, jamais réaffichées) et un lien de proxy institutionnel. Pour l'instant, seul Scopus utilise une clé enregistrée : votre clé API Scopus, plus le jeton institutionnel facultatif fourni par votre bibliothèque. Les autres clés sont conservées pour de futurs connecteurs et ne changent aujourd'hui aucune recherche ni aucun téléchargement. BAYAN ne se connecte jamais à votre place, ne récupère jamais rien via votre proxy et ne conserve jamais de mot de passe de bibliothèque.",
   "member.proxy.h": "Lien de proxy institutionnel",
   "member.proxy.label": "Modèle de lien (https, contenant {url} ou {doi})",
   "member.remove": "Supprimer",

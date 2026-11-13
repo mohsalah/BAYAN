@@ -1,5 +1,6 @@
 """Connector interface. Every library (open or membership) implements this."""
 
+import inspect
 import time
 from collections.abc import Callable, Iterator
 from typing import Protocol
@@ -50,6 +51,22 @@ class Connector(Protocol):
     supported_sorts: frozenset[str]
 
     def search(self, profile: SearchProfile) -> Iterator[Paper]: ...
+
+
+def build_connector(factory: Callable, library_id: str, user_id: int | None = None):
+    """`factory(library_id, user_id=...)` when the factory takes a user (membership libraries
+    need the user's own key); a one-argument factory is called with the library id only."""
+    if user_id is not None and _takes_user(factory):
+        return factory(library_id, user_id=user_id)
+    return factory(library_id)
+
+
+def _takes_user(factory: Callable) -> bool:
+    try:
+        params = inspect.signature(factory).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(p.name == "user_id" or p.kind is p.VAR_KEYWORD for p in params)
 
 
 MAX_RETRY_WAIT = 60.0  # seconds; the downloader caps its waits the same way

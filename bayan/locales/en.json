@@ -216,7 +216,7 @@
   "manual.title": "Title (you can edit it later)",
   "manual.title_aria": "Manual title",
   "manual.url": "PDF link (http or https)",
-  "member.help": "An email address alone gives no access to paid content. Here you can store your own publisher API keys (encrypted on the server, never shown again) and an institutional proxy link. No connector uses these keys yet, so saving a key does not change any search or download today. BAYAN never logs in for you, never fetches through your proxy and never stores a library password.",
+  "member.help": "An email address alone gives no access to paid content. Here you can store your own publisher API keys (encrypted on the server, never shown again) and an institutional proxy link. Only Scopus uses a saved key so far: your Scopus API key, plus the optional institutional token from your library. The other keys are kept for later connectors and change no search or download today. BAYAN never logs in for you, never fetches through your proxy and never stores a library password.",
   "member.proxy.h": "Institutional proxy link",
   "member.proxy.label": "Link template (https, containing {url} or {doi})",
   "member.remove": "Remove",

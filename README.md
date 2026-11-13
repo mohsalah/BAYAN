@@ -8,7 +8,16 @@ index and a download manifest (M6), and the reader agent with a page-cited, veri
 table (M8). Crossref is not a search source: it is used
 automatically to find the DOI of papers found elsewhere that have none (title, year and first
 author must all match confidently; at most 50 lookups per run, cached; the run summary reports
-`doi_lookup` counts). Semantic Scholar, CORE and Unpaywall are still planned.
+`doi_lookup` counts). Unpaywall is still planned.
+
+**More search libraries.** OSTI.gov (US DOE), IAEA INIS, DOAJ, Semantic Scholar and CORE are
+open sources (none needs a key; they are not ticked by default). `SEMANTIC_SCHOLAR_API_KEY` and
+`CORE_API_KEY` are optional server keys: without them both answer under a low shared rate limit.
+Scopus (Elsevier) is a membership library: it uses the signed-in user's own Elsevier API key
+saved under Membership access (encrypted), plus an optional institutional token; Scopus also
+needs institutional access (campus network/VPN or the token). Collection refreshes skip
+libraries without a "since" date filter (all of these) and record why. NRC ADAMS is listed as
+unconfirmed (its API did not answer).
 
 ## Reference types
 
@@ -315,8 +324,8 @@ type you selected, with its count (0 included) and a sentence, for example
 `Theses: 0 found in the chosen libraries (no selected library lists theses).` When a selected
 library can list the type but returned none, the sentence says so instead. Which library can
 supply a type comes from each connector's `supported_categories` (what its classifier can
-return: arXiv only `other`, Europe PMC `peer_reviewed` and `other`, OpenAlex and Crossref all
-five); a library without a recorded capability is reported as "not recorded", never assumed.
+return: arXiv only `other`, Europe PMC `peer_reviewed` and `other`, DOAJ only `peer_reviewed`,
+OpenAlex, Crossref, OSTI and CORE all five); a library without a recorded capability is reported as "not recorded", never assumed.
 Manuals are a separate row and are not counted under Other. The results card shows the whole
 result set next to how many rows are loaded in the table.
 
