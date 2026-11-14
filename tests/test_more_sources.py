@@ -100,14 +100,34 @@ def test_osti_sends_dates_and_pages_by_total_header():
     client = recorder([(200, [OSTI_RECORD, {**OSTI_RECORD, "osti_id": "2"}],
                         {"x-total-count": "3"}),
                        (200, [{**OSTI_RECORD, "osti_id": "3"}], {"x-total-count": "3"})], seen)
-    papers = list(OstiConnector(client=client, rows=2).search(PROFILE))
+    waits = []
+    papers = list(OstiConnector(client=client, rows=2, sleep=waits.append).search(PROFILE))
     assert [p.id for p in papers] == ["3484793", "2", "3"]
+    assert waits == [3.0]  # one polite pause between the two pages
     params = seen[0].url.params
     assert params["q"] == "CANDU" and params["page"] == "1" and params["rows"] == "2"
     assert params["publication_date_start"] == "01/01/2010"
     assert params["publication_date_end"] == "12/31/2020"
     assert seen[1].url.params["page"] == "2"
     assert seen[0].headers["accept"] == "application/json"
+
+
+def test_osti_rate_limit_redirect_is_retried_as_429():
+    """OSTI signals its rate limit with a 302 to error429.html; the page is fetched again."""
+    seen = []
+    client = recorder([(302, None, {"location": "https://www.osti.gov/errors/error429.html"}),
+                       (200, [OSTI_RECORD], {"x-total-count": "1"})], seen)
+    waits = []
+    papers = list(OstiConnector(client=client, rows=2, sleep=waits.append).search(PROFILE))
+    assert [p.id for p in papers] == ["3484793"]
+    assert len(seen) == 2 and seen[1].url.params["page"] == "1"
+    assert waits == [2.0]  # get_with_retry's first back-off
+
+
+def test_osti_other_redirect_still_fails():
+    client = recorder([(302, None, {"location": "https://example.org/elsewhere"})], [])
+    with pytest.raises(ConnectorError, match="OSTI request failed: HTTP 302"):
+        list(OstiConnector(client=client, sleep=no_sleep).search(PROFILE))
 
 
 # ---------------------------------------------------------------- INIS

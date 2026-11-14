@@ -80,6 +80,23 @@ def build_params(profile: SearchProfile, page: int, rows: int) -> dict:
     return params
 
 
+PAGE_DELAY = 3.0  # seconds between pages: OSTI's limit trips after ~2 quick requests (tested live)
+
+
+class _RateLimitAwareClient:
+    """OSTI answers its rate limit with a 302 to /errors/error429.html instead of a 429. This
+    turns that redirect into a 429, so get_with_retry waits and tries again."""
+
+    def __init__(self, client: httpx.Client) -> None:
+        self._client = client
+
+    def get(self, url, **kw) -> httpx.Response:
+        response = self._client.get(url, **kw)
+        if response.is_redirect and "error429" in response.headers.get("location", ""):
+            return httpx.Response(429, request=response.request)
+        return response
+
+
 class OstiConnector:
     name = "osti"
     tier = "open"
@@ -97,10 +114,12 @@ class OstiConnector:
         sleep: Callable[[float], None] = time.sleep,
         max_attempts: int = 5,
         rows: int = 100,
+        page_delay: float = PAGE_DELAY,
     ) -> None:
         self._email = contact_email
-        self._client = client or httpx.Client(timeout=60)
+        self._client = _RateLimitAwareClient(client or httpx.Client(timeout=60))
         self._sleep = sleep
+        self._page_delay = page_delay
         self._max_attempts = max_attempts
         self._rows = rows
 
@@ -122,3 +141,4 @@ class OstiConnector:
             if len(records) < self._rows or (total.isdigit() and page * self._rows >= int(total)):
                 return
             page += 1
+            self._sleep(self._page_delay)
