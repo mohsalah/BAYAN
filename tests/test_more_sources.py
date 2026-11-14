@@ -26,6 +26,7 @@ from bayan.connectors import (
     scopus,
     semanticscholar,
 )
+from bayan.connectors.osti import _Pacer
 from bayan.db import connect, init_db
 from bayan.doctypes import CAPABILITIES
 from bayan.libraries import LIBRARIES
@@ -100,10 +101,12 @@ def test_osti_sends_dates_and_pages_by_total_header():
     client = recorder([(200, [OSTI_RECORD, {**OSTI_RECORD, "osti_id": "2"}],
                         {"x-total-count": "3"}),
                        (200, [{**OSTI_RECORD, "osti_id": "3"}], {"x-total-count": "3"})], seen)
-    waits = []
-    papers = list(OstiConnector(client=client, rows=2, sleep=waits.append).search(PROFILE))
+    waits, now = [], [100.0]
+    pacer = _Pacer(clock=lambda: now[0])
+    papers = list(OstiConnector(client=client, rows=2, sleep=waits.append,
+                                pacer=pacer).search(PROFILE))
     assert [p.id for p in papers] == ["3484793", "2", "3"]
-    assert waits == [3.0]  # one polite pause between the two pages
+    assert waits == [3.0]  # the second request waits out the gap
     params = seen[0].url.params
     assert params["q"] == "CANDU" and params["page"] == "1" and params["rows"] == "2"
     assert params["publication_date_start"] == "01/01/2010"
@@ -118,16 +121,45 @@ def test_osti_rate_limit_redirect_is_retried_as_429():
     client = recorder([(302, None, {"location": "https://www.osti.gov/errors/error429.html"}),
                        (200, [OSTI_RECORD], {"x-total-count": "1"})], seen)
     waits = []
-    papers = list(OstiConnector(client=client, rows=2, sleep=waits.append).search(PROFILE))
+    pacer = _Pacer(interval=0)
+    papers = list(OstiConnector(client=client, rows=2, sleep=waits.append,
+                                pacer=pacer).search(PROFILE))
     assert [p.id for p in papers] == ["3484793"]
     assert len(seen) == 2 and seen[1].url.params["page"] == "1"
-    assert waits == [2.0]  # get_with_retry's first back-off
+    assert waits == [5.0]  # LIMIT_WAIT, sent as Retry-After
+
+
+def test_osti_rate_limit_keeps_osti_retry_after_and_case():
+    client = recorder([(302, None, {"location": "https://www.osti.gov/errors/Error429.html",
+                                    "Retry-After": "7"}),
+                       (200, [OSTI_RECORD], {"x-total-count": "1"})], [])
+    waits = []
+    list(OstiConnector(client=client, sleep=waits.append, pacer=_Pacer(interval=0)).search(PROFILE))
+    assert waits == [7.0]
+
+
+def test_osti_pacer_sleeps_only_the_rest_of_the_gap():
+    now, waits = [0.0], []
+    pacer = _Pacer(interval=3.0, clock=lambda: now[0])
+    pacer.wait(waits.append)       # first request: no wait
+    now[0] = 1.0
+    pacer.wait(waits.append)       # 1 s later: waits the remaining 2 s
+    now[0] = 10.0
+    pacer.wait(waits.append)       # long gap: no wait
+    assert waits == [2.0]
+
+
+def test_osti_client_wrapper_passes_other_attributes():
+    inner = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    conn = OstiConnector(client=inner)
+    conn._client.close()
+    assert inner.is_closed
 
 
 def test_osti_other_redirect_still_fails():
     client = recorder([(302, None, {"location": "https://example.org/elsewhere"})], [])
     with pytest.raises(ConnectorError, match="OSTI request failed: HTTP 302"):
-        list(OstiConnector(client=client, sleep=no_sleep).search(PROFILE))
+        list(OstiConnector(client=client, sleep=no_sleep, pacer=_Pacer(interval=0)).search(PROFILE))
 
 
 # ---------------------------------------------------------------- INIS

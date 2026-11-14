@@ -1,6 +1,7 @@
 """OSTI.gov connector (US DOE, no key). JSON records API; the total is in a response header."""
 
 import re
+import threading
 import time
 from collections.abc import Callable, Iterator
 
@@ -80,21 +81,58 @@ def build_params(profile: SearchProfile, page: int, rows: int) -> dict:
     return params
 
 
-PAGE_DELAY = 3.0  # seconds between pages: OSTI's limit trips after ~2 quick requests (tested live)
+MIN_INTERVAL = 3.0  # seconds between OSTI requests: ~2 quick requests trip its limit (tested live)
+LIMIT_WAIT = "5"    # its limit cleared within 5 s in the live test
+
+
+class _Pacer:
+    """Keeps OSTI requests MIN_INTERVAL apart across every connector in the process (the
+    factory builds a new connector per search), sleeping only for what is left of the gap."""
+
+    def __init__(self, interval: float = MIN_INTERVAL,
+                 clock: Callable[[], float] = time.monotonic) -> None:
+        self.interval, self.clock = interval, clock
+        self._last: float | None = None
+        self._lock = threading.Lock()
+
+    def wait(self, sleep: Callable[[float], None]) -> None:
+        with self._lock:
+            if self._last is not None:
+                left = self.interval - (self.clock() - self._last)
+                if left > 0:
+                    sleep(left)
+            self._last = self.clock()
+
+
+PACER = _Pacer()
+
+
+def _is_rate_limit(response: httpx.Response) -> bool:
+    """OSTI answers its limit with a redirect to /errors/error429.html, not a 429."""
+    target = response.headers.get("location", "") if response.is_redirect else str(response.url)
+    return "error429" in target.lower() or any(
+        "error429" in r.headers.get("location", "").lower() for r in response.history)
 
 
 class _RateLimitAwareClient:
-    """OSTI answers its rate limit with a 302 to /errors/error429.html instead of a 429. This
-    turns that redirect into a 429, so get_with_retry waits and tries again."""
+    """Wraps the httpx client: paces requests and turns OSTI's limit redirect into a 429 (with
+    OSTI's Retry-After if it sent one, else LIMIT_WAIT) so get_with_retry waits and retries.
+    Everything else is passed through to the real client."""
 
-    def __init__(self, client: httpx.Client) -> None:
-        self._client = client
+    def __init__(self, client: httpx.Client, pacer: _Pacer,
+                 sleep: Callable[[float], None]) -> None:
+        self._client, self._pacer, self._sleep = client, pacer, sleep
 
     def get(self, url, **kw) -> httpx.Response:
+        self._pacer.wait(self._sleep)
         response = self._client.get(url, **kw)
-        if response.is_redirect and "error429" in response.headers.get("location", ""):
-            return httpx.Response(429, request=response.request)
+        if _is_rate_limit(response):
+            wait = response.headers.get("Retry-After") or LIMIT_WAIT
+            return httpx.Response(429, headers={"Retry-After": wait}, request=response.request)
         return response
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
 
 
 class OstiConnector:
@@ -114,12 +152,12 @@ class OstiConnector:
         sleep: Callable[[float], None] = time.sleep,
         max_attempts: int = 5,
         rows: int = 100,
-        page_delay: float = PAGE_DELAY,
+        pacer: _Pacer | None = None,
     ) -> None:
         self._email = contact_email
-        self._client = _RateLimitAwareClient(client or httpx.Client(timeout=60))
+        self._client = _RateLimitAwareClient(client or httpx.Client(timeout=60),
+                                             pacer or PACER, sleep)
         self._sleep = sleep
-        self._page_delay = page_delay
         self._max_attempts = max_attempts
         self._rows = rows
 
@@ -141,4 +179,3 @@ class OstiConnector:
             if len(records) < self._rows or (total.isdigit() and page * self._rows >= int(total)):
                 return
             page += 1
-            self._sleep(self._page_delay)
