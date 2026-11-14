@@ -63,7 +63,7 @@ def second_user(c):
 
 def test_publishers_are_data_driven(client):
     ids = [p["id"] for p in client.get("/api/membership").json()["publishers"]]
-    assert ids == ["ieee", "elsevier", "springer", "wiley"]
+    assert ids == ["ieee", "elsevier", "scopus", "scopus_insttoken", "springer", "wiley"]
 
 
 def test_round_trip_and_status_hides_the_key(client):

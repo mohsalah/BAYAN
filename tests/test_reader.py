@@ -70,7 +70,7 @@ def env(tmp_path):
                             pdf_root=tmp_path / f"pdfs{len(made)}", search_max_results=100,
                             searches_per_hour=50, job_resume_interval=0, **extra)
         fake = FakeReader(ANSWER) if reader == "default" else reader
-        app = create_app(settings, connector_factory=lambda lib: Connector(papers),
+        app = create_app(settings, connector_factory=lambda lib, user_id=None: Connector(papers),
                          fetcher=make_fetcher(net), reader=fake)
         client = TestClient(app)
         client.__enter__()

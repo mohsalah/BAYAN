@@ -291,7 +291,7 @@ def test_resume_runs_at_startup(env_of, tmp_path):
     from bayan.config import Settings
 
     settings = Settings(**{**env.settings.__dict__, "job_resume_interval": 30.0})
-    app = create_app(settings, connector_factory=lambda lib: None, fetcher=env.fetcher)
+    app = create_app(settings, connector_factory=lambda lib, user_id=None: None, fetcher=env.fetcher)
     with TestClient(app):
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and job_status(env, job_id)["status"] != "done":

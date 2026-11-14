@@ -400,7 +400,7 @@ textarea.prompt{min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospa
 
   <section class="card hidden" id="memberCard" aria-labelledby="memberTitle">
     <h2 id="memberTitle" data-i18n="member.title">Membership access</h2>
-    <p class="note" data-i18n="member.help">An email address alone gives no access to paid content. Here you can store your own publisher API keys (encrypted on the server, never shown again) and an institutional proxy link. No connector uses these keys yet, so saving a key does not change any search or download today. BAYAN never logs in for you, never fetches through your proxy and never stores a library password.</p>
+    <p class="note" data-i18n="member.help">An email address alone gives no access to paid content. Here you can store your own publisher API keys (encrypted on the server, never shown again) and an institutional proxy link. Only Scopus uses a saved key so far: your Scopus API key, plus the optional institutional token from your library. The other keys are kept for later connectors and change no search or download today. BAYAN never logs in for you, never fetches through your proxy and never stores a library password.</p>
     <p class="err" id="keysOff" role="alert"></p>
     <div id="keyList"></div>
     <h3 style="margin:14px 0 4px;font-size:1rem" data-i18n="member.proxy.h">Institutional proxy link</h3>
@@ -716,7 +716,10 @@ async function loadMeta() {
   categoryLabels = Object.fromEntries(types.map(t => [t.id, t.label]));
   getLibs = dropdown('ddLibs', 'search.libraries', libs.map(l => ({
     value: l.id, label: () => l.name + (l.tier === 'membership' ? ' ' + t('lib.membership') : ''),
-    checked: l.status === 'available' && l.role === 'search', disabled: l.status !== 'available' || l.role !== 'search',
+    // Only preselected libraries start ticked; the others (and membership ones, which need the
+    // user's own key) are chosen by hand. `needs` is server data (English), shown on hover.
+    checked: l.status === 'available' && l.role === 'search' && !!l.preselected, disabled: l.status !== 'available' || l.role !== 'search',
+    title: () => l.needs ? t('lib.needs', { needs: l.needs }) : '',
     badge: () => l.role === 'lookup' ? t('lib.lookup') : l.status === 'available' ? '' : (l.status === 'unconfirmed' ? t('lib.unavailable') : t('lib.planned')),
   })), 'lib');
   // Category names and descriptions come from the server in English (they are data, not interface text).
@@ -911,8 +914,9 @@ function keyRow(p, enabled) {
     } catch (e) { $('memberErr').textContent = e.message; }
     input.value = '';
   };
-  const row = el('div', { class: 'row', style: 'align-items:center;gap:8px;margin:6px 0' },
-    el('strong', { style: 'min-width:170px' }, p.name), input, save);
+  // An optional extra secret (an institutional token) sits indented under its library's key.
+  const row = el('div', { class: 'row', style: 'align-items:center;gap:8px;margin:6px 0' + (p.parent ? ';padding-inline-start:24px' : '') },
+    el(p.parent ? 'span' : 'strong', { style: 'min-width:' + (p.parent ? '146px' : '170px') }, p.name), input, save);
   if (p.saved) {
     const rm = el('button', { type: 'button', class: 'ghost', title: t('key.remove.help') }, t('member.remove'));
     rm.onclick = async () => {

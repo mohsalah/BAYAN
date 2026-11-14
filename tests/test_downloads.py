@@ -118,7 +118,7 @@ class Env:
         self.settings = Settings(database_path=tmp_path / "t.sqlite", pdf_root=tmp_path / "pdfs",
                                  search_max_results=100, searches_per_hour=50, **settings)
         fake = Connector(papers)
-        self.app = create_app(self.settings, connector_factory=lambda lib: fake,
+        self.app = create_app(self.settings, connector_factory=lambda lib, user_id=None: fake,
                               fetcher=self.fetcher)
         self.root = tmp_path / "pdfs"
 

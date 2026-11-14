@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 class Settings:
     database_path: Path
     openalex_api_key: str | None = field(default=None, repr=False)
+    semantic_scholar_api_key: str | None = field(default=None, repr=False)  # optional
+    core_api_key: str | None = field(default=None, repr=False)  # optional, raises CORE's limit
     contact_email: str | None = None
     app_secret_key: str | None = field(default=None, repr=False)
     anthropic_api_key: str | None = field(default=None, repr=False)  # reader agent (M8)
@@ -75,6 +77,8 @@ def load_settings() -> Settings:
     return Settings(
         database_path=Path(os.environ.get("BAYAN_DATABASE_PATH", "data/app.sqlite")),
         openalex_api_key=os.environ.get("OPENALEX_API_KEY") or None,
+        semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or None,
+        core_api_key=os.environ.get("CORE_API_KEY") or None,
         contact_email=os.environ.get("CONTACT_EMAIL") or None,
         app_secret_key=os.environ.get("APP_SECRET_KEY") or None,
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,

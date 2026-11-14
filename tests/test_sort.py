@@ -50,7 +50,7 @@ class NoSort(Fake):
 def run(tmp_path, connectors, sort, quota=None, years=(2020, 2021)):
     by_name = {c.name: c for c in connectors}
     app = create_app(Settings(database_path=tmp_path / "t.sqlite", search_max_results=50),
-                     connector_factory=lambda lib: by_name.get(lib) or Fake(lib, []))
+                     connector_factory=lambda lib, user_id=None: by_name.get(lib) or Fake(lib, []))
     with TestClient(app) as client:
         client.post("/api/auth/register", json={"email": "a@example.org", "password": PASSWORD})
         body = {"profile": {"query": "r", "year_from": years[0], "year_to": years[1],

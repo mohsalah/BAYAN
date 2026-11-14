@@ -8,7 +8,17 @@ index and a download manifest (M6), and the reader agent with a page-cited, veri
 table (M8). Crossref is not a search source: it is used
 automatically to find the DOI of papers found elsewhere that have none (title, year and first
 author must all match confidently; at most 50 lookups per run, cached; the run summary reports
-`doi_lookup` counts). Semantic Scholar, CORE and Unpaywall are still planned.
+`doi_lookup` counts). Unpaywall is still planned.
+
+**More search libraries.** OSTI.gov (US DOE), IAEA INIS, DOAJ and CORE are open sources (no key
+needed; not ticked by default). `CORE_API_KEY` is an optional server key that raises CORE's rate
+limit. Semantic Scholar (optional `SEMANTIC_SCHOLAR_API_KEY`) and Scopus (Elsevier) have
+connectors but stay "planned" until a live search works: Semantic Scholar answered only HTTP 429
+so far, and Scopus needs the user's own Elsevier API key (saved encrypted under Membership
+access, with an optional institutional token) plus institutional access. If one chosen library
+fails, the others' results are kept and the run summary lists the reason under
+`library_errors`. Collection refreshes skip libraries without a "since" date filter (all of
+these) and record why. NRC ADAMS is listed as unconfirmed (its API did not answer).
 
 ## Reference types
 
@@ -315,8 +325,8 @@ type you selected, with its count (0 included) and a sentence, for example
 `Theses: 0 found in the chosen libraries (no selected library lists theses).` When a selected
 library can list the type but returned none, the sentence says so instead. Which library can
 supply a type comes from each connector's `supported_categories` (what its classifier can
-return: arXiv only `other`, Europe PMC `peer_reviewed` and `other`, OpenAlex and Crossref all
-five); a library without a recorded capability is reported as "not recorded", never assumed.
+return: arXiv only `other`, Europe PMC `peer_reviewed` and `other`, DOAJ only `peer_reviewed`,
+OpenAlex, Crossref, OSTI and CORE all five); a library without a recorded capability is reported as "not recorded", never assumed.
 Manuals are a separate row and are not counted under Other. The results card shows the whole
 result set next to how many rows are loaded in the table.
 

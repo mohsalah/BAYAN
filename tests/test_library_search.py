@@ -43,7 +43,7 @@ def env(tmp_path):
     libs = {"openalex": Lib("openalex"), "europepmc": Lib("europepmc")}
     settings = Settings(database_path=tmp_path / "t.sqlite", search_max_results=50,
                         job_resume_interval=0, searches_per_hour=3)
-    with TestClient(create_app(settings, connector_factory=lambda n: libs.get(n))) as client:
+    with TestClient(create_app(settings, connector_factory=lambda n, user_id=None: libs.get(n))) as client:
         client.libs = libs
         client.app_db = settings.database_path
         yield client

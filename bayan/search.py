@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .connectors.base import FILTERS, Connector
+from .connectors.base import FILTERS, Connector, ConnectorError
 from .db import now_iso
 from .doi_lookup import DoiLooker, DoiLookup
 from .models import DOCUMENT_TYPES, MAX_AUTHORS, USER_SOURCE, Paper, SearchProfile, language_key
@@ -92,15 +92,22 @@ def per_language_plan(profile: SearchProfile, connectors: list[Connector]) -> di
 def _counted(connector: Connector, profile: SearchProfile, state: dict) -> Iterator[Paper]:
     """One library's records. With per-language text and a language filter, one query per
     chosen language, round-robin, so the combined stream feeds de-duplication and limits."""
+    if connector.name in state["library_errors"]:
+        return  # it failed earlier in this run (a per-year search asks it again)
     pairs = profile.language_queries()
     if pairs and _splits_by_language(connector):
         source = _interleave(
             [connector.search(profile.for_language(code, text)) for code, text in pairs])
     else:
         source = connector.search(profile)
-    for paper in source:
-        state["scanned_by_library"][connector.name] += 1
-        yield paper
+    try:
+        for paper in source:
+            state["scanned_by_library"][connector.name] += 1
+            yield paper
+    except ConnectorError as exc:
+        # One library failing (rate limit, refused key) ends only its own stream; the others'
+        # records are kept and the reason is reported per library. Messages carry no keys.
+        state["library_errors"][connector.name] = str(exc)
 
 
 def _sorts(connector: Connector) -> frozenset[str]:
@@ -215,14 +222,20 @@ def run_search(
     doi_lookup: DoiLooker | None = None,
     doi_budget: int = 0,
     doi_seconds: float | None = None,
+    library_errors: dict[str, str] | None = None,
 ) -> dict:
+    """Search the libraries, keep and store the run. `library_errors` are libraries that could
+    not be set up (for example no saved key); with the ones that fail while searching they are
+    reported per library. Raises ConnectorError only when every chosen library failed and
+    nothing was found."""
     profile = request.profile
     quotas = None
     if request.quota_total is not None:
         quotas = allocate_quotas(request.quota_total, quota_weights(profile, request.weighting))
     wanted = request.quota_total or max_results
     state = {"scanned": 0, "stopped": "exhausted", "filtered_by_type": 0, "geo_outside": 0,
-             "scanned_by_library": {c.name: 0 for c in connectors}, "sorted_by_year": []}
+             "scanned_by_library": {c.name: 0 for c in connectors}, "sorted_by_year": [],
+             "library_errors": dict(library_errors or {})}
     counts: dict[int, int] = {}
     stream = _scan(_interleave([_library_stream(c, profile, state, quotas, counts)
                                 for c in connectors]),
@@ -235,6 +248,10 @@ def run_search(
     # two libraries does not use up two places.
     result = collect(stream, quotas, enrich=lookup, limit=None if quotas else wanted,
                      counts=counts)
+    errors = state["library_errors"]
+    chosen = {c.name for c in connectors} | set(errors)
+    if chosen and set(errors) >= chosen and not result.papers:
+        raise ConnectorError("; ".join(errors.values()))
     if quotas is not None and not result.shortfalls:
         state["stopped"] = "complete"
     elif quotas is None and len(result.papers) >= wanted:
@@ -262,6 +279,9 @@ def run_search(
                      if f not in getattr(c, "supported_filters", frozenset())]
             for c in connectors},
         "stopped": state["stopped"],
+        # Libraries that failed (could not be set up, or stopped with an error), with the
+        # reason; the other libraries' records are kept.
+        "library_errors": errors,
         "sort": profile.sort,
         # Libraries that could not sort by citations: searched in their own order, and their
         # records are listed after the sorted ones.
@@ -306,8 +326,10 @@ def run_search(
 
 
 # Libraries whose records carry a citation count. Others report none, so storing their record
-# does not mean the count was checked (citations_updated_at stays unset).
-CITATION_LIBRARIES = frozenset({"openalex", "crossref", "europepmc"})
+# does not mean the count was checked (citations_updated_at stays unset). CORE's records have a
+# citationCount field, but it read 0 on every live record checked, so it is not trusted.
+CITATION_LIBRARIES = frozenset({"openalex", "crossref", "europepmc", "semanticscholar",
+                                "scopus"})
 
 
 def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
@@ -339,7 +361,9 @@ def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
         " category_basis = excluded.category_basis, document_kind = excluded.document_kind,"
         " language = excluded.language, venue = excluded.venue,"
         " first_author = excluded.first_author, countries = excluded.countries,"
-        " citations = excluded.citations, is_oa = excluded.is_oa, oa_url = excluded.oa_url,"
+        # A record whose count was not reported keeps the stored count.
+        " citations = CASE WHEN ? THEN excluded.citations ELSE papers.citations END,"
+        " is_oa = excluded.is_oa, oa_url = excluded.oa_url,"
         " landing_url = excluded.landing_url, keywords = excluded.keywords,"
         " topic = excluded.topic,"
         " openalex_id = COALESCE(excluded.openalex_id, papers.openalex_id),"
@@ -355,8 +379,9 @@ def _store_paper(conn: sqlite3.Connection, p: Paper) -> None:
          json.dumps(p.countries), p.citations, int(p.is_oa), p.oa_url, p.landing_url,
          json.dumps(p.keywords), p.topic, openalex_id or None,
          json.dumps(p.counts_by_year) if p.counts_by_year is not None else None,
-         now_iso() if p.source in CITATION_LIBRARIES else None,
-         known_refs, json.dumps(p.authors[:MAX_AUTHORS], ensure_ascii=False)),
+         now_iso() if p.source in CITATION_LIBRARIES and p.citations_reported else None,
+         known_refs, json.dumps(p.authors[:MAX_AUTHORS], ensure_ascii=False),
+         int(p.citations_reported)),
     )
     if openalex_id:
         if refs is not None:

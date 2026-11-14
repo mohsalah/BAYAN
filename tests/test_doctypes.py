@@ -97,7 +97,7 @@ def test_run_detail_lists_selected_types_with_zero(tmp_path):
     settings = Settings(database_path=tmp_path / "t.sqlite", search_max_results=50,
                         searches_per_hour=5)
     from fastapi.testclient import TestClient
-    with TestClient(create_app(settings, connector_factory=lambda lib: fake)) as client:
+    with TestClient(create_app(settings, connector_factory=lambda lib, user_id=None: fake)) as client:
         register(client)
         body = {"profile": {"query": "x", "year_from": 2020, "year_to": 2021,
                             "document_types": ["peer_reviewed", "thesis", "report"]}}

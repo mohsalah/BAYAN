@@ -5,7 +5,18 @@ Which library can supply a type comes from the connector's own `supported_catego
 "capability not recorded"; nothing is guessed. User-supplied manuals are a separate row.
 """
 
-from .connectors import ArxivConnector, CrossrefConnector, EuropePMCConnector, OpenAlexConnector
+from .connectors import (
+    ArxivConnector,
+    CoreConnector,
+    CrossrefConnector,
+    DoajConnector,
+    EuropePMCConnector,
+    InisConnector,
+    OpenAlexConnector,
+    OstiConnector,
+    ScopusConnector,
+    SemanticScholarConnector,
+)
 from .libraries import LIBRARIES
 from .models import CATEGORY_INFO, DOCUMENT_TYPES, MANUAL_KIND, normalize_document_types
 
@@ -14,7 +25,9 @@ MANUAL_ROW = MANUAL_KIND
 
 CAPABILITIES: dict[str, frozenset[str]] = {
     cls.name: cls.supported_categories
-    for cls in (OpenAlexConnector, CrossrefConnector, ArxivConnector, EuropePMCConnector)
+    for cls in (OpenAlexConnector, CrossrefConnector, ArxivConnector, EuropePMCConnector,
+                OstiConnector, InisConnector, DoajConnector, SemanticScholarConnector,
+                CoreConnector, ScopusConnector)
 }
 _LABELS = {c["id"]: c["label"] for c in CATEGORY_INFO}
 _LIBRARY_NAMES = {lib["id"]: lib["name"] for lib in LIBRARIES}

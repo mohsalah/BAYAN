@@ -66,7 +66,7 @@ class OpenAlexStub:
 def env(tmp_path):
     stub = OpenAlexStub()
 
-    def factory(name):
+    def factory(name, user_id=None):
         if name != "openalex":
             return None  # no Crossref DOI lookups in these tests
         return OpenAlexConnector(client=httpx.Client(transport=httpx.MockTransport(stub)),
@@ -273,7 +273,7 @@ def test_libraries_without_a_date_filter_are_skipped(env, tmp_path):
     with db(env) as conn:
         job = rf.queue_refresh(conn, cid, 1, 5, False)
         conn.commit()
-    rf.run_refresh_job(env.db, job, lambda n: NoDates(), 50, 30)
+    rf.run_refresh_job(env.db, job, lambda n, user_id=None: NoDates(), 50, 30)
     done = history(env, cid)[0]
     assert done["skipped"] == {"libraries_without_date_filter": ["openalex"]}
     assert done["shortfalls"][0]["reason"] == "no_library_with_date_filter"

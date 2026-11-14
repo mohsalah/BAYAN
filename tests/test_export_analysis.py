@@ -36,7 +36,7 @@ def env(tmp_path):
     papers = [make(1, first_author="Ada"), make(2, abstract=""),
               make(3, title="=HYPERLINK(\"http://x\")", abstract="+cmd")]
     app = create_app(Settings(database_path=tmp_path / "t.sqlite", search_max_results=50),
-                     connector_factory=lambda lib: FakeConnector(papers))
+                     connector_factory=lambda lib, user_id=None: FakeConnector(papers))
     with TestClient(app) as client:
         client.post("/api/auth/register", json={"email": "ada@example.org", "password": PASSWORD})
         run = client.post("/api/search", json={"profile": {"query": "r", "year_from": 2020,

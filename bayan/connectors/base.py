@@ -52,6 +52,14 @@ class Connector(Protocol):
     def search(self, profile: SearchProfile) -> Iterator[Paper]: ...
 
 
+class ConnectorFactory(Protocol):
+    """Builds the connector for one library. `user_id` is the signed-in user (or a collection's
+    owner); only membership libraries use it, to load that user's own saved key. Raises
+    KeyError for an unknown library and ConnectorError when the library cannot be used."""
+
+    def __call__(self, library_id: str, user_id: int | None = None) -> Connector: ...
+
+
 MAX_RETRY_WAIT = 60.0  # seconds; the downloader caps its waits the same way
 
 

@@ -80,7 +80,7 @@ def env(tmp_path):
                                                   "language": ""}) for i in range(1, 5)]
         fake = FakeConcepts() if client is None else client
         net = Net()
-        app = create_app(settings, connector_factory=lambda lib: Connector(papers),
+        app = create_app(settings, connector_factory=lambda lib, user_id=None: Connector(papers),
                          fetcher=make_fetcher(net), concept_client=fake or None)
         tc = TestClient(app)
         tc.__enter__()

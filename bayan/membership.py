@@ -136,6 +136,19 @@ def get_user_key(user_id: int, publisher: str, settings: Settings | None = None)
     return _decrypt(settings.app_secret_key, row["ciphertext"]) if row else None
 
 
+def get_user_keys(user_id: int, publishers: list[str],
+                  settings: Settings | None = None) -> dict[str, str | None]:
+    """`get_user_key` for several publishers with one query: {publisher: key or None}."""
+    settings = settings or load_settings()
+    marks = ",".join("?" * len(publishers))
+    with closing(connect(settings.database_path)) as conn:
+        rows = conn.execute(
+            "SELECT publisher, ciphertext FROM membership_keys WHERE user_id = ?"
+            f" AND publisher IN ({marks})", (user_id, *publishers)).fetchall()
+    found = {r["publisher"]: _decrypt(settings.app_secret_key, r["ciphertext"]) for r in rows}
+    return {p: found.get(p) for p in publishers}
+
+
 # --------------------------------------------------------------------------- proxy template
 
 def validate_template(raw: object) -> str:

@@ -145,7 +145,7 @@ def make_client(tmp_path, world, dois=()):
     by_name = {"openalex": oa, "europepmc": Doi(list(dois))}
     settings = Settings(database_path=tmp_path / "t.sqlite", search_max_results=500,
                         job_resume_interval=0)
-    return TestClient(create_app(settings, connector_factory=lambda lib: by_name.get(lib)))
+    return TestClient(create_app(settings, connector_factory=lambda lib, user_id=None: by_name.get(lib)))
 
 
 def register_and_search(client, email="a@example.org", libraries=("openalex",)):

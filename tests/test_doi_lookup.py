@@ -297,7 +297,7 @@ def test_search_fills_missing_dois_stores_duplicates_once_and_reports_counts(tmp
 
     handlers = {"openalex": openalex, "arxiv": arxiv, "crossref": crossref}
 
-    def factory(lib):
+    def factory(lib, user_id=None):
         conn = real(lib)
         conn._client = httpx.Client(transport=httpx.MockTransport(handlers[lib]))
         return conn
@@ -334,7 +334,7 @@ def test_search_survives_crossref_outage(tmp_path):
 
     handlers = {"arxiv": arxiv, "crossref": lambda request: httpx.Response(503)}
 
-    def factory(lib):
+    def factory(lib, user_id=None):
         conn = real(lib)
         conn._client = httpx.Client(transport=httpx.MockTransport(handlers[lib]))
         conn._sleep = lambda s: None
@@ -363,7 +363,7 @@ def test_the_lookup_time_setting_reaches_the_search(tmp_path):
             return httpx.Response(200, json={"message": {"items": []}})
         return httpx.Response(200, json={"results": [no_doi], "meta": {"next_cursor": None}})
 
-    def factory(lib):
+    def factory(lib, user_id=None):
         conn = real(lib)
         conn._client = httpx.Client(transport=httpx.MockTransport(handler))
         return conn
